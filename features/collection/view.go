@@ -30,6 +30,7 @@ func View(c *ui.Context, db *store.Store, n nav.Navigator, workspaceID domain.ID
 		state:         state,
 	}
 	props.actions = pageActions{
+		// 创建集合
 		createCollection: func() {
 			if db == nil {
 				return

@@ -14,7 +14,7 @@ import (
 func tabBar(c *ui.Context) ui.Element {
 	m := theme.Metrics
 	tk := theme.Of(c)
-	return ui.Row(c).Height(36).Padding(m.Space1).Gap(3).
+	return ui.Row(c).Height(37).Padding(m.Space1).Gap(3).
 		AlignItems(ui.Center).Background(tk.BgSurface).
 		BorderWidth(0, 0, m.Border, 0).BorderColor(tk.Border)
 }
@@ -79,11 +79,16 @@ func tabsBar(c *ui.Context, props pageProps) {
 						if selected {
 							name.FontWeight(600)
 						}
+					case tabNode == nil:
+						// 集合用集合图标，文件夹用文件夹图标，避免类型混淆。
+						ui.Icon(c, icons.Get("library")).Size(13, 11).
+							TextColor(tk.TextSecondary)
+						ui.Text(c, coll.Name).FontSize(m.FontMD).
+							TextColor(tabNameColor(tk, selected)).SingleLine()
 					default:
-						// 集合与文件夹概览 tab 共用设计稿里的同一个 13x11 图标。
 						ui.Icon(c, icons.Get("folder")).Size(13, 11).
 							TextColor(tk.TextSecondary)
-						ui.Text(c, tabLabel(coll, tabNode)).FontSize(m.FontMD).
+						ui.Text(c, tabNode.Name).FontSize(m.FontMD).
 							TextColor(tabNameColor(tk, selected)).SingleLine()
 					}
 					close := ui.ButtonBase(c.Key("close-" + id)).Width(m.SizeXS - 2).
