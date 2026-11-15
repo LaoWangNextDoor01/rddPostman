@@ -1,0 +1,29 @@
+# 一行一个 Lucide 图标名（不含 .svg）。
+# 这里是唯一清单：只有列出的图标会被下载和打包；
+# 从清单删掉一行再运行 scripts/sync-icons.sh，对应文件会被删除。
+send
+plus
+trash
+copy
+search
+settings
+chevron-down
+x
+folder
+file
+house
+layers
+globe
+clock
+server
+network
+circle-help
+bug
+sliders-horizontal
+ellipsis
+square-terminal
+code
+triangle-alert
+library-big
+folder-plus
+library
