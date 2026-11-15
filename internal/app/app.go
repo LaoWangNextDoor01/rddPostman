@@ -13,6 +13,7 @@ import (
 	"rddpostman/features/home"
 	"rddpostman/features/request"
 	"rddpostman/features/settings"
+	"rddpostman/internal/domain"
 	"rddpostman/internal/routes"
 	"rddpostman/internal/store"
 	"rddpostman/locales"
@@ -28,6 +29,7 @@ const (
 	routeCollection   = routes.Collection
 	routeEnvironments = routes.Environments
 	routeHistory      = routes.History
+	routeDocs         = routes.Docs
 	routeMock         = routes.Mock
 	routeNetwork      = routes.Network
 	routeDemo         = routes.Demo
@@ -51,6 +53,13 @@ func New() *App {
 	return a
 }
 
+// Close 在退出前把防抖中的编辑立即落盘。
+func (a *App) Close() {
+	if a.store != nil {
+		_ = a.store.Close()
+	}
+}
+
 // View 绘制整个窗口。
 func (a *App) View(c *ui.Context) {
 	c.SetTheme(theme.Apply(c.Theme(), c.Preferences()))
@@ -68,7 +77,7 @@ func (a *App) View(c *ui.Context) {
 		a.titleBar(c, bar, selected)
 		ui.Row(c).Grow(1).AlignItems(ui.Stretch).Children(func() {
 			a.iconRail(c)
-			a.content(c)
+			a.content(c, selected)
 		})
 		a.statusBar(c, a.workspaceName(*selected))
 	})
@@ -115,7 +124,7 @@ func (a *App) workspaceName(id string) string {
 }
 
 // content 是图标栏右侧的主区域。每个页面自己决定是否带侧栏、是否滚动。
-func (a *App) content(c *ui.Context) {
+func (a *App) content(c *ui.Context, selected *string) {
 	tk := theme.Of(c)
 	ui.Box(c).Grow(1).Background(tk.BgBase).Children(func() {
 		a.router.View(c, func(r *ui.Route) {
@@ -128,7 +137,7 @@ func (a *App) content(c *ui.Context) {
 				home.View(c)
 			case r.Match(routeCollections):
 				r.Title(locales.CollectionsTitle())
-				collection.View(c, a.router)
+				collection.View(c, a.store, a.router, domain.ID(*selected), a.workspaceName(*selected))
 			case r.Match(routeCollection):
 				r.Title(locales.RequestPageTitle())
 				request.View(c, a.router)
@@ -138,6 +147,9 @@ func (a *App) content(c *ui.Context) {
 			case r.Match(routeHistory):
 				r.Title(locales.HistoryTitle())
 				history.View(c, a.router)
+			case r.Match(routeDocs):
+				r.Title(locales.DocsTitle())
+				placeholder(c, locales.DocsTitle(), locales.DocsDesc())
 			case r.Match(routeMock):
 				r.Title(locales.RailMock())
 				placeholder(c, locales.RailMock(), locales.RailMockDesc())

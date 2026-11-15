@@ -6,10 +6,12 @@ import "github.com/egoist/mygo/ui"
 
 // Tokens 是一个外观下的全部颜色 token。
 type Tokens struct {
-	BgBase       ui.Color // bg-base：应用底色
-	BgSurface    ui.Color // bg-surface：面板、卡片
-	BgElevated   ui.Color // bg-elevated：抬起的表面
-	HoverSurface ui.Color // hover-surface：悬停表面
+	BgBase           ui.Color // bg-base：应用底色
+	BgSurface        ui.Color // bg-surface：面板、卡片
+	BgElevated       ui.Color // bg-elevated：抬起的表面
+	HoverSurface     ui.Color // hover-surface：悬停表面
+	PopoverBg        ui.Color // popover-bg：弹层表面
+	PopoverItemHover ui.Color // popover-item-hover：弹层条目悬停
 
 	Border ui.Color // border：描边与分割线
 
@@ -33,46 +35,50 @@ type Tokens struct {
 
 // Light 是浅色外观的 token，取值来自设计稿变量集的 Light 模式。
 var light = Tokens{
-	BgBase:        ui.Hex("#F7F7F8"),
-	BgSurface:     ui.Hex("#FFFFFF"),
-	BgElevated:    ui.Hex("#F2F2F4"),
-	HoverSurface:  ui.Hex("#F2F2F4"),
-	Border:        ui.Hex("#E4E4E7"),
-	TextPrimary:   ui.Hex("#1F1F23"),
-	TextSecondary: ui.Hex("#52525B"),
-	TextMuted:     ui.Hex("#9A9AA4"),
-	TextDisabled:  ui.Hex("#B4B4BC"),
-	Accent:        ui.Hex("#FF6C37"),
-	AccentSoft:    ui.Hex("#FFF1EB"),
-	OnAccent:      ui.Hex("#FFFFFF"),
-	FocusRing:     ui.Hex("#FF6C37"),
-	Danger:        ui.Hex("#D9483B"),
-	Warning:       ui.Hex("#C77700"),
-	Success:       ui.Hex("#1F9D6B"),
-	Info:          ui.Hex("#2F6FEB"),
-	Overlay:       ui.Hex("#0F172A66"),
+	BgBase:           ui.Hex("#F7F7F8"),
+	BgSurface:        ui.Hex("#FFFFFF"),
+	BgElevated:       ui.Hex("#F2F2F4"),
+	HoverSurface:     ui.Hex("#F2F2F4"),
+	PopoverBg:        ui.Hex("#FFFFFF"),
+	PopoverItemHover: ui.Hex("#F2F2F4"),
+	Border:           ui.Hex("#E4E4E7"),
+	TextPrimary:      ui.Hex("#1F1F23"),
+	TextSecondary:    ui.Hex("#52525B"),
+	TextMuted:        ui.Hex("#9A9AA4"),
+	TextDisabled:     ui.Hex("#B4B4BC"),
+	Accent:           ui.Hex("#FF6C37"),
+	AccentSoft:       ui.Hex("#FFF1EB"),
+	OnAccent:         ui.Hex("#FFFFFF"),
+	FocusRing:        ui.Hex("#FF6C37"),
+	Danger:           ui.Hex("#D9483B"),
+	Warning:          ui.Hex("#C77700"),
+	Success:          ui.Hex("#1F9D6B"),
+	Info:             ui.Hex("#2F6FEB"),
+	Overlay:          ui.Hex("#0F172A66"),
 }
 
 // Dark 是深色外观的 token，取值来自设计稿变量集的 Dark 模式。
 var dark = Tokens{
-	BgBase:        ui.Hex("#1A1A1C"),
-	BgSurface:     ui.Hex("#232326"),
-	BgElevated:    ui.Hex("#2A2A2E"),
-	HoverSurface:  ui.Hex("#2A2A2E"),
-	Border:        ui.Hex("#343438"),
-	TextPrimary:   ui.Hex("#ECECEF"),
-	TextSecondary: ui.Hex("#A1A1AA"),
-	TextMuted:     ui.Hex("#6E6E78"),
-	TextDisabled:  ui.Hex("#55555F"),
-	Accent:        ui.Hex("#FF6C37"),
-	AccentSoft:    ui.Hex("#FF6C371F"),
-	OnAccent:      ui.Hex("#FFFFFF"),
-	FocusRing:     ui.Hex("#FF6C37"),
-	Danger:        ui.Hex("#FF5F57"),
-	Warning:       ui.Hex("#F2B34B"),
-	Success:       ui.Hex("#34D399"),
-	Info:          ui.Hex("#6C9EE8"),
-	Overlay:       ui.Hex("#00000073"),
+	BgBase:           ui.Hex("#1A1A1C"),
+	BgSurface:        ui.Hex("#232326"),
+	BgElevated:       ui.Hex("#2A2A2E"),
+	HoverSurface:     ui.Hex("#2A2A2E"),
+	PopoverBg:        ui.Hex("#2A2A2E"),
+	PopoverItemHover: ui.Hex("#333338"),
+	Border:           ui.Hex("#343438"),
+	TextPrimary:      ui.Hex("#ECECEF"),
+	TextSecondary:    ui.Hex("#A1A1AA"),
+	TextMuted:        ui.Hex("#6E6E78"),
+	TextDisabled:     ui.Hex("#55555F"),
+	Accent:           ui.Hex("#FF6C37"),
+	AccentSoft:       ui.Hex("#FF6C371F"),
+	OnAccent:         ui.Hex("#FFFFFF"),
+	FocusRing:        ui.Hex("#FF6C37"),
+	Danger:           ui.Hex("#FF5F57"),
+	Warning:          ui.Hex("#F2B34B"),
+	Success:          ui.Hex("#34D399"),
+	Info:             ui.Hex("#6C9EE8"),
+	Overlay:          ui.Hex("#00000073"),
 }
 
 // Set 是一整套外观 token。应用可以整体替换它来自定义主题，

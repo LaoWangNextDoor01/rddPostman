@@ -1,19 +1,17 @@
-// Package store 负责工作空间、集合文件的注册表与本地持久化。
+// Package store 是数据层门面：内存快照 + 写时复制 + 防抖落盘。
 //
-// 层级：工作空间 → 集合 → 目录/请求。
-// 集合本身是用户选定目录里的 <名称>.collection.json；
-// 应用数据目录只放 workspaces.json（工作空间与集合注册表），
-// 以及后续的环境、历史、密钥。
+// 持久化由 storage.Backend 负责，当前是 storage/jsonfs 的本地文件实现；
+// 将来换 SQLite 或远端只需要替换 Backend，本包和 UI 不用改。
+//
+// 读路径返回不可变的 Snapshot，UI 每帧直接读；写路径统一走方法，
+// 先在副本上修改、持久化成功后再替换快照，失败不会留下半更新状态。
 package store
 
 import (
-	"crypto/rand"
-	"encoding/hex"
-	"encoding/json"
+	"context"
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -22,70 +20,65 @@ import (
 
 	"rddpostman/internal/domain"
 	"rddpostman/internal/platform"
+	"rddpostman/internal/storage"
+	"rddpostman/internal/storage/jsonfs"
 )
 
-// SchemaVersion 是注册表与集合文件的格式版本，升级时据此迁移。
-const SchemaVersion = 2
-
-const (
-	collectionExt      = ".collection.json"
-	registryFile       = "workspaces.json"
-	legacyRegistryFile = "collections.json"
-	defaultSpaceName   = "默认工作区"
-	flushDelay         = 300 * time.Millisecond
-)
-
+// 存储层错误别名，方便调用方直接判断。
 var (
-	// ErrNotFound 表示工作空间、集合或节点不存在，或者集合文件已丢失。
-	ErrNotFound = errors.New("store: 找不到工作空间、集合或节点")
-	// ErrExists 表示目标位置已有同名集合。
-	ErrExists = errors.New("store: 同名集合已存在")
-	// ErrDefaultWorkspace 表示试图删除系统默认工作空间。
-	ErrDefaultWorkspace = errors.New("store: 默认工作区不可删除")
+	ErrNotFound         = storage.ErrNotFound
+	ErrExists           = storage.ErrExists
+	ErrDefaultWorkspace = storage.ErrDefaultWorkspace
+	ErrReadOnly         = storage.ErrReadOnly
 )
 
-// Ref 是注册表里的一条集合记录。
-type Ref struct {
-	ID          domain.ID `json:"id"`
-	Name        string    `json:"name"`
-	Path        string    `json:"path"`
-	WorkspaceID domain.ID `json:"workspaceID"`
-}
+const flushDelay = 300 * time.Millisecond
 
-type registry struct {
-	Version     int                `json:"version"`
-	Workspaces  []domain.Workspace `json:"workspaces"`
-	Collections []Ref              `json:"collections"`
-}
-
-// Workspace 是给 UI 读的一个工作空间及其集合。
+// Workspace 是给 UI 读的一个工作区及其数据。
 type Workspace struct {
-	ID          domain.ID
-	Name        string
-	Default     bool
-	Collections []*domain.Collection
+	ID                    domain.ID
+	Name                  string
+	Default               bool
+	ReadOnly              bool
+	Collections           []*domain.Collection
+	Environments          []domain.Environment
+	SelectedEnvironmentID domain.ID
 }
 
 // Snapshot 是给 UI 读的不可变视图，替换时整体换新，读方不需要加锁。
 type Snapshot struct {
 	Workspaces []*Workspace
-	// Missing 是文件已被移动或删除的集合 ID，UI 灰显并提示重新定位。
-	Missing []domain.ID
+	Globals    []domain.KV
+	// Problems 是加载时跳过的损坏或高版本文件，UI 可以提示用户。
+	Problems []string
 }
 
-// Store 管理注册表与所有集合文件。
-// 读走 Snapshot；写一律通过方法，内部用写时复制更新快照。
-type Store struct {
-	dir     string
-	regPath string
+type state struct {
+	ref         storage.Ref
+	ws          *domain.Workspace
+	collections []*domain.Collection
+	envs        []domain.Environment
+	local       domain.Local
+	secrets     map[domain.ID]string
+	readOnly    bool
+}
 
-	mu       sync.Mutex
-	reg      registry
-	byID     map[domain.ID]*domain.Collection
-	missing  map[domain.ID]bool
-	dirty    map[domain.ID]bool
-	regDirty bool
-	timer    *time.Timer
+type nodeKey struct {
+	ws   domain.ID
+	coll domain.ID
+	node domain.ID
+}
+
+// Store 管理所有工作区。读走 Snapshot；写一律通过方法。
+type Store struct {
+	backend   storage.Backend
+	mu        sync.Mutex
+	refs      []storage.Ref
+	states    map[domain.ID]*state
+	globals   domain.Globals
+	problems  []string
+	dirtyNode map[nodeKey]*domain.Node
+	timer     *time.Timer
 
 	snap atomic.Pointer[Snapshot]
 }
@@ -101,367 +94,675 @@ func Open() (*Store, error) {
 
 // OpenAt 在指定目录里打开存储，主要供测试使用。
 func OpenAt(dir string) (*Store, error) {
-	s := &Store{
-		dir:     dir,
-		regPath: filepath.Join(dir, registryFile),
-		byID:    map[domain.ID]*domain.Collection{},
-		missing: map[domain.ID]bool{},
-		dirty:   map[domain.ID]bool{},
-	}
-	s.snap.Store(&Snapshot{})
-	if err := s.load(); err != nil {
+	backend, err := jsonfs.New(dir)
+	if err != nil {
 		return nil, err
 	}
+	s := &Store{
+		backend:   backend,
+		states:    map[domain.ID]*state{},
+		dirtyNode: map[nodeKey]*domain.Node{},
+		globals:   domain.Globals{Schema: domain.SchemaGlobals, Version: domain.Version},
+	}
+	s.snap.Store(&Snapshot{})
+	ctx := context.Background()
+
+	refs, err := backend.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s.refs = refs
+	if g, err := backend.LoadGlobals(ctx); err == nil {
+		s.globals = g
+	} else {
+		s.problems = append(s.problems, err.Error())
+	}
+	for _, ref := range refs {
+		bundle, err := backend.Load(ctx, ref)
+		if err != nil {
+			s.problems = append(s.problems, fmt.Sprintf("打开工作区 %s: %v", ref.Path, err))
+			continue
+		}
+		s.states[ref.ID] = &state{
+			ref:         ref,
+			ws:          bundle.Workspace,
+			collections: bundle.Collections,
+			envs:        bundle.Environments,
+			local:       bundle.Local,
+			secrets:     bundle.Secrets,
+			readOnly:    bundle.ReadOnly,
+		}
+		s.problems = append(s.problems, bundle.Problems...)
+	}
+	s.publishLocked()
 	return s, nil
 }
 
-func (s *Store) load() error {
-	data, err := os.ReadFile(s.regPath)
-	switch {
-	case err == nil:
-		if err := json.Unmarshal(data, &s.reg); err != nil {
-			return fmt.Errorf("读取工作空间注册表: %w", err)
-		}
-	case errors.Is(err, os.ErrNotExist):
-		// 兼容旧版只有集合的注册表。
-		if legacy, lerr := os.ReadFile(filepath.Join(s.dir, legacyRegistryFile)); lerr == nil {
-			if err := json.Unmarshal(legacy, &s.reg); err != nil {
-				return fmt.Errorf("读取旧版集合注册表: %w", err)
-			}
-			s.regDirty = true
-		}
-	default:
-		return err
-	}
-
-	s.reg.Version = SchemaVersion
-	defaultID := s.ensureDefaultWorkspaceLocked()
-	// 旧数据或异常数据里没有归属工作空间的集合，统一挂到默认工作区。
-	for i := range s.reg.Collections {
-		if s.reg.Collections[i].WorkspaceID == "" {
-			s.reg.Collections[i].WorkspaceID = defaultID
-			s.regDirty = true
-		}
-	}
-
-	for _, ref := range s.reg.Collections {
-		coll, err := readCollection(ref.Path)
-		if err != nil {
-			s.missing[ref.ID] = true
-			continue
-		}
-		s.byID[ref.ID] = coll
-	}
-	s.publishLocked()
-
-	if s.regDirty {
-		if err := s.flushLocked(); err != nil {
-			fmt.Fprintf(os.Stderr, "store: 写入注册表失败: %v\n", err)
-		}
-	}
-	return nil
-}
-
-// Snapshot 返回当前不可变视图，UI 每帧直接读它。
+// Snapshot 返回当前不可变视图，UI 每帧直接读。
 func (s *Store) Snapshot() *Snapshot { return s.snap.Load() }
 
-// DefaultWorkspaceID 返回默认工作区 ID，新建集合时没有指定归属时使用。
+// DefaultWorkspaceID 返回默认工作区 ID。
 func (s *Store) DefaultWorkspaceID() domain.ID {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.ensureDefaultWorkspaceLocked()
+	for _, ref := range s.refs {
+		if ref.Default {
+			return ref.ID
+		}
+	}
+	if len(s.refs) > 0 {
+		return s.refs[0].ID
+	}
+	return ""
 }
 
-// CreateWorkspace 新建一个自定义工作空间。
-func (s *Store) CreateWorkspace(name string) (*domain.Workspace, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil, errors.New("store: 工作空间名不能为空")
-	}
-
+// Globals 返回跨工作区变量的副本。
+func (s *Store) Globals() []domain.KV {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	ws := domain.Workspace{ID: NewID(), Name: name}
-	s.reg.Workspaces = append(s.reg.Workspaces, ws)
-	s.regDirty = true
-	s.publishLocked()
-	// 结构变更立刻落盘，防抖只留给树和请求内容的编辑。
-	if err := s.flushLocked(); err != nil {
-		return nil, err
-	}
-	return &ws, nil
+	return append([]domain.KV(nil), s.globals.Variables...)
 }
 
-// RenameWorkspace 修改工作空间名，默认工作区也可以改名。
+// SetGlobals 保存跨工作区变量。
+func (s *Store) SetGlobals(vars []domain.KV) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	g := s.globals
+	g.Variables = append([]domain.KV(nil), vars...)
+	if err := s.backend.SaveGlobals(context.Background(), g); err != nil {
+		return err
+	}
+	s.globals = g
+	s.publishLocked()
+	return nil
+}
+
+// ---- 工作区 ----
+
+// CreateWorkspace 在默认位置新建工作区。
+func (s *Store) CreateWorkspace(name string) (*domain.Workspace, error) {
+	return s.CreateWorkspaceAt(name, "")
+}
+
+// CreateWorkspaceAt 在 dir 建工作区；dir 为空时由后端在数据根目录下分配。
+// dir 是用户自选目录时，整个目录就是工作区，可直接复制或用 Git 管理。
+func (s *Store) CreateWorkspaceAt(name, dir string) (*domain.Workspace, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	bundle, err := s.backend.CreateWorkspace(context.Background(), name, dir)
+	if err != nil {
+		return nil, err
+	}
+	s.states[bundle.Ref.ID] = &state{
+		ref:         bundle.Ref,
+		ws:          bundle.Workspace,
+		collections: bundle.Collections,
+		envs:        bundle.Environments,
+		local:       bundle.Local,
+		secrets:     bundle.Secrets,
+	}
+	s.refs = append(s.refs, bundle.Ref)
+	s.publishLocked()
+	return bundle.Workspace, nil
+}
+
+// RenameWorkspace 修改工作区名；目录保持稳定。
 func (s *Store) RenameWorkspace(id domain.ID, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return errors.New("store: 工作空间名不能为空")
+		return errors.New("工作区名不能为空")
 	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for i := range s.reg.Workspaces {
-		if s.reg.Workspaces[i].ID != id {
-			continue
-		}
-		s.reg.Workspaces[i].Name = name
-		s.regDirty = true
-		s.publishLocked()
-		return s.flushLocked()
-	}
-	return ErrNotFound
+	return s.UpdateWorkspace(id, func(ws *domain.Workspace) {
+		ws.Name = name
+	})
 }
 
-// RemoveWorkspace 删除自定义工作空间；默认工作区不可删除。
-// 其下的集合会移到默认工作区，文件不动。
+// UpdateWorkspace 修改工作区元数据（名称、描述、工作区级变量等）。
+func (s *Store) UpdateWorkspace(id domain.ID, fn func(*domain.Workspace)) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.states[id]
+	if st == nil {
+		return ErrNotFound
+	}
+	if st.readOnly {
+		return ErrReadOnly
+	}
+	next := st.ws.Clone()
+	fn(next)
+	next.UpdatedAt = time.Now()
+	if err := s.backend.UpdateWorkspace(context.Background(), st.ref, next); err != nil {
+		return err
+	}
+	st.ws = next
+	s.publishLocked()
+	return nil
+}
+
+// RemoveWorkspace 取消注册，磁盘上的工作区目录保持原样。
 func (s *Store) RemoveWorkspace(id domain.ID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	idx := -1
-	for i, w := range s.reg.Workspaces {
-		if w.ID != id {
-			continue
-		}
-		if w.Default {
-			return ErrDefaultWorkspace
-		}
-		idx = i
-		break
-	}
-	if idx < 0 {
+	st := s.states[id]
+	if st == nil {
 		return ErrNotFound
 	}
-
-	defaultID := s.ensureDefaultWorkspaceLocked()
-	s.reg.Workspaces = append(s.reg.Workspaces[:idx], s.reg.Workspaces[idx+1:]...)
-	for i := range s.reg.Collections {
-		if s.reg.Collections[i].WorkspaceID == id {
-			s.reg.Collections[i].WorkspaceID = defaultID
-		}
+	if st.ref.Default {
+		return ErrDefaultWorkspace
 	}
-	s.regDirty = true
-	s.publishLocked()
-	return s.flushLocked()
-}
-
-// CreateCollection 在 workspaceID 下注册集合，文件写到 dir 里的 <name>.collection.json。
-// workspaceID 为空时放到默认工作区。
-func (s *Store) CreateCollection(workspaceID domain.ID, name, dir string) (*domain.Collection, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil, errors.New("store: 集合名不能为空")
-	}
-	info, err := os.Stat(dir)
-	if err != nil {
-		return nil, fmt.Errorf("store: 目标目录不可用: %w", err)
-	}
-	if !info.IsDir() {
-		return nil, errors.New("store: 目标不是目录")
-	}
-
-	path := filepath.Join(dir, fileName(name))
-	if _, err := os.Stat(path); err == nil {
-		return nil, ErrExists
-	}
-
-	coll := &domain.Collection{
-		Version: SchemaVersion,
-		ID:      NewID(),
-		Name:    name,
-		Items:   []*domain.Node{},
-	}
-	if err := writeCollection(path, coll); err != nil {
-		return nil, err
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if workspaceID == "" {
-		workspaceID = s.ensureDefaultWorkspaceLocked()
-	} else if s.workspaceIndexLocked(workspaceID) < 0 {
-		_ = os.Remove(path)
-		return nil, ErrNotFound
-	}
-	s.reg.Collections = append(s.reg.Collections, Ref{
-		ID:          coll.ID,
-		Name:        coll.Name,
-		Path:        path,
-		WorkspaceID: workspaceID,
-	})
-	s.byID[coll.ID] = coll
-	s.regDirty = true
-	s.publishLocked()
-	if err := s.flushLocked(); err != nil {
-		return nil, err
-	}
-	return coll, nil
-}
-
-// OpenCollection 把一个已有的集合文件加入注册表；已注册时直接返回。
-// 未指定归属时放进默认工作区。
-func (s *Store) OpenCollection(path string) (*domain.Collection, error) {
-	coll, err := readCollection(path)
-	if err != nil {
-		return nil, err
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, ref := range s.reg.Collections {
-		if ref.Path == path {
-			return s.byID[ref.ID], nil
-		}
-		if ref.ID == coll.ID {
-			return nil, fmt.Errorf("store: 集合 %q 已从其他路径打开", ref.Name)
-		}
-	}
-
-	s.reg.Collections = append(s.reg.Collections, Ref{
-		ID:          coll.ID,
-		Name:        coll.Name,
-		Path:        path,
-		WorkspaceID: s.ensureDefaultWorkspaceLocked(),
-	})
-	s.byID[coll.ID] = coll
-	delete(s.missing, coll.ID)
-	s.regDirty = true
-	s.publishLocked()
-	if err := s.flushLocked(); err != nil {
-		return nil, err
-	}
-	return coll, nil
-}
-
-// RenameCollection 改名；如果文件在用户目录里，文件名一起改。
-func (s *Store) RenameCollection(id domain.ID, name string) error {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return errors.New("store: 集合名不能为空")
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	idx := s.refIndexLocked(id)
-	if idx < 0 {
-		return ErrNotFound
-	}
-	ref := s.reg.Collections[idx]
-
-	if coll := s.byID[id]; coll != nil {
-		next := coll.Clone()
-		next.Name = name
-		s.byID[id] = next
-		s.dirty[id] = true
-	}
-
-	newPath := filepath.Join(filepath.Dir(ref.Path), fileName(name))
-	if newPath != ref.Path {
-		if _, err := os.Stat(newPath); err == nil {
-			return ErrExists
-		}
-		if err := os.Rename(ref.Path, newPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		ref.Path = newPath
-	}
-	ref.Name = name
-	s.reg.Collections[idx] = ref
-	s.regDirty = true
-	s.publishLocked()
-	// 改文件名的同时立刻写内容，避免文件名和文件里的名字短时间不一致。
-	return s.flushLocked()
-}
-
-// RemoveCollection 从注册表移除集合，deleteFile 为 true 时同时删除文件。
-func (s *Store) RemoveCollection(id domain.ID, deleteFile bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	idx := s.refIndexLocked(id)
-	if idx < 0 {
-		return ErrNotFound
-	}
-	path := s.reg.Collections[idx].Path
-	s.reg.Collections = append(s.reg.Collections[:idx], s.reg.Collections[idx+1:]...)
-	delete(s.byID, id)
-	delete(s.missing, id)
-	delete(s.dirty, id)
-	s.regDirty = true
-	s.publishLocked()
-	if err := s.flushLocked(); err != nil {
+	if err := s.backend.RemoveWorkspace(context.Background(), st.ref); err != nil {
 		return err
 	}
-
-	if deleteFile {
-		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
+	delete(s.states, id)
+	out := s.refs[:0]
+	for _, ref := range s.refs {
+		if ref.ID != id {
+			out = append(out, ref)
 		}
 	}
+	s.refs = out
+	for key := range s.dirtyNode {
+		if key.ws == id {
+			delete(s.dirtyNode, key)
+		}
+	}
+	s.publishLocked()
 	return nil
 }
+
+// ---- 集合 ----
+
+// CreateCollection 在工作区的 collections/ 下新建集合。
+func (s *Store) CreateCollection(wsID domain.ID, name, description string) (*domain.Collection, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.states[wsID]
+	if st == nil {
+		return nil, ErrNotFound
+	}
+	if st.readOnly {
+		return nil, ErrReadOnly
+	}
+	coll, err := s.backend.CreateCollection(context.Background(), st.ref,
+		storage.Input{Name: name, Description: description})
+	if err != nil {
+		return nil, err
+	}
+	st.collections = append(st.collections, coll)
+	sortCollections(st.collections)
+	s.publishLocked()
+	return coll, nil
+}
+
+// RenameCollection 修改集合名，目录一起改名。
+func (s *Store) RenameCollection(collID domain.ID, name string) error {
+	return s.UpdateCollection(collID, func(c *domain.Collection) {
+		c.Name = name
+	})
+}
+
+// UpdateCollection 修改集合元数据。
+func (s *Store) UpdateCollection(collID domain.ID, fn func(*domain.Collection)) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, old := s.findCollectionLocked(collID)
+	if st == nil {
+		return ErrNotFound
+	}
+	if st.readOnly {
+		return ErrReadOnly
+	}
+	next := old.Clone()
+	fn(next)
+	next.UpdatedAt = time.Now()
+	if err := s.backend.SaveCollection(context.Background(), st.ref, next); err != nil {
+		return err
+	}
+	s.replaceCollectionLocked(st, next)
+	s.publishLocked()
+	return nil
+}
+
+// RemoveCollection 删除集合及其全部文件。
+func (s *Store) RemoveCollection(collID domain.ID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, old := s.findCollectionLocked(collID)
+	if st == nil {
+		return ErrNotFound
+	}
+	if st.readOnly {
+		return ErrReadOnly
+	}
+	if err := s.backend.DeleteCollection(context.Background(), st.ref, old.ID); err != nil {
+		return err
+	}
+	out := st.collections[:0]
+	for _, c := range st.collections {
+		if c.ID != old.ID {
+			out = append(out, c)
+		}
+	}
+	st.collections = out
+	for key := range s.dirtyNode {
+		if key.coll == old.ID {
+			delete(s.dirtyNode, key)
+		}
+	}
+	s.publishLocked()
+	return nil
+}
+
+// ---- 目录与请求 ----
 
 // AddNode 在 parentID 下追加节点；parentID 为空时加到集合根层。
 func (s *Store) AddNode(collID, parentID domain.ID, n *domain.Node) error {
 	if n == nil {
-		return errors.New("store: 节点为空")
+		return errors.New("节点为空")
 	}
-	return s.mutate(collID, func(c *domain.Collection) error {
-		if parentID == "" {
-			c.Items = append(c.Items, n)
-			return nil
-		}
-		parent := domain.FindIn(c.Items, parentID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	st, old := s.findCollectionLocked(collID)
+	if st == nil {
+		return ErrNotFound
+	}
+	if st.readOnly {
+		return ErrReadOnly
+	}
+	next := old.Clone()
+	prepareNode(n)
+	if parentID == "" {
+		n.Order = domain.NextOrder(next.Items)
+		next.Items = append(next.Items, n)
+	} else {
+		parent := domain.FindIn(next.Items, parentID)
 		if parent == nil {
 			return ErrNotFound
 		}
 		if parent.Kind != domain.KindFolder {
-			return errors.New("store: 只能在目录下创建")
+			return errors.New("只能在目录下创建")
 		}
+		n.Order = domain.NextOrder(parent.Children)
 		parent.Children = append(parent.Children, n)
-		return nil
-	})
+	}
+	next.UpdatedAt = time.Now()
+
+	persist, err := s.preparePersistNodeLocked(st, n)
+	if err != nil {
+		return err
+	}
+	if err := s.backend.SaveNode(context.Background(), st.ref, collID, parentID, persist); err != nil {
+		return err
+	}
+	delete(s.dirtyNode, nodeKey{ws: st.ref.ID, coll: collID, node: n.ID})
+	s.replaceCollectionLocked(st, next)
+	s.publishLocked()
+	return nil
 }
 
-// RenameNode 修改节点名称。
+// RenameNode 修改节点名称，文件/目录一起改名。
 func (s *Store) RenameNode(collID, id domain.ID, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return errors.New("store: 名称不能为空")
+		return errors.New("名称不能为空")
 	}
-	return s.mutate(collID, func(c *domain.Collection) error {
-		n := domain.FindIn(c.Items, id)
-		if n == nil {
-			return ErrNotFound
-		}
+	return s.updateNodePersist(collID, id, func(n *domain.Node) {
 		n.Name = name
-		return nil
 	})
+}
+
+// UpdateNode 修改节点（名称、变量、认证等），并立即持久化结构。
+func (s *Store) UpdateNode(collID, id domain.ID, fn func(*domain.Node)) error {
+	return s.updateNodePersist(collID, id, fn)
+}
+
+func (s *Store) updateNodePersist(collID, id domain.ID, fn func(*domain.Node)) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	st, old := s.findCollectionLocked(collID)
+	if st == nil {
+		return ErrNotFound
+	}
+	if st.readOnly {
+		return ErrReadOnly
+	}
+	next := old.Clone()
+	n := domain.FindIn(next.Items, id)
+	if n == nil {
+		return ErrNotFound
+	}
+	fn(n)
+	n.UpdatedAt = time.Now()
+	next.UpdatedAt = time.Now()
+
+	persist, err := s.preparePersistNodeLocked(st, n)
+	if err != nil {
+		return err
+	}
+	parentID := domain.ID("")
+	if p, ok := domain.ParentOf(next.Items, id); ok && p != nil {
+		parentID = p.ID
+	}
+	if err := s.backend.SaveNode(context.Background(), st.ref, collID, parentID, persist); err != nil {
+		return err
+	}
+	// 结构写入已经落盘，丢掉可能存在的旧防抖副本，避免旧名字覆盖新名字。
+	delete(s.dirtyNode, nodeKey{ws: st.ref.ID, coll: collID, node: id})
+	s.replaceCollectionLocked(st, next)
+	s.publishLocked()
+	return nil
 }
 
 // DeleteNode 删除节点及其子树。
 func (s *Store) DeleteNode(collID, id domain.ID) error {
-	return s.mutate(collID, func(c *domain.Collection) error {
-		items, ok := domain.RemoveChild(c.Items, id)
-		if !ok {
-			return ErrNotFound
-		}
-		c.Items = items
-		return nil
-	})
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	st, old := s.findCollectionLocked(collID)
+	if st == nil {
+		return ErrNotFound
+	}
+	if st.readOnly {
+		return ErrReadOnly
+	}
+	next := old.Clone()
+	target := domain.FindIn(next.Items, id)
+	if target == nil {
+		return ErrNotFound
+	}
+	removed := nodeIDs(target)
+	items, ok := domain.RemoveChild(next.Items, id)
+	if !ok {
+		return ErrNotFound
+	}
+	if err := s.backend.DeleteNode(context.Background(), st.ref, collID, id); err != nil {
+		return err
+	}
+	next.Items = items
+	next.UpdatedAt = time.Now()
+	for _, nid := range removed {
+		delete(s.dirtyNode, nodeKey{ws: st.ref.ID, coll: collID, node: nid})
+	}
+	s.replaceCollectionLocked(st, next)
+	s.publishLocked()
+	return nil
 }
 
-// UpdateRequest 修改请求配置，例如保存 URL、参数或请求头。
+// UpdateRequest 修改请求配置。高频编辑走防抖，不阻塞界面。
 func (s *Store) UpdateRequest(collID, id domain.ID, fn func(*domain.Request)) error {
-	return s.mutate(collID, func(c *domain.Collection) error {
-		n := domain.FindIn(c.Items, id)
-		if n == nil || n.Request == nil {
-			return ErrNotFound
-		}
-		fn(n.Request)
-		return nil
-	})
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	st, old := s.findCollectionLocked(collID)
+	if st == nil {
+		return ErrNotFound
+	}
+	if st.readOnly {
+		return ErrReadOnly
+	}
+	next := old.Clone()
+	n := domain.FindIn(next.Items, id)
+	if n == nil || n.Request == nil {
+		return ErrNotFound
+	}
+	fn(n.Request)
+	n.UpdatedAt = time.Now()
+	next.UpdatedAt = time.Now()
+
+	s.replaceCollectionLocked(st, next)
+	s.dirtyNode[nodeKey{ws: st.ref.ID, coll: collID, node: id}] = n.Clone()
+	s.scheduleLocked()
+	s.publishLocked()
+	return nil
 }
+
+// ---- 环境 ----
+
+// CreateEnvironment 新建一个环境。
+func (s *Store) CreateEnvironment(wsID domain.ID, name string) (domain.Environment, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return domain.Environment{}, errors.New("环境名不能为空")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.states[wsID]
+	if st == nil {
+		return domain.Environment{}, ErrNotFound
+	}
+	if st.readOnly {
+		return domain.Environment{}, ErrReadOnly
+	}
+	now := time.Now()
+	env := domain.Environment{
+		Schema:    domain.SchemaEnvironment,
+		Version:   domain.Version,
+		ID:        domain.NewID(),
+		Name:      name,
+		Vars:      []domain.KV{},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := s.backend.SaveEnvironment(context.Background(), st.ref, env); err != nil {
+		return domain.Environment{}, err
+	}
+	st.envs = append(st.envs, env)
+	sortEnvironments(st.envs)
+	// 第一个环境自动成为当前环境，否则用户创建完还得再点一次。
+	if st.local.SelectedEnvironmentID == "" && st.ws.DefaultEnvironmentID == "" {
+		next := st.local.Clone()
+		next.SelectedEnvironmentID = env.ID
+		if err := s.backend.SaveLocal(context.Background(), st.ref, next); err != nil {
+			return domain.Environment{}, err
+		}
+		st.local = next
+	}
+	s.publishLocked()
+	return env, nil
+}
+
+// SaveEnvironment 新建或更新环境；secret 值单独存 secrets.json。
+func (s *Store) SaveEnvironment(wsID domain.ID, env domain.Environment) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.states[wsID]
+	if st == nil {
+		return ErrNotFound
+	}
+	if st.readOnly {
+		return ErrReadOnly
+	}
+	persist := env.Clone()
+	if err := s.splitEnvSecretsLocked(st, &persist); err != nil {
+		return err
+	}
+	if err := s.backend.SaveEnvironment(context.Background(), st.ref, persist); err != nil {
+		return err
+	}
+	replaced := false
+	for i := range st.envs {
+		if st.envs[i].ID == env.ID {
+			st.envs[i] = env
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		st.envs = append(st.envs, env)
+		sortEnvironments(st.envs)
+	}
+	s.publishLocked()
+	return nil
+}
+
+// DeleteEnvironment 删除环境。
+func (s *Store) DeleteEnvironment(wsID, envID domain.ID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.states[wsID]
+	if st == nil {
+		return ErrNotFound
+	}
+	if st.readOnly {
+		return ErrReadOnly
+	}
+	if err := s.backend.DeleteEnvironment(context.Background(), st.ref, envID); err != nil {
+		return err
+	}
+	out := st.envs[:0]
+	for _, e := range st.envs {
+		if e.ID != envID {
+			out = append(out, e)
+		}
+	}
+	st.envs = out
+	if st.local.SelectedEnvironmentID == envID {
+		st.local.SelectedEnvironmentID = ""
+		if err := s.backend.SaveLocal(context.Background(), st.ref, st.local); err != nil {
+			return err
+		}
+	}
+	s.publishLocked()
+	return nil
+}
+
+// SelectEnvironment 切换当前环境；空 ID 表示不使用环境。
+func (s *Store) SelectEnvironment(wsID, envID domain.ID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.states[wsID]
+	if st == nil {
+		return ErrNotFound
+	}
+	if envID != "" && !hasEnvironment(st.envs, envID) {
+		return ErrNotFound
+	}
+	next := st.local.Clone()
+	next.SelectedEnvironmentID = envID
+	if err := s.backend.SaveLocal(context.Background(), st.ref, next); err != nil {
+		return err
+	}
+	st.local = next
+	s.publishLocked()
+	return nil
+}
+
+// SetCurrentValue 设置环境变量的本机覆盖值（不同步）。
+func (s *Store) SetCurrentValue(wsID, varID domain.ID, value string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.states[wsID]
+	if st == nil {
+		return ErrNotFound
+	}
+	next := st.local.Clone()
+	if next.CurrentValues == nil {
+		next.CurrentValues = map[domain.ID]string{}
+	}
+	next.CurrentValues[varID] = value
+	if err := s.backend.SaveLocal(context.Background(), st.ref, next); err != nil {
+		return err
+	}
+	st.local = next
+	s.publishLocked()
+	return nil
+}
+
+// ---- 变量与请求准备 ----
+
+// Variables 合并一个请求可见的全部变量，优先级从低到高：
+// 全局 < 工作区 < 当前环境 < 集合 < 目录（越深越优先）< 请求。
+func (s *Store) Variables(wsID, collID, nodeID domain.ID) map[string]domain.Variable {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.states[wsID]
+	if st == nil {
+		return nil
+	}
+	return s.variablesLocked(st, collID, nodeID)
+}
+
+// PrepareRequest 返回替换变量后的请求与最终生效的认证配置。
+func (s *Store) PrepareRequest(wsID, collID, nodeID domain.ID) (domain.Request, domain.Auth, []string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	st := s.states[wsID]
+	if st == nil {
+		return domain.Request{}, domain.Auth{}, nil, ErrNotFound
+	}
+	var coll *domain.Collection
+	for _, c := range st.collections {
+		if c.ID == collID {
+			coll = c
+			break
+		}
+	}
+	if coll == nil {
+		return domain.Request{}, domain.Auth{}, nil, ErrNotFound
+	}
+	n := domain.FindIn(coll.Items, nodeID)
+	if n == nil || n.Request == nil {
+		return domain.Request{}, domain.Auth{}, nil, ErrNotFound
+	}
+
+	vars := s.variablesLocked(st, collID, nodeID)
+	req, missing := domain.Prepare(*n.Request, vars)
+	preparedAuth, authMissing := domain.PrepareAuth(s.authChainLocked(coll, nodeID), vars)
+	return req, preparedAuth, mergeMissing(missing, authMissing), nil
+}
+
+func (s *Store) variablesLocked(st *state, collID, nodeID domain.ID) map[string]domain.Variable {
+	layers := []domain.Layer{
+		{Source: domain.VarGlobal, Vars: s.globals.Variables},
+		{Source: domain.VarWorkspace, Vars: st.ws.Variables},
+	}
+	if env := selectedEnvironment(st); env != nil {
+		layers = append(layers, domain.Layer{
+			Source:  domain.VarEnvironment,
+			Vars:    env.Vars,
+			Current: st.local.CurrentValues,
+			Secrets: st.secrets,
+		})
+	}
+	var coll *domain.Collection
+	for _, c := range st.collections {
+		if c.ID == collID {
+			coll = c
+			break
+		}
+	}
+	if coll == nil {
+		return domain.Merge(layers)
+	}
+	layers = append(layers, domain.Layer{Source: domain.VarCollection, Vars: coll.Variables})
+	if nodeID != "" {
+		for _, folder := range domain.AncestorFolders(coll.Items, nodeID) {
+			layers = append(layers, domain.Layer{Source: domain.VarFolder, Vars: folder.Variables})
+		}
+		if n := domain.FindIn(coll.Items, nodeID); n != nil {
+			layers = append(layers, domain.Layer{Source: domain.VarRequest, Vars: n.Variables})
+		}
+	}
+	return domain.Merge(layers)
+}
+
+func (s *Store) authChainLocked(coll *domain.Collection, nodeID domain.ID) domain.Auth {
+	chain := []domain.Auth{coll.Auth}
+	for _, folder := range domain.AncestorFolders(coll.Items, nodeID) {
+		chain = append(chain, folder.Auth)
+	}
+	if n := domain.FindIn(coll.Items, nodeID); n != nil {
+		chain = append(chain, n.Auth)
+	}
+	return domain.ResolveAuth(chain)
+}
+
+// ---- 落盘 ----
 
 // Flush 立即把待写内容落盘。
 func (s *Store) Flush() error {
@@ -472,71 +773,13 @@ func (s *Store) Flush() error {
 
 // Close 落盘并停止防抖定时器。
 func (s *Store) Close() error {
-	return s.Flush()
-}
-
-func (s *Store) mutate(id domain.ID, fn func(*domain.Collection) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	cur := s.byID[id]
-	if cur == nil {
-		return ErrNotFound
+	if s.timer != nil {
+		s.timer.Stop()
+		s.timer = nil
 	}
-	next := cur.Clone()
-	if err := fn(next); err != nil {
-		return err
-	}
-	s.byID[id] = next
-	s.dirty[id] = true
-	s.publishLocked()
-	s.scheduleLocked()
-	return nil
-}
-
-func (s *Store) publishLocked() {
-	snap := &Snapshot{Workspaces: make([]*Workspace, 0, len(s.reg.Workspaces))}
-	index := make(map[domain.ID]*Workspace, len(s.reg.Workspaces))
-	var defaultWS *Workspace
-	for _, w := range s.reg.Workspaces {
-		v := &Workspace{ID: w.ID, Name: w.Name, Default: w.Default}
-		snap.Workspaces = append(snap.Workspaces, v)
-		index[w.ID] = v
-		if w.Default {
-			defaultWS = v
-		}
-	}
-	for _, ref := range s.reg.Collections {
-		if s.missing[ref.ID] {
-			snap.Missing = append(snap.Missing, ref.ID)
-			continue
-		}
-		coll := s.byID[ref.ID]
-		if coll == nil {
-			continue
-		}
-		ws := index[ref.WorkspaceID]
-		if ws == nil {
-			ws = defaultWS
-		}
-		if ws == nil {
-			continue
-		}
-		ws.Collections = append(ws.Collections, coll)
-	}
-	s.snap.Store(snap)
-}
-
-// ensureDefaultWorkspaceLocked 保证默认工作区存在，返回它的 ID。
-func (s *Store) ensureDefaultWorkspaceLocked() domain.ID {
-	for _, w := range s.reg.Workspaces {
-		if w.Default {
-			return w.ID
-		}
-	}
-	w := domain.Workspace{ID: NewID(), Name: defaultSpaceName, Default: true}
-	s.reg.Workspaces = append([]domain.Workspace{w}, s.reg.Workspaces...)
-	s.regDirty = true
-	return w.ID
+	return s.flushLocked()
 }
 
 func (s *Store) scheduleLocked() {
@@ -545,7 +788,6 @@ func (s *Store) scheduleLocked() {
 	}
 	s.timer = time.AfterFunc(flushDelay, func() {
 		if err := s.Flush(); err != nil {
-			// 落盘失败不 panic，内存状态仍然可用；下次修改会再试。
 			fmt.Fprintf(os.Stderr, "store: 保存失败: %v\n", err)
 		}
 	})
@@ -556,129 +798,252 @@ func (s *Store) flushLocked() error {
 		s.timer.Stop()
 		s.timer = nil
 	}
-
-	ids := make([]domain.ID, 0, len(s.dirty))
-	for id := range s.dirty {
-		ids = append(ids, id)
+	keys := make([]nodeKey, 0, len(s.dirtyNode))
+	for key := range s.dirtyNode {
+		keys = append(keys, key)
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].ws != keys[j].ws {
+			return keys[i].ws < keys[j].ws
+		}
+		if keys[i].coll != keys[j].coll {
+			return keys[i].coll < keys[j].coll
+		}
+		return keys[i].node < keys[j].node
+	})
 
 	var firstErr error
-	for _, id := range ids {
-		idx := s.refIndexLocked(id)
-		if idx < 0 {
-			delete(s.dirty, id)
+	for _, key := range keys {
+		n := s.dirtyNode[key]
+		st := s.states[key.ws]
+		if st == nil || n == nil || !nodeExists(st, key.coll, key.node) {
+			delete(s.dirtyNode, key)
 			continue
 		}
-		if err := writeCollection(s.reg.Collections[idx].Path, s.byID[id]); err != nil {
+		persist, err := s.preparePersistNodeLocked(st, n)
+		if err == nil {
+			err = s.backend.SaveNode(context.Background(), st.ref, key.coll, "", persist)
+		}
+		if err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
 			continue
 		}
-		delete(s.dirty, id)
-	}
-	if s.regDirty {
-		if err := writeJSON(s.regPath, s.reg); err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-		} else {
-			s.regDirty = false
-		}
+		delete(s.dirtyNode, key)
 	}
 	return firstErr
 }
 
-func (s *Store) refIndexLocked(id domain.ID) int {
-	for i, ref := range s.reg.Collections {
-		if ref.ID == id {
-			return i
-		}
-	}
-	return -1
-}
-
-func (s *Store) workspaceIndexLocked(id domain.ID) int {
-	for i, w := range s.reg.Workspaces {
-		if w.ID == id {
-			return i
-		}
-	}
-	return -1
-}
-
-// NewID 生成稳定的随机 ID，供新建集合和节点使用。
-func NewID() domain.ID {
-	b := make([]byte, 8)
-	if _, err := rand.Read(b); err != nil {
-		panic(fmt.Sprintf("store: 生成 ID 失败: %v", err))
-	}
-	return domain.ID(hex.EncodeToString(b))
-}
-
-// fileName 把集合名转成文件名；保留中文，替换路径分隔符。
-func fileName(name string) string {
-	repl := strings.NewReplacer("/", "-", "\\", "-", ":", "-", "\x00", "")
-	name = strings.TrimSpace(repl.Replace(name))
-	if name == "" {
-		name = "未命名集合"
-	}
-	return name + collectionExt
-}
-
-func readCollection(path string) (*domain.Collection, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
+// preparePersistNodeLocked 生成用于落盘的节点副本：secret 值剥离到 secrets.json。
+func (s *Store) preparePersistNodeLocked(st *state, n *domain.Node) (*domain.Node, error) {
+	out := n.Clone()
+	if err := s.splitSecretsLocked(st, out); err != nil {
 		return nil, err
 	}
-	var c domain.Collection
-	if err := json.Unmarshal(data, &c); err != nil {
-		return nil, fmt.Errorf("解析集合 %s: %w", path, err)
-	}
-	if c.Items == nil {
-		c.Items = []*domain.Node{}
-	}
-	if c.Version == 0 {
-		c.Version = SchemaVersion
-	}
-	return &c, nil
+	return out, nil
 }
 
-func writeCollection(path string, c *domain.Collection) error {
-	if c == nil {
-		return errors.New("store: 集合为空")
+// splitSecretsLocked 把 secret KV 的值移进工作区的 secrets 表并清空副本里的值。
+// 目录变量、请求参数、请求头、认证参数都走同一套逻辑。
+func (s *Store) splitSecretsLocked(st *state, n *domain.Node) error {
+	found := false
+	found = s.stashSecretsLocked(st, n.Variables) || found
+	found = s.stashSecretsLocked(st, n.Auth.Params) || found
+	if n.Request != nil {
+		found = s.stashSecretsLocked(st, n.Request.PathVariables) || found
+		found = s.stashSecretsLocked(st, n.Request.Query) || found
+		found = s.stashSecretsLocked(st, n.Request.Headers) || found
+		found = s.stashSecretsLocked(st, n.Request.Cookies) || found
+		found = s.stashSecretsLocked(st, n.Request.Body.Fields) || found
 	}
-	return writeJSON(path, c)
+	if !found {
+		return nil
+	}
+	return s.backend.SaveSecrets(context.Background(), st.ref, st.secrets)
 }
 
-func writeJSON(path string, v any) error {
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
+// splitSecretsLocked 的环境版本。
+func (s *Store) splitEnvSecretsLocked(st *state, env *domain.Environment) error {
+	if !s.stashSecretsLocked(st, env.Vars) {
+		return nil
 	}
-	return writeAtomic(path, append(data, '\n'), 0o644)
+	return s.backend.SaveSecrets(context.Background(), st.ref, st.secrets)
 }
 
-// writeAtomic 先写同目录临时文件再改名，避免中途退出留下半个 JSON。
-func writeAtomic(path string, data []byte, perm os.FileMode) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".rddpostman-*")
-	if err != nil {
-		return err
+// stashSecretsLocked 把 secret 值记进内存 secrets 表，并清空待落盘副本里的值。
+// 空值表示用户清除了 secret，需要把旧值从表里删掉。
+func (s *Store) stashSecretsLocked(st *state, kvs []domain.KV) bool {
+	found := false
+	for i := range kvs {
+		if !kvs[i].Secret || kvs[i].ID == "" {
+			continue
+		}
+		found = true
+		if kvs[i].Value == "" {
+			delete(st.secrets, kvs[i].ID)
+		} else {
+			if st.secrets == nil {
+				st.secrets = map[domain.ID]string{}
+			}
+			st.secrets[kvs[i].ID] = kvs[i].Value
+		}
+		kvs[i].Value = ""
 	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
-
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Chmod(perm); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmpName, path)
+	return found
 }
+
+// ---- 内部辅助 ----
+
+func (s *Store) findCollectionLocked(id domain.ID) (*state, *domain.Collection) {
+	for _, st := range s.states {
+		for _, c := range st.collections {
+			if c.ID == id {
+				return st, c
+			}
+		}
+	}
+	return nil, nil
+}
+
+func (s *Store) replaceCollectionLocked(st *state, next *domain.Collection) {
+	for i, c := range st.collections {
+		if c.ID == next.ID {
+			st.collections[i] = next
+			return
+		}
+	}
+	st.collections = append(st.collections, next)
+	sortCollections(st.collections)
+}
+
+func (s *Store) publishLocked() {
+	snap := &Snapshot{
+		Globals:  append([]domain.KV(nil), s.globals.Variables...),
+		Problems: append([]string(nil), s.problems...),
+	}
+	for _, ref := range s.refs {
+		st := s.states[ref.ID]
+		if st == nil {
+			continue
+		}
+		w := &Workspace{
+			ID:           st.ws.ID,
+			Name:         st.ws.Name,
+			Default:      ref.Default,
+			ReadOnly:     st.readOnly,
+			Collections:  append([]*domain.Collection(nil), st.collections...),
+			Environments: append([]domain.Environment(nil), st.envs...),
+		}
+		w.SelectedEnvironmentID = st.local.SelectedEnvironmentID
+		if w.SelectedEnvironmentID == "" {
+			w.SelectedEnvironmentID = st.ws.DefaultEnvironmentID
+		}
+		snap.Workspaces = append(snap.Workspaces, w)
+	}
+	s.snap.Store(snap)
+}
+
+func selectedEnvironment(st *state) *domain.Environment {
+	id := st.local.SelectedEnvironmentID
+	if id == "" {
+		id = st.ws.DefaultEnvironmentID
+	}
+	if id == "" {
+		return nil
+	}
+	for i := range st.envs {
+		if st.envs[i].ID == id {
+			return &st.envs[i]
+		}
+	}
+	return nil
+}
+
+func hasEnvironment(envs []domain.Environment, id domain.ID) bool {
+	for _, e := range envs {
+		if e.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func sortCollections(list []*domain.Collection) {
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].Order != list[j].Order {
+			return list[i].Order < list[j].Order
+		}
+		return list[i].Name < list[j].Name
+	})
+}
+
+func sortEnvironments(list []domain.Environment) {
+	sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
+}
+
+// prepareNode 补齐新建节点需要的元数据。
+func prepareNode(n *domain.Node) {
+	if n.ID == "" {
+		n.ID = domain.NewID()
+	}
+	if n.Kind == "" {
+		if n.Request != nil {
+			n.Kind = domain.KindRequest
+		} else {
+			n.Kind = domain.KindFolder
+		}
+	}
+	if n.Name = strings.TrimSpace(n.Name); n.Name == "" {
+		n.Name = "未命名"
+	}
+	if n.Kind == domain.KindRequest && n.Request == nil {
+		n.Request = &domain.Request{}
+	}
+	now := time.Now()
+	if n.CreatedAt.IsZero() {
+		n.CreatedAt = now
+	}
+	n.UpdatedAt = now
+}
+
+// nodeIDs 返回节点及其子树的全部 ID。
+func nodeIDs(n *domain.Node) []domain.ID {
+	if n == nil {
+		return nil
+	}
+	out := []domain.ID{n.ID}
+	for _, ch := range n.Children {
+		out = append(out, nodeIDs(ch)...)
+	}
+	return out
+}
+
+func nodeExists(st *state, collID, nodeID domain.ID) bool {
+	for _, c := range st.collections {
+		if c.ID == collID {
+			return domain.FindIn(c.Items, nodeID) != nil
+		}
+	}
+	return false
+}
+
+func mergeMissing(a, b []string) []string {
+	if len(b) == 0 {
+		return a
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(a)+len(b))
+	for _, v := range append(append([]string(nil), a...), b...) {
+		if seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// NewID 生成稳定的随机 ID。
+func NewID() domain.ID { return domain.NewID() }

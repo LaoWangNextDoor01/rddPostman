@@ -504,6 +504,86 @@ func (msgs Messages) NewRequestDesc() string {
 	return Catalog.Format(msgs.locale, "newRequestDesc", nil)
 }
 
+// TreeOpen says "Open"
+// in the language the app shows.
+func TreeOpen() string { return In(i18n.Locale()).TreeOpen() }
+
+// TreeOpen says "Open"
+// in the language of msgs.
+func (msgs Messages) TreeOpen() string {
+	return Catalog.Format(msgs.locale, "treeOpen", nil)
+}
+
+// TreeDelete says "Delete"
+// in the language the app shows.
+func TreeDelete() string { return In(i18n.Locale()).TreeDelete() }
+
+// TreeDelete says "Delete"
+// in the language of msgs.
+func (msgs Messages) TreeDelete() string {
+	return Catalog.Format(msgs.locale, "treeDelete", nil)
+}
+
+// TreeMore says "More"
+// in the language the app shows.
+func TreeMore() string { return In(i18n.Locale()).TreeMore() }
+
+// TreeMore says "More"
+// in the language of msgs.
+func (msgs Messages) TreeMore() string {
+	return Catalog.Format(msgs.locale, "treeMore", nil)
+}
+
+// TreeOther says "Other"
+// in the language the app shows.
+func TreeOther() string { return In(i18n.Locale()).TreeOther() }
+
+// TreeOther says "Other"
+// in the language of msgs.
+func (msgs Messages) TreeOther() string {
+	return Catalog.Format(msgs.locale, "treeOther", nil)
+}
+
+// TreeCopyName says "Copy name"
+// in the language the app shows.
+func TreeCopyName() string { return In(i18n.Locale()).TreeCopyName() }
+
+// TreeCopyName says "Copy name"
+// in the language of msgs.
+func (msgs Messages) TreeCopyName() string {
+	return Catalog.Format(msgs.locale, "treeCopyName", nil)
+}
+
+// TreeCopyID says "Copy ID"
+// in the language the app shows.
+func TreeCopyID() string { return In(i18n.Locale()).TreeCopyID() }
+
+// TreeCopyID says "Copy ID"
+// in the language of msgs.
+func (msgs Messages) TreeCopyID() string {
+	return Catalog.Format(msgs.locale, "treeCopyID", nil)
+}
+
+// TreeCopyURL says "Copy URL"
+// in the language the app shows.
+func TreeCopyURL() string { return In(i18n.Locale()).TreeCopyURL() }
+
+// TreeCopyURL says "Copy URL"
+// in the language of msgs.
+func (msgs Messages) TreeCopyURL() string {
+	return Catalog.Format(msgs.locale, "treeCopyURL", nil)
+}
+
+// TreeExpandCollapse says "Expand / Collapse"
+// in the language the app shows.
+func TreeExpandCollapse() string { return In(i18n.Locale()).TreeExpandCollapse() }
+
+// TreeExpandCollapse says "Expand / Collapse"
+// in the language of msgs.
+func (msgs Messages) TreeExpandCollapse() string {
+	return Catalog.Format(msgs.locale, "treeExpandCollapse", nil)
+}
+
 // ImportCollection says "Import collection"
 // in the language the app shows.
 func ImportCollection() string { return In(i18n.Locale()).ImportCollection() }
@@ -654,6 +734,58 @@ func (msgs Messages) NewEnvironment() string {
 	return Catalog.Format(msgs.locale, "newEnvironment", nil)
 }
 
+// SwitchEnvironment says "Switch environment"
+// in the language the app shows.
+func SwitchEnvironment() string { return In(i18n.Locale()).SwitchEnvironment() }
+
+// SwitchEnvironment says "Switch environment"
+// in the language of msgs.
+func (msgs Messages) SwitchEnvironment() string {
+	return Catalog.Format(msgs.locale, "switchEnvironment", nil)
+}
+
+// NoEnvironment says "No environment"
+// in the language the app shows.
+func NoEnvironment() string { return In(i18n.Locale()).NoEnvironment() }
+
+// NoEnvironment says "No environment"
+// in the language of msgs.
+func (msgs Messages) NoEnvironment() string {
+	return Catalog.Format(msgs.locale, "noEnvironment", nil)
+}
+
+// NoEnvironments says "No environments yet"
+// in the language the app shows.
+func NoEnvironments() string { return In(i18n.Locale()).NoEnvironments() }
+
+// NoEnvironments says "No environments yet"
+// in the language of msgs.
+func (msgs Messages) NoEnvironments() string {
+	return Catalog.Format(msgs.locale, "noEnvironments", nil)
+}
+
+// EnvironmentVariableCount says "{count, plural, =0 {No variables} one {# variable} other {# variables}}"
+// in the language the app shows.
+func EnvironmentVariableCount(count int) string {
+	return In(i18n.Locale()).EnvironmentVariableCount(count)
+}
+
+// EnvironmentVariableCount says "{count, plural, =0 {No variables} one {# variable} other {# variables}}"
+// in the language of msgs.
+func (msgs Messages) EnvironmentVariableCount(count int) string {
+	return Catalog.Format(msgs.locale, "environmentVariableCount", map[string]any{"count": count})
+}
+
+// ManageEnvironmentsAction says "Manage environments..."
+// in the language the app shows.
+func ManageEnvironmentsAction() string { return In(i18n.Locale()).ManageEnvironmentsAction() }
+
+// ManageEnvironmentsAction says "Manage environments..."
+// in the language of msgs.
+func (msgs Messages) ManageEnvironmentsAction() string {
+	return Catalog.Format(msgs.locale, "manageEnvironmentsAction", nil)
+}
+
 // VariableName says "Variable"
 // in the language the app shows.
 func VariableName() string { return In(i18n.Locale()).VariableName() }
@@ -702,6 +834,26 @@ func HistorySubtitle() string { return In(i18n.Locale()).HistorySubtitle() }
 // in the language of msgs.
 func (msgs Messages) HistorySubtitle() string {
 	return Catalog.Format(msgs.locale, "historySubtitle", nil)
+}
+
+// DocsTitle says "Docs"
+// in the language the app shows.
+func DocsTitle() string { return In(i18n.Locale()).DocsTitle() }
+
+// DocsTitle says "Docs"
+// in the language of msgs.
+func (msgs Messages) DocsTitle() string {
+	return Catalog.Format(msgs.locale, "docsTitle", nil)
+}
+
+// DocsDesc says "API documentation for this workspace."
+// in the language the app shows.
+func DocsDesc() string { return In(i18n.Locale()).DocsDesc() }
+
+// DocsDesc says "API documentation for this workspace."
+// in the language of msgs.
+func (msgs Messages) DocsDesc() string {
+	return Catalog.Format(msgs.locale, "docsDesc", nil)
 }
 
 // SettingsTitle says "Settings"
@@ -934,6 +1086,38 @@ func (msgs Messages) NoWorkspaceMatches() string {
 	return Catalog.Format(msgs.locale, "noWorkspaceMatches", nil)
 }
 
+// CreateWorkspaceAction says "Create workspace"
+// in the language the app shows.
+func CreateWorkspaceAction() string { return In(i18n.Locale()).CreateWorkspaceAction() }
+
+// CreateWorkspaceAction says "Create workspace"
+// in the language of msgs.
+func (msgs Messages) CreateWorkspaceAction() string {
+	return Catalog.Format(msgs.locale, "createWorkspaceAction", nil)
+}
+
+// ManageWorkspacesAction says "Manage workspaces..."
+// in the language the app shows.
+func ManageWorkspacesAction() string { return In(i18n.Locale()).ManageWorkspacesAction() }
+
+// ManageWorkspacesAction says "Manage workspaces..."
+// in the language of msgs.
+func (msgs Messages) ManageWorkspacesAction() string {
+	return Catalog.Format(msgs.locale, "manageWorkspacesAction", nil)
+}
+
+// WorkspaceCollectionCount says "{count, plural, =0 {No collections} one {# collection} other {# collections}}"
+// in the language the app shows.
+func WorkspaceCollectionCount(count int) string {
+	return In(i18n.Locale()).WorkspaceCollectionCount(count)
+}
+
+// WorkspaceCollectionCount says "{count, plural, =0 {No collections} one {# collection} other {# collections}}"
+// in the language of msgs.
+func (msgs Messages) WorkspaceCollectionCount(count int) string {
+	return Catalog.Format(msgs.locale, "workspaceCollectionCount", map[string]any{"count": count})
+}
+
 // WorkspaceNameRequired says "Enter a workspace name"
 // in the language the app shows.
 func WorkspaceNameRequired() string { return In(i18n.Locale()).WorkspaceNameRequired() }
@@ -942,4 +1126,358 @@ func WorkspaceNameRequired() string { return In(i18n.Locale()).WorkspaceNameRequ
 // in the language of msgs.
 func (msgs Messages) WorkspaceNameRequired() string {
 	return Catalog.Format(msgs.locale, "workspaceNameRequired", nil)
+}
+
+// EmptyWorkspaceTitle says "No open request"
+// in the language the app shows.
+func EmptyWorkspaceTitle() string { return In(i18n.Locale()).EmptyWorkspaceTitle() }
+
+// EmptyWorkspaceTitle says "No open request"
+// in the language of msgs.
+func (msgs Messages) EmptyWorkspaceTitle() string {
+	return Catalog.Format(msgs.locale, "emptyWorkspaceTitle", nil)
+}
+
+// EmptyWorkspaceDesc says "Open a request from the collection on the left, or use a shortcut to get started."
+// in the language the app shows.
+func EmptyWorkspaceDesc() string { return In(i18n.Locale()).EmptyWorkspaceDesc() }
+
+// EmptyWorkspaceDesc says "Open a request from the collection on the left, or use a shortcut to get started."
+// in the language of msgs.
+func (msgs Messages) EmptyWorkspaceDesc() string {
+	return Catalog.Format(msgs.locale, "emptyWorkspaceDesc", nil)
+}
+
+// EmptyWorkspaceTip says "Tip: press {key} at any time to search collections, requests, and environments."
+// in the language the app shows.
+func EmptyWorkspaceTip(key string) string { return In(i18n.Locale()).EmptyWorkspaceTip(key) }
+
+// EmptyWorkspaceTip says "Tip: press {key} at any time to search collections, requests, and environments."
+// in the language of msgs.
+func (msgs Messages) EmptyWorkspaceTip(key string) string {
+	return Catalog.Format(msgs.locale, "emptyWorkspaceTip", map[string]any{"key": key})
+}
+
+// GlobalSearch says "Global search"
+// in the language the app shows.
+func GlobalSearch() string { return In(i18n.Locale()).GlobalSearch() }
+
+// GlobalSearch says "Global search"
+// in the language of msgs.
+func (msgs Messages) GlobalSearch() string {
+	return Catalog.Format(msgs.locale, "globalSearch", nil)
+}
+
+// ShowAllCommands says "Show all commands"
+// in the language the app shows.
+func ShowAllCommands() string { return In(i18n.Locale()).ShowAllCommands() }
+
+// ShowAllCommands says "Show all commands"
+// in the language of msgs.
+func (msgs Messages) ShowAllCommands() string {
+	return Catalog.Format(msgs.locale, "showAllCommands", nil)
+}
+
+// EmptyCollectionsTitle says "No collections yet"
+// in the language the app shows.
+func EmptyCollectionsTitle() string { return In(i18n.Locale()).EmptyCollectionsTitle() }
+
+// EmptyCollectionsTitle says "No collections yet"
+// in the language of msgs.
+func (msgs Messages) EmptyCollectionsTitle() string {
+	return Catalog.Format(msgs.locale, "emptyCollectionsTitle", nil)
+}
+
+// EmptyCollectionsDesc says "Create your first collection to organize your requests"
+// in the language the app shows.
+func EmptyCollectionsDesc() string { return In(i18n.Locale()).EmptyCollectionsDesc() }
+
+// EmptyCollectionsDesc says "Create your first collection to organize your requests"
+// in the language of msgs.
+func (msgs Messages) EmptyCollectionsDesc() string {
+	return Catalog.Format(msgs.locale, "emptyCollectionsDesc", nil)
+}
+
+// NewCollectionDesc says "Saved to {workspace}. You can add requests and folders after creating it."
+// in the language the app shows.
+func NewCollectionDesc(workspace string) string {
+	return In(i18n.Locale()).NewCollectionDesc(workspace)
+}
+
+// NewCollectionDesc says "Saved to {workspace}. You can add requests and folders after creating it."
+// in the language of msgs.
+func (msgs Messages) NewCollectionDesc(workspace string) string {
+	return Catalog.Format(msgs.locale, "newCollectionDesc", map[string]any{"workspace": workspace})
+}
+
+// CollectionNameLabel says "Collection name"
+// in the language the app shows.
+func CollectionNameLabel() string { return In(i18n.Locale()).CollectionNameLabel() }
+
+// CollectionNameLabel says "Collection name"
+// in the language of msgs.
+func (msgs Messages) CollectionNameLabel() string {
+	return Catalog.Format(msgs.locale, "collectionNameLabel", nil)
+}
+
+// CollectionNamePlaceholder says "e.g. Payment Platform"
+// in the language the app shows.
+func CollectionNamePlaceholder() string { return In(i18n.Locale()).CollectionNamePlaceholder() }
+
+// CollectionNamePlaceholder says "e.g. Payment Platform"
+// in the language of msgs.
+func (msgs Messages) CollectionNamePlaceholder() string {
+	return Catalog.Format(msgs.locale, "collectionNamePlaceholder", nil)
+}
+
+// CollectionDescriptionLabel says "Description"
+// in the language the app shows.
+func CollectionDescriptionLabel() string { return In(i18n.Locale()).CollectionDescriptionLabel() }
+
+// CollectionDescriptionLabel says "Description"
+// in the language of msgs.
+func (msgs Messages) CollectionDescriptionLabel() string {
+	return Catalog.Format(msgs.locale, "collectionDescriptionLabel", nil)
+}
+
+// CollectionDescriptionPlaceholder says "Describe what this collection covers, its endpoints and conventions..."
+// in the language the app shows.
+func CollectionDescriptionPlaceholder() string {
+	return In(i18n.Locale()).CollectionDescriptionPlaceholder()
+}
+
+// CollectionDescriptionPlaceholder says "Describe what this collection covers, its endpoints and conventions..."
+// in the language of msgs.
+func (msgs Messages) CollectionDescriptionPlaceholder() string {
+	return Catalog.Format(msgs.locale, "collectionDescriptionPlaceholder", nil)
+}
+
+// SaveLocationLabel says "Save to"
+// in the language the app shows.
+func SaveLocationLabel() string { return In(i18n.Locale()).SaveLocationLabel() }
+
+// SaveLocationLabel says "Save to"
+// in the language of msgs.
+func (msgs Messages) SaveLocationLabel() string {
+	return Catalog.Format(msgs.locale, "saveLocationLabel", nil)
+}
+
+// ChangeLocation says "Change..."
+// in the language the app shows.
+func ChangeLocation() string { return In(i18n.Locale()).ChangeLocation() }
+
+// ChangeLocation says "Change..."
+// in the language of msgs.
+func (msgs Messages) ChangeLocation() string {
+	return Catalog.Format(msgs.locale, "changeLocation", nil)
+}
+
+// CreateCollection says "Create collection"
+// in the language the app shows.
+func CreateCollection() string { return In(i18n.Locale()).CreateCollection() }
+
+// CreateCollection says "Create collection"
+// in the language of msgs.
+func (msgs Messages) CreateCollection() string {
+	return Catalog.Format(msgs.locale, "createCollection", nil)
+}
+
+// CollectionNameRequired says "Enter a collection name"
+// in the language the app shows.
+func CollectionNameRequired() string { return In(i18n.Locale()).CollectionNameRequired() }
+
+// CollectionNameRequired says "Enter a collection name"
+// in the language of msgs.
+func (msgs Messages) CollectionNameRequired() string {
+	return Catalog.Format(msgs.locale, "collectionNameRequired", nil)
+}
+
+// CollectionLocationRequired says "Choose a folder to save the collection"
+// in the language the app shows.
+func CollectionLocationRequired() string { return In(i18n.Locale()).CollectionLocationRequired() }
+
+// CollectionLocationRequired says "Choose a folder to save the collection"
+// in the language of msgs.
+func (msgs Messages) CollectionLocationRequired() string {
+	return Catalog.Format(msgs.locale, "collectionLocationRequired", nil)
+}
+
+// Overview says "Overview"
+// in the language the app shows.
+func Overview() string { return In(i18n.Locale()).Overview() }
+
+// Overview says "Overview"
+// in the language of msgs.
+func (msgs Messages) Overview() string {
+	return Catalog.Format(msgs.locale, "overview", nil)
+}
+
+// AuthorizationTab says "Authorization"
+// in the language the app shows.
+func AuthorizationTab() string { return In(i18n.Locale()).AuthorizationTab() }
+
+// AuthorizationTab says "Authorization"
+// in the language of msgs.
+func (msgs Messages) AuthorizationTab() string {
+	return Catalog.Format(msgs.locale, "authorizationTab", nil)
+}
+
+// ScriptsTab says "Scripts"
+// in the language the app shows.
+func ScriptsTab() string { return In(i18n.Locale()).ScriptsTab() }
+
+// ScriptsTab says "Scripts"
+// in the language of msgs.
+func (msgs Messages) ScriptsTab() string {
+	return Catalog.Format(msgs.locale, "scriptsTab", nil)
+}
+
+// VariablesTab says "Variables"
+// in the language the app shows.
+func VariablesTab() string { return In(i18n.Locale()).VariablesTab() }
+
+// VariablesTab says "Variables"
+// in the language of msgs.
+func (msgs Messages) VariablesTab() string {
+	return Catalog.Format(msgs.locale, "variablesTab", nil)
+}
+
+// RunTab says "Run"
+// in the language the app shows.
+func RunTab() string { return In(i18n.Locale()).RunTab() }
+
+// RunTab says "Run"
+// in the language of msgs.
+func (msgs Messages) RunTab() string {
+	return Catalog.Format(msgs.locale, "runTab", nil)
+}
+
+// PublishDocs says "Publish docs"
+// in the language the app shows.
+func PublishDocs() string { return In(i18n.Locale()).PublishDocs() }
+
+// PublishDocs says "Publish docs"
+// in the language of msgs.
+func (msgs Messages) PublishDocs() string {
+	return Catalog.Format(msgs.locale, "publishDocs", nil)
+}
+
+// Share says "Share"
+// in the language the app shows.
+func Share() string { return In(i18n.Locale()).Share() }
+
+// Share says "Share"
+// in the language of msgs.
+func (msgs Messages) Share() string {
+	return Catalog.Format(msgs.locale, "share", nil)
+}
+
+// FolderCount says "{count, plural, =0 {No folders} one {# folder} other {# folders}}"
+// in the language the app shows.
+func FolderCount(count int) string { return In(i18n.Locale()).FolderCount(count) }
+
+// FolderCount says "{count, plural, =0 {No folders} one {# folder} other {# folders}}"
+// in the language of msgs.
+func (msgs Messages) FolderCount(count int) string {
+	return Catalog.Format(msgs.locale, "folderCount", map[string]any{"count": count})
+}
+
+// UpdatedAt says "Updated {time}"
+// in the language the app shows.
+func UpdatedAt(time_ string) string { return In(i18n.Locale()).UpdatedAt(time_) }
+
+// UpdatedAt says "Updated {time}"
+// in the language of msgs.
+func (msgs Messages) UpdatedAt(time_ string) string {
+	return Catalog.Format(msgs.locale, "updatedAt", map[string]any{"time": time_})
+}
+
+// RelativeJustNow says "just now"
+// in the language the app shows.
+func RelativeJustNow() string { return In(i18n.Locale()).RelativeJustNow() }
+
+// RelativeJustNow says "just now"
+// in the language of msgs.
+func (msgs Messages) RelativeJustNow() string {
+	return Catalog.Format(msgs.locale, "relativeJustNow", nil)
+}
+
+// RelativeMinutes says "{count, plural, one {# minute ago} other {# minutes ago}}"
+// in the language the app shows.
+func RelativeMinutes(count int) string { return In(i18n.Locale()).RelativeMinutes(count) }
+
+// RelativeMinutes says "{count, plural, one {# minute ago} other {# minutes ago}}"
+// in the language of msgs.
+func (msgs Messages) RelativeMinutes(count int) string {
+	return Catalog.Format(msgs.locale, "relativeMinutes", map[string]any{"count": count})
+}
+
+// RelativeHours says "{count, plural, one {# hour ago} other {# hours ago}}"
+// in the language the app shows.
+func RelativeHours(count int) string { return In(i18n.Locale()).RelativeHours(count) }
+
+// RelativeHours says "{count, plural, one {# hour ago} other {# hours ago}}"
+// in the language of msgs.
+func (msgs Messages) RelativeHours(count int) string {
+	return Catalog.Format(msgs.locale, "relativeHours", map[string]any{"count": count})
+}
+
+// RelativeYesterday says "yesterday"
+// in the language the app shows.
+func RelativeYesterday() string { return In(i18n.Locale()).RelativeYesterday() }
+
+// RelativeYesterday says "yesterday"
+// in the language of msgs.
+func (msgs Messages) RelativeYesterday() string {
+	return Catalog.Format(msgs.locale, "relativeYesterday", nil)
+}
+
+// RelativeDays says "{count, plural, one {# day ago} other {# days ago}}"
+// in the language the app shows.
+func RelativeDays(count int) string { return In(i18n.Locale()).RelativeDays(count) }
+
+// RelativeDays says "{count, plural, one {# day ago} other {# days ago}}"
+// in the language of msgs.
+func (msgs Messages) RelativeDays(count int) string {
+	return Catalog.Format(msgs.locale, "relativeDays", map[string]any{"count": count})
+}
+
+// EnvironmentNotes says "Environments"
+// in the language the app shows.
+func EnvironmentNotes() string { return In(i18n.Locale()).EnvironmentNotes() }
+
+// EnvironmentNotes says "Environments"
+// in the language of msgs.
+func (msgs Messages) EnvironmentNotes() string {
+	return Catalog.Format(msgs.locale, "environmentNotes", nil)
+}
+
+// Contents says "Contents"
+// in the language the app shows.
+func Contents() string { return In(i18n.Locale()).Contents() }
+
+// Contents says "Contents"
+// in the language of msgs.
+func (msgs Messages) Contents() string {
+	return Catalog.Format(msgs.locale, "contents", nil)
+}
+
+// NoDescription says "No description"
+// in the language the app shows.
+func NoDescription() string { return In(i18n.Locale()).NoDescription() }
+
+// NoDescription says "No description"
+// in the language of msgs.
+func (msgs Messages) NoDescription() string {
+	return Catalog.Format(msgs.locale, "noDescription", nil)
+}
+
+// ViewFullDocs says "View full docs →"
+// in the language the app shows.
+func ViewFullDocs() string { return In(i18n.Locale()).ViewFullDocs() }
+
+// ViewFullDocs says "View full docs →"
+// in the language of msgs.
+func (msgs Messages) ViewFullDocs() string {
+	return Catalog.Format(msgs.locale, "viewFullDocs", nil)
 }

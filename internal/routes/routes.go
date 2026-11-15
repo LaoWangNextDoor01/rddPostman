@@ -9,6 +9,7 @@ const (
 	Collection   = "/collections/{id}"
 	Environments = "/environments"
 	History      = "/history"
+	Docs         = "/docs"
 	Mock         = "/mock"
 	Network      = "/network"
 	Demo         = "/demo"

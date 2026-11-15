@@ -27,3 +27,6 @@ triangle-alert
 library-big
 folder-plus
 library
+book-open
+play
+eye

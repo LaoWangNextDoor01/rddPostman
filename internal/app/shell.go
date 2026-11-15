@@ -9,7 +9,6 @@ import (
 	"rddpostman/components/theme"
 	"rddpostman/components/v1/icons"
 	"rddpostman/internal/config"
-	"rddpostman/internal/store"
 	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
@@ -89,8 +88,8 @@ func (a *App) titleBar(c *ui.Context, bar ui.TitleBar, selected *string) {
 		})
 }
 
-// workspaceSelector 是标题栏里的工作区切换器：Dropdown 里可搜索、切换，
-// 底部可以新建工作空间。
+// workspaceSelector 是标题栏里的工作区切换器：Dropdown 里切换工作区，
+// 底部可以新建或管理。
 func (a *App) workspaceSelector(c *ui.Context, selected *string) {
 	m := theme.Metrics
 	tk := theme.Of(c)
@@ -120,77 +119,81 @@ func (a *App) workspaceSelector(c *ui.Context, selected *string) {
 	})
 
 	open := ui.Local(button, "open", func() bool { return false })
-	query := ui.Local(button, "query", func() string { return "" })
 	creating := ui.Local(button, "creating", func() bool { return false })
 	newName := ui.Local(button, "new-name", func() string { return "" })
 	newErr := ui.Local(button, "new-error", func() string { return "" })
 
 	if button.Clicked() {
 		*open = !*open
-		if *open {
-			*query = ""
-		}
 	}
 
 	ui.PopoverBase(c, button, open, func(panel ui.Element) {
-		panel.Width(280).MaxHeight(340).Padding(m.Space1).Gap(m.Space1).
-			Radius(m.RadiusMD).Background(tk.BgSurface).Border(m.Border, tk.Border)
+		// 设计稿 42.工作区切换下拉：320 宽，面板外观由 theme.PopoverPanel 统一。
+		panel.Width(320).MaxHeight(360).Padding(m.Space2)
+		theme.PopoverPanel(c, panel)
 		panel.Children(func() {
-			ui.TextInput(c, query).Height(m.SizeMD).FillWidth().
-				Padding(0, m.Space2).Radius(m.RadiusSM).
-				Placeholder(locales.SearchWorkspaces())
+			ui.Text(c, locales.SwitchWorkspace()).FontSize(m.FontSM).
+				TextColor(tk.TextMuted).Padding(m.Space1, m.Space2)
 
-			list := filterWorkspaces(a.workspaces(), *query)
-			for _, ws := range list {
-				active := string(ws.ID) == *selected
-				row := ui.ButtonBase(c.Key("ws-" + string(ws.ID))).FillWidth().
-					Height(m.SizeLG).PaddingX(m.Space2).Gap(m.Space1).
-					AlignItems(ui.Center).Radius(m.RadiusSM)
-				switch {
-				case active:
-					row.Background(tk.AccentSoft)
-				case row.Hovered():
-					row.Background(tk.HoverSurface)
+			ui.Column(c).Gap(m.Space1).Children(func() {
+				for _, ws := range a.workspaces() {
+					active := string(ws.ID) == *selected
+					row := ui.ButtonBase(c.Key("ws-" + string(ws.ID))).FillWidth().
+						Height(44).PaddingX(m.Space2).Gap(m.Space2).
+						AlignItems(ui.Center).Radius(m.RadiusMD)
+					if active || row.Hovered() {
+						row.Background(tk.PopoverItemHover)
+					}
+					if row.Clicked() {
+						*selected = string(ws.ID)
+						*open = false
+					}
+					row.Children(func() {
+						ui.Box(c).Size(28, 28).Radius(m.RadiusFull).
+							Background(tk.Accent).Center().Children(func() {
+							ui.Text(c, workspaceInitials(ws.Name)).FontSize(m.FontXS).
+								TextColor(tk.OnAccent)
+						})
+						ui.Column(c).Grow(1).Gap(1).Children(func() {
+							ui.Text(c, ws.Name).FontSize(m.FontSM).
+								TextColor(tk.TextPrimary).SingleLine()
+							ui.Text(c, locales.WorkspaceCollectionCount(len(ws.Collections))).
+								FontSize(m.FontXS).TextColor(tk.TextMuted).SingleLine()
+						})
+						if active {
+							ui.Text(c, "✓").FontSize(m.FontMD).TextColor(tk.Accent)
+						}
+					})
 				}
-				if row.Clicked() {
-					*selected = string(ws.ID)
+			})
+
+			ui.Divider(c).Margin(m.Space2, 0)
+
+			ui.Column(c).Gap(m.Space1).Children(func() {
+				action := func(key, label string, fn func()) {
+					row := ui.ButtonBase(c.Key(key)).FillWidth().Height(28).
+						PaddingX(m.Space2).AlignItems(ui.Center).Radius(m.RadiusSM)
+					if row.Hovered() {
+						row.Background(tk.PopoverItemHover)
+					}
+					if row.Clicked() {
+						fn()
+					}
+					row.Children(func() {
+						ui.Text(c, label).FontSize(m.FontSM).
+							TextColor(tk.TextSecondary).Grow(1)
+					})
+				}
+				action("ws-create", "+ "+locales.CreateWorkspaceAction(), func() {
 					*open = false
-				}
-				row.Children(func() {
-					text := ui.Text(c, ws.Name).FontSize(m.FontSM).Grow(1).SingleLine()
-					if active {
-						text.TextColor(tk.Accent).Bold()
-					} else {
-						text.TextColor(tk.TextPrimary)
-					}
-					if ws.Default {
-						defaultBadge(c)
-					}
+					*creating = true
+					*newName = ""
+					*newErr = ""
 				})
-			}
-			if len(list) == 0 {
-				ui.Text(c, locales.NoWorkspaceMatches()).FontSize(m.FontXS).
-					TextColor(tk.TextMuted).Padding(m.Space2)
-			}
-
-			ui.Divider(c)
-
-			newRow := ui.ButtonBase(c.Key("ws-new")).FillWidth().
-				Height(m.SizeLG).PaddingX(m.Space2).Gap(m.Space1).
-				AlignItems(ui.Center).Radius(m.RadiusSM)
-			if newRow.Hovered() {
-				newRow.Background(tk.HoverSurface)
-			}
-			if newRow.Clicked() {
-				*open = false
-				*creating = true
-				*newName = ""
-				*newErr = ""
-			}
-			newRow.Children(func() {
-				ui.Icon(c, icons.Get("plus")).FontSize(m.IconXS).TextColor(tk.TextMuted)
-				ui.Text(c, locales.NewWorkspace()).FontSize(m.FontSM).
-					TextColor(tk.TextSecondary).Grow(1)
+				action("ws-manage", locales.ManageWorkspacesAction(), func() {
+					*open = false
+					a.router.Push(routeSettings)
+				})
 			})
 		})
 	})
@@ -204,8 +207,8 @@ func (a *App) newWorkspaceDialog(c *ui.Context, open *bool, name, errText, selec
 	tk := theme.Of(c)
 	ui.DialogBase(c, open, func(backdrop, panel ui.Element) {
 		backdrop.Background(tk.Overlay)
-		panel.Width(360).Padding(m.Space4).Gap(m.Space3).
-			Radius(m.RadiusLG).Background(tk.BgSurface).Border(m.Border, tk.Border)
+		panel.Width(360).Padding(m.Space4).Gap(m.Space3)
+		theme.DialogPanel(c, panel)
 		panel.Children(func() {
 			ui.Text(c, locales.NewWorkspace()).FontSize(m.FontMD).Bold().
 				TextColor(tk.TextPrimary)
@@ -248,19 +251,34 @@ func defaultBadge(c *ui.Context) {
 	})
 }
 
-// filterWorkspaces 按名字过滤工作区，空查询返回全部。
-func filterWorkspaces(list []*store.Workspace, query string) []*store.Workspace {
-	q := strings.ToLower(strings.TrimSpace(query))
-	if q == "" {
-		return list
+// workspaceInitials 取工作区名的首字母/首字，画在下拉的圆形头像里。
+func workspaceInitials(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "?"
 	}
-	out := make([]*store.Workspace, 0, len(list))
-	for _, w := range list {
-		if strings.Contains(strings.ToLower(w.Name), q) {
-			out = append(out, w)
+	fields := strings.Fields(name)
+	if len(fields) >= 2 && isASCII(fields[0]) && isASCII(fields[1]) {
+		first, second := []rune(fields[0]), []rune(fields[1])
+		return strings.ToUpper(string(first[0]) + string(second[0]))
+	}
+	runes := []rune(name)
+	if isASCII(name) {
+		runes = []rune(strings.ToUpper(name))
+	}
+	if len(runes) > 2 {
+		runes = runes[:2]
+	}
+	return string(runes)
+}
+
+func isASCII(s string) bool {
+	for _, r := range s {
+		if r > 127 {
+			return false
 		}
 	}
-	return out
+	return true
 }
 
 // railTipAlign 决定提示框贴图标的上边、下边还是垂直居中，

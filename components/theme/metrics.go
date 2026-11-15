@@ -7,7 +7,7 @@ type Metric struct {
 	Space1, Space2, Space3, Space4, Space5, Space6, Space8 float32
 
 	// 圆角
-	RadiusSM, RadiusMD, RadiusLG, RadiusFull float32
+	RadiusSM, RadiusMD, RadiusLG, RadiusXL, RadiusFull float32
 
 	// 字号
 	FontXS, FontSM, FontMD, FontLG, FontXL, FontXXL float32
@@ -42,7 +42,7 @@ type Metric struct {
 var Metrics = Metric{
 	Space1: 4, Space2: 8, Space3: 12, Space4: 16, Space5: 20, Space6: 24, Space8: 32,
 
-	RadiusSM: 4, RadiusMD: 6, RadiusLG: 8, RadiusFull: 999,
+	RadiusSM: 4, RadiusMD: 6, RadiusLG: 8, RadiusXL: 10, RadiusFull: 999,
 
 	FontXS: 11, FontSM: 12, FontMD: 13, FontLG: 14, FontXL: 16, FontXXL: 20,
 
@@ -50,7 +50,7 @@ var Metrics = Metric{
 
 	Border: 1,
 
-	IconXS: 12, IconSM: 13, IconMD: 14, IconLG: 17,
+	IconXS: 12, IconSM: 14, IconMD: 16, IconLG: 18,
 
 	SizeXS: 20, SizeSM: 22, SizeMD: 24, SizeLG: 28, SizeXL: 34,
 

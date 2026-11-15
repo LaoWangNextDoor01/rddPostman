@@ -11,6 +11,7 @@ import (
 
 func main() {
 	a := app.New()
+	mygo.App.OnQuit(a.Close)
 	mygo.App.WhenReady(func() {
 		mygo.NewWindow(mygo.WindowOptions{
 			Title:     "rddPostman",
