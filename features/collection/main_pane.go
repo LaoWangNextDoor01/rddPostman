@@ -23,7 +23,7 @@ func mainPane(c *ui.Context, props pageProps) {
 		coll, node := findNode(props.collections, state.active)
 		switch {
 		case node != nil && node.Kind == domain.KindRequest:
-			requestTab(c, node, nodePath(props.collections, state.active))
+			requestTab(c, props, coll, node, state.active)
 		case coll != nil:
 			overviewTab(c, props, coll, node)
 		default:
@@ -109,7 +109,10 @@ func emptyQuickLinks(c *ui.Context, props pageProps, tk theme.Tokens, m theme.Me
 				props.actions.createNode(domain.ID(props.collections[0].ID), domain.KindRequest)
 				return
 			}
-			props.actions.createCollection()
+			props.state.newCollOpen = true
+			props.state.newCollName = ""
+			props.state.newCollDesc = ""
+			props.state.newCollErr = ""
 		})
 		sep()
 		link(locales.ImportCollection(), func() {

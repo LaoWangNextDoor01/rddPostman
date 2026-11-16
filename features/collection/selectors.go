@@ -47,30 +47,56 @@ func findNode(collections []*domain.Collection, id string) (*domain.Collection, 
 	return nil, nil
 }
 
-// nodePath 返回「集合 / 目录 / 请求」形式的路径，用于面包屑。
-func nodePath(collections []*domain.Collection, id string) string {
-	coll, node := findNode(collections, id)
-	if coll == nil {
-		return ""
-	}
-	if node == nil {
-		return coll.Name
-	}
-	if trail, ok := findTrail(coll.Items, node.ID, nil); ok {
-		return coll.Name + " / " + strings.Join(trail, " / ")
-	}
-	return coll.Name
+// CrumbItem 表示面包屑中的一级。
+type CrumbItem struct {
+	ID   string
+	Name string
+	Kind domain.Kind // KindFolder, KindRequest, 或 "" (表示集合)
 }
 
-func findTrail(items []*domain.Node, id domain.ID, trail []string) ([]string, bool) {
+// nodeTrail 返回从集合根到指定节点的所有层级项（包含集合自身和当前节点）。
+func nodeTrail(collections []*domain.Collection, id string) []CrumbItem {
+	coll, node := findNode(collections, id)
+	if coll == nil {
+		return nil
+	}
+	crumbs := []CrumbItem{
+		{ID: string(coll.ID), Name: coll.Name},
+	}
+	if node == nil {
+		return crumbs
+	}
+	trail := findNodeTrail(coll.Items, node.ID, nil)
+	return append(crumbs, trail...)
+}
+
+func findNodeTrail(items []*domain.Node, id domain.ID, acc []CrumbItem) []CrumbItem {
 	for _, n := range items {
-		next := append(trail, n.Name)
-		if n.ID == id {
-			return next, true
+		cur := CrumbItem{
+			ID:   string(n.ID),
+			Name: n.Name,
+			Kind: n.Kind,
 		}
-		if got, ok := findTrail(n.Children, id, next); ok {
-			return got, true
+		next := append(append([]CrumbItem(nil), acc...), cur)
+		if n.ID == id {
+			return next
+		}
+		if got := findNodeTrail(n.Children, id, next); got != nil {
+			return got
 		}
 	}
-	return nil, false
+	return nil
+}
+
+// nodePath 返回「集合 / 目录 / 请求」形式的路径字符串。
+func nodePath(collections []*domain.Collection, id string) string {
+	crumbs := nodeTrail(collections, id)
+	if len(crumbs) == 0 {
+		return ""
+	}
+	names := make([]string, len(crumbs))
+	for i, c := range crumbs {
+		names[i] = c.Name
+	}
+	return strings.Join(names, " / ")
 }

@@ -44,7 +44,7 @@ var Metrics = Metric{
 
 	RadiusSM: 4, RadiusMD: 6, RadiusLG: 8, RadiusXL: 10, RadiusFull: 999,
 
-	FontXS: 11, FontSM: 12, FontMD: 13, FontLG: 14, FontXL: 16, FontXXL: 20,
+	FontXS: 10, FontSM: 12, FontMD: 14, FontLG: 16, FontXL: 18, FontXXL: 20,
 
 	LineXS: 15, LineSM: 16, LineMD: 18,
 

@@ -30,3 +30,14 @@ library
 book-open
 play
 eye
+file-pen
+bold
+italic
+heading
+quote
+list
+list-ordered
+link
+strikethrough
+table
+check

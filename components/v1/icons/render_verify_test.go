@@ -3,6 +3,7 @@ package icons
 import (
 	"image/png"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -41,7 +42,8 @@ func TestRenderAllIcons(t *testing.T) {
 	}
 	t.Logf("图像 %v，非白像素 %d", img.Bounds(), dark)
 
-	f, err := os.Create("/tmp/mygo-icons.png")
+	tmpPath := filepath.Join(os.TempDir(), "mygo-icons.png")
+	f, err := os.Create(tmpPath)
 	if err != nil {
 		t.Fatal(err)
 	}

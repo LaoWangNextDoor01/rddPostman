@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"rddpostman/internal/domain"
 )
@@ -670,5 +671,424 @@ func TestNewerVersionIsReadOnly(t *testing.T) {
 	}
 	if err := s2.AddNode(coll.ID, "", &domain.Node{ID: NewID(), Kind: domain.KindFolder, Name: "x"}); !errors.Is(err, ErrReadOnly) {
 		t.Errorf("只读工作区写入应返回 ErrReadOnly，得到 %v", err)
+	}
+}
+
+func TestHistoryRecordAndLoad(t *testing.T) {
+	s, _ := newStoreAt(t)
+	ws := defaultWS(t, s)
+	coll, err := s.CreateCollection(ws.ID, "集合", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := &domain.Node{ID: NewID(), Kind: domain.KindRequest, Name: "请求",
+		Request: &domain.Request{Method: "GET", URL: "https://example.com"}}
+	if err := s.AddNode(coll.ID, "", req); err != nil {
+		t.Fatal(err)
+	}
+
+	// 写入两条历史记录。
+	for i, status := range []int{200, 404} {
+		entry := domain.HistoryEntry{
+			CollectionID: coll.ID,
+			RequestID:    req.ID,
+			Method:       "GET",
+			URL:          "https://example.com",
+			Status:       status,
+			DurationMS:   100 + i*50,
+			At:           time.Now(),
+		}
+		if err := s.RecordHistory(ws.ID, entry); err != nil {
+			t.Fatalf("RecordHistory: %v", err)
+		}
+	}
+
+	// 读取历史。
+	history, err := s.History(ws.ID, 10)
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("历史记录数量 = %d，想要 2", len(history))
+	}
+	// 倒序，最新的在前。
+	if history[0].Status != 404 || history[1].Status != 200 {
+		t.Errorf("历史记录顺序不对: %d %d", history[0].Status, history[1].Status)
+	}
+	if history[0].WorkspaceID != ws.ID {
+		t.Errorf("WorkspaceID 没填充: %q", history[0].WorkspaceID)
+	}
+	if history[0].ID == "" {
+		t.Errorf("ID 没自动生成")
+	}
+}
+
+func TestEnvironmentIndependentAndClone(t *testing.T) {
+	s, _ := newStoreAt(t)
+	ws := defaultWS(t, s)
+
+	// 1. 验证工作区自动创建了默认环境
+	if len(ws.Environments) != 1 {
+		t.Fatalf("初始工作区应有 1 个默认环境，得到 %d", len(ws.Environments))
+	}
+	defEnv := ws.Environments[0]
+	if defEnv.Name != domain.DefaultEnvironmentName || defEnv.ID != ws.DefaultEnvironmentID {
+		t.Fatalf("默认环境不符合预期: %+v (DefaultID=%q)", defEnv, ws.DefaultEnvironmentID)
+	}
+
+	// 2. 尝试删除默认环境应报错
+	if err := s.DeleteEnvironment(ws.ID, defEnv.ID); !errors.Is(err, ErrDefaultEnvironment) {
+		t.Fatalf("删除默认环境应返回 ErrDefaultEnvironment，得到 %v", err)
+	}
+
+	// 3. 在默认环境（作为开发环境）中添加 baseUrl 和 dev 独有的 debugPort
+	if err := s.AddEnvironmentVariable(ws.ID, defEnv.ID, domain.KV{
+		Key:     "baseUrl",
+		Value:   "http://localhost:3000",
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("AddEnvironmentVariable baseUrl: %v", err)
+	}
+	if err := s.AddEnvironmentVariable(ws.ID, defEnv.ID, domain.KV{
+		Key:     "debugPort",
+		Value:   "9229",
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("AddEnvironmentVariable debugPort: %v", err)
+	}
+
+	// 4. 基于默认环境克隆出「测试环境」
+	testEnv, err := s.CloneEnvironment(ws.ID, defEnv.ID, "测试环境")
+	if err != nil {
+		t.Fatalf("CloneEnvironment: %v", err)
+	}
+	if len(testEnv.Vars) != 2 || testEnv.Vars[0].Key != "baseUrl" {
+		t.Fatalf("克隆环境应该包含相同变量结构: %+v", testEnv.Vars)
+	}
+
+	// 5. 修改测试环境的 baseUrl，并删除 debugPort（测试环境不需要调试端口）
+	testEnv.Vars[0].Value = "https://test.demo.com"
+	testEnv.Vars = testEnv.Vars[:1] // 移除 debugPort
+	if err := s.SaveEnvironment(ws.ID, testEnv); err != nil {
+		t.Fatalf("SaveEnvironment testEnv: %v", err)
+	}
+
+	// 6. 验证两个环境互相独立，互不污染
+	devUpdated, err := s.DefaultEnvironment(ws.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(devUpdated.Vars) != 2 {
+		t.Fatalf("开发环境依然应保留 2 个变量，得到 %d", len(devUpdated.Vars))
+	}
+	if devUpdated.Vars[0].Value != "http://localhost:3000" {
+		t.Errorf("开发环境的 baseUrl 应该保持 localhost:3000，得到 %q", devUpdated.Vars[0].Value)
+	}
+
+	// 7. 测试在请求中切换环境：baseUrl 动态无缝替换
+	coll, err := s.CreateCollection(ws.ID, "用户服务", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := &domain.Node{
+		ID:   NewID(),
+		Kind: domain.KindRequest,
+		Name: "获取用户",
+		Request: &domain.Request{
+			Method: "GET",
+			URL:    "{{baseUrl}}/api/users",
+		},
+	}
+	if err := s.AddNode(coll.ID, "", req); err != nil {
+		t.Fatal(err)
+	}
+
+	// 当前为默认环境（dev）
+	preparedDev, _, _, err := s.PrepareRequest(ws.ID, coll.ID, req.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "http://localhost:3000/api/users"; preparedDev.URL != want {
+		t.Errorf("开发环境 URL = %q，想要 %q", preparedDev.URL, want)
+	}
+
+	// 切换到测试环境（test）
+	if err := s.SelectEnvironment(ws.ID, testEnv.ID); err != nil {
+		t.Fatal(err)
+	}
+	preparedTest, _, _, err := s.PrepareRequest(ws.ID, coll.ID, req.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "https://test.demo.com/api/users"; preparedTest.URL != want {
+		t.Errorf("测试环境 URL = %q，想要 %q", preparedTest.URL, want)
+	}
+}
+
+func TestCollectionLevelEnvironmentSwitch(t *testing.T) {
+	s, dir := newStoreAt(t)
+	ws := defaultWS(t, s)
+
+	// 1. 设置默认开发环境
+	defEnv, err := s.DefaultEnvironment(ws.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddEnvironmentVariable(ws.ID, defEnv.ID, domain.KV{
+		Key:     "baseUrl",
+		Value:   "http://localhost:3000",
+		Enabled: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. 克隆出「测试环境」和「生产环境」
+	testEnv, err := s.CloneEnvironment(ws.ID, defEnv.ID, "测试环境")
+	if err != nil {
+		t.Fatal(err)
+	}
+	testEnv.Vars[0].Value = "https://test.api.com"
+	if err := s.SaveEnvironment(ws.ID, testEnv); err != nil {
+		t.Fatal(err)
+	}
+
+	prodEnv, err := s.CloneEnvironment(ws.ID, defEnv.ID, "生产环境")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prodEnv.Vars[0].Value = "https://prod.api.com"
+	if err := s.SaveEnvironment(ws.ID, prodEnv); err != nil {
+		t.Fatal(err)
+	}
+
+	// 3. 创建集合 A (用户服务) 和 集合 B (支付服务)
+	collA, err := s.CreateCollection(ws.ID, "用户服务", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reqA := &domain.Node{
+		ID:      NewID(),
+		Kind:    domain.KindRequest,
+		Name:    "获取用户",
+		Request: &domain.Request{Method: "GET", URL: "{{baseUrl}}/users"},
+	}
+	if err := s.AddNode(collA.ID, "", reqA); err != nil {
+		t.Fatal(err)
+	}
+
+	collB, err := s.CreateCollection(ws.ID, "支付服务", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reqB := &domain.Node{
+		ID:      NewID(),
+		Kind:    domain.KindRequest,
+		Name:    "发起支付",
+		Request: &domain.Request{Method: "POST", URL: "{{baseUrl}}/pay"},
+	}
+	if err := s.AddNode(collB.ID, "", reqB); err != nil {
+		t.Fatal(err)
+	}
+
+	// 4. 初始状态：两个集合都继承工作区的环境 (默认 localhost:3000)
+	envA, inheritedA := s.CollectionEnvironment(ws.ID, collA.ID)
+	if !inheritedA || envA != defEnv.ID {
+		t.Errorf("集合 A 初始应继承默认环境: %v %v", envA, inheritedA)
+	}
+	envB, inheritedB := s.CollectionEnvironment(ws.ID, collB.ID)
+	if !inheritedB || envB != defEnv.ID {
+		t.Errorf("集合 B 初始应继承默认环境: %v %v", envB, inheritedB)
+	}
+
+	resA1, _, _, err := s.PrepareRequest(ws.ID, collA.ID, reqA.ID)
+	if err != nil || resA1.URL != "http://localhost:3000/users" {
+		t.Fatalf("请求 A 初始 URL = %q，想要 localhost:3000", resA1.URL)
+	}
+	resB1, _, _, err := s.PrepareRequest(ws.ID, collB.ID, reqB.ID)
+	if err != nil || resB1.URL != "http://localhost:3000/pay" {
+		t.Fatalf("请求 B 初始 URL = %q，想要 localhost:3000", resB1.URL)
+	}
+
+	// 5. 将集合 B 单独切换到「测试环境」，集合 A 保持继承
+	if err := s.SelectCollectionEnvironment(ws.ID, collB.ID, testEnv.ID); err != nil {
+		t.Fatalf("SelectCollectionEnvironment: %v", err)
+	}
+
+	envB2, inheritedB2 := s.CollectionEnvironment(ws.ID, collB.ID)
+	if inheritedB2 || envB2 != testEnv.ID {
+		t.Fatalf("集合 B 应已覆盖为测试环境且 inherited=false: %v %v", envB2, inheritedB2)
+	}
+
+	// 此时：集合 A 依然在 localhost:3000，集合 B 独立切换到了 test.api.com！
+	resA2, _, _, _ := s.PrepareRequest(ws.ID, collA.ID, reqA.ID)
+	resB2, _, _, _ := s.PrepareRequest(ws.ID, collB.ID, reqB.ID)
+	if resA2.URL != "http://localhost:3000/users" {
+		t.Errorf("集合 A 受到集合 B 切换的影响: %q", resA2.URL)
+	}
+	if resB2.URL != "https://test.api.com/pay" {
+		t.Errorf("集合 B 独立切换测试环境失败: %q", resB2.URL)
+	}
+
+	// 6. 将工作区全局环境切换到「生产环境」
+	if err := s.SelectEnvironment(ws.ID, prodEnv.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// 集合 A 跟随工作区自动变成 prod.api.com，而集合 B 依然固定在 test.api.com，不受全局干扰！
+	resA3, _, _, _ := s.PrepareRequest(ws.ID, collA.ID, reqA.ID)
+	resB3, _, _, _ := s.PrepareRequest(ws.ID, collB.ID, reqB.ID)
+	if resA3.URL != "https://prod.api.com/users" {
+		t.Errorf("集合 A 应自动跟随工作区切换到生产环境: %q", resA3.URL)
+	}
+	if resB3.URL != "https://test.api.com/pay" {
+		t.Errorf("集合 B 应依然保持测试环境覆盖: %q", resB3.URL)
+	}
+
+	// 7. 将集合 B 解除覆盖（恢复继承）
+	if err := s.SelectCollectionEnvironment(ws.ID, collB.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	resB4, _, _, _ := s.PrepareRequest(ws.ID, collB.ID, reqB.ID)
+	if resB4.URL != "https://prod.api.com/pay" {
+		t.Errorf("集合 B 恢复继承后应与全局生产环境一致: %q", resB4.URL)
+	}
+
+	// 8. 验证持久化：再次设置集合 B 为测试环境，重新打开 store 验证 local.json 正确恢复
+	if err := s.SelectCollectionEnvironment(ws.ID, collB.ID, testEnv.ID); err != nil {
+		t.Fatal(err)
+	}
+	s2 := reopen(t, dir)
+	ws2 := defaultWS(t, s2)
+	if ws2.CollectionEnvironments[collB.ID] != testEnv.ID {
+		t.Errorf("重启后集合 B 独立环境覆盖未恢复: %v", ws2.CollectionEnvironments)
+	}
+	resB5, _, _, _ := s2.PrepareRequest(ws.ID, collB.ID, reqB.ID)
+	if resB5.URL != "https://test.api.com/pay" {
+		t.Errorf("重启后集合 B 请求解析 URL = %q，想要 test.api.com", resB5.URL)
+	}
+}
+
+func TestActiveWorkspace(t *testing.T) {
+	s, _ := newStoreAt(t)
+
+	// 1. 初始活跃工作区应为默认工作区
+	defWS := defaultWS(t, s)
+	if s.ActiveWorkspaceID() != defWS.ID {
+		t.Fatalf("初始活跃工作区应为 %s，得到 %s", defWS.ID, s.ActiveWorkspaceID())
+	}
+	if active := s.ActiveWorkspace(); active == nil || active.ID != defWS.ID {
+		t.Fatalf("Snapshot.ActiveWorkspace() 应返回默认工作区，得到 %+v", active)
+	}
+
+	// 2. 创建新工作区
+	teamWS, err := s.CreateWorkspace("团队空间")
+	if err != nil {
+		t.Fatalf("CreateWorkspace: %v", err)
+	}
+
+	// 3. 切换活跃工作区到新工作区
+	if err := s.SetActiveWorkspace(teamWS.ID); err != nil {
+		t.Fatalf("SetActiveWorkspace: %v", err)
+	}
+	if s.ActiveWorkspaceID() != teamWS.ID {
+		t.Fatalf("切换后 ActiveWorkspaceID 应为 %s，得到 %s", teamWS.ID, s.ActiveWorkspaceID())
+	}
+	if active := s.Snapshot().ActiveWorkspace(); active == nil || active.Name != "团队空间" {
+		t.Fatalf("Snapshot.ActiveWorkspace() 应返回团队空间，得到 %+v", active)
+	}
+
+	// 4. 切换到不存在的工作区应报错
+	if err := s.SetActiveWorkspace("non-existent"); err == nil {
+		t.Fatalf("切换到不存在的工作区应该返回错误")
+	}
+
+	// 5. 移除当前活跃的工作区，应该自动回退到默认工作区
+	if err := s.RemoveWorkspace(teamWS.ID); err != nil {
+		t.Fatalf("RemoveWorkspace: %v", err)
+	}
+	if s.ActiveWorkspaceID() != defWS.ID {
+		t.Fatalf("移除当前工作区后应自动回退到默认工作区 %s，得到 %s", defWS.ID, s.ActiveWorkspaceID())
+	}
+	if active := s.ActiveWorkspace(); active == nil || active.ID != defWS.ID {
+		t.Fatalf("回退后 ActiveWorkspace 应返回默认工作区，得到 %+v", active)
+	}
+}
+
+func TestCollectionMarkdownDescriptionUpdateAndReload(t *testing.T) {
+	s, dir := newStoreAt(t)
+	ws := defaultWS(t, s)
+
+	mdDesc := "# API 文档\n\n本集合包含主要接口。\n\n- 用户接口\n- 支付接口\n\n```json\n{\"code\": 0}\n```"
+	coll, err := s.CreateCollection(ws.ID, "核心服务", mdDesc)
+	if err != nil {
+		t.Fatalf("CreateCollection: %v", err)
+	}
+	if coll.Description != mdDesc {
+		t.Fatalf("创建后 Description 不匹配: got %q, want %q", coll.Description, mdDesc)
+	}
+
+	// 更新描述
+	nextDesc := "## 更新后的文档\n\n包含 **重要变更**。"
+	err = s.UpdateCollection(coll.ID, func(c *domain.Collection) {
+		c.Description = nextDesc
+	})
+	if err != nil {
+		t.Fatalf("UpdateCollection: %v", err)
+	}
+
+	// 验证磁盘上生成了独立的 README.md 文件
+	collReadme := filepath.Join(dir, "workspaces", "default", "collections", "核心服务", "README.md")
+	readmeBytes, err := os.ReadFile(collReadme)
+	if err != nil {
+		t.Fatalf("集合目录下应有 README.md 文件: %v", err)
+	}
+	if string(readmeBytes) != nextDesc {
+		t.Fatalf("README.md 内容不匹配: got %q, want %q", string(readmeBytes), nextDesc)
+	}
+
+	// 验证 collection.json 中去除了冗余的大文本
+	collJSONPath := filepath.Join(dir, "workspaces", "default", "collections", "核心服务", "collection.json")
+	jsonBytes, err := os.ReadFile(collJSONPath)
+	if err != nil {
+		t.Fatalf("读取 collection.json 失败: %v", err)
+	}
+	var rawColl domain.Collection
+	if err := json.Unmarshal(jsonBytes, &rawColl); err != nil {
+		t.Fatalf("反序列化 collection.json 失败: %v", err)
+	}
+	if rawColl.Description != "" {
+		t.Fatalf("collection.json 中不应冗余存储 Description，得到 %q", rawColl.Description)
+	}
+
+	// 测试目录节点的 README.md 存储
+	folder := &domain.Node{
+		ID:          NewID(),
+		Kind:        domain.KindFolder,
+		Name:        "用户中心",
+		Description: "# 用户中心模块\n\n- 登录\n- 注册",
+	}
+	if err := s.AddNode(coll.ID, "", folder); err != nil {
+		t.Fatalf("AddNode folder: %v", err)
+	}
+	folderReadme := filepath.Join(dir, "workspaces", "default", "collections", "核心服务", "用户中心", "README.md")
+	folderReadmeBytes, err := os.ReadFile(folderReadme)
+	if err != nil {
+		t.Fatalf("目录层级下应有独立 README.md: %v", err)
+	}
+	if string(folderReadmeBytes) != folder.Description {
+		t.Fatalf("目录 README.md 内容不匹配: got %q, want %q", string(folderReadmeBytes), folder.Description)
+	}
+
+	// 重新加载并验证落盘
+	s2 := reopen(t, dir)
+	ws2 := defaultWS(t, s2)
+	if len(ws2.Collections) == 0 {
+		t.Fatal("未加载到集合")
+	}
+	if ws2.Collections[0].Description != nextDesc {
+		t.Fatalf("重新打开后 Collection.Description 不匹配: got %q, want %q", ws2.Collections[0].Description, nextDesc)
+	}
+	if len(ws2.Collections[0].Items) == 0 || ws2.Collections[0].Items[0].Description != folder.Description {
+		t.Fatalf("重新打开后 Folder.Description 不匹配: got %q, want %q", ws2.Collections[0].Items[0].Description, folder.Description)
 	}
 }

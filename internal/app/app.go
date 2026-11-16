@@ -2,8 +2,6 @@
 package app
 
 import (
-	"log"
-
 	"rddpostman/components/theme"
 	v1 "rddpostman/components/v1"
 	"rddpostman/features/collection"
@@ -13,7 +11,7 @@ import (
 	"rddpostman/features/home"
 	"rddpostman/features/request"
 	"rddpostman/features/settings"
-	"rddpostman/internal/domain"
+	"rddpostman/internal/logger"
 	"rddpostman/internal/routes"
 	"rddpostman/internal/store"
 	"rddpostman/locales"
@@ -47,7 +45,11 @@ func New() *App {
 	a := &App{router: ui.NewRouter(routeCollections)}
 	s, err := store.Open()
 	if err != nil {
-		log.Printf("打开本地数据失败: %v", err)
+		logger.Error("打开本地数据失败: %v", err)
+	} else if len(s.Snapshot().Problems) > 0 {
+		for _, p := range s.Snapshot().Problems {
+			logger.Warn("数据加载警告: %s", p)
+		}
 	}
 	a.store = s
 	return a
@@ -66,65 +68,18 @@ func (a *App) View(c *ui.Context) {
 
 	bar := c.TitleBar()
 	root := ui.Column(c).Fill()
-	// 当前工作区：标题栏选择器与状态栏共用。
-	selected := ui.Local(root, "workspace", func() string {
-		if ws := a.defaultWorkspace(); ws != nil {
-			return string(ws.ID)
-		}
-		return ""
-	})
 	root.Children(func() {
-		a.titleBar(c, bar, selected)
+		a.titleBar(c, bar)
 		ui.Row(c).Grow(1).AlignItems(ui.Stretch).Children(func() {
 			a.iconRail(c)
-			a.content(c, selected)
+			a.content(c)
 		})
-		a.statusBar(c, a.workspaceName(*selected))
+		a.statusBar(c)
 	})
-}
-
-// workspaces 返回当前快照里的工作区。
-func (a *App) workspaces() []*store.Workspace {
-	if a.store == nil {
-		return nil
-	}
-	return a.store.Snapshot().Workspaces
-}
-
-// workspace 按 ID 找一个工作区。
-func (a *App) workspace(id string) *store.Workspace {
-	for _, w := range a.workspaces() {
-		if string(w.ID) == id {
-			return w
-		}
-	}
-	return nil
-}
-
-// defaultWorkspace 返回默认工作区，没有默认标记时退回第一个。
-func (a *App) defaultWorkspace() *store.Workspace {
-	list := a.workspaces()
-	for _, w := range list {
-		if w.Default {
-			return w
-		}
-	}
-	if len(list) > 0 {
-		return list[0]
-	}
-	return nil
-}
-
-// workspaceName 返回工作区名，找不到时用「工作区」兜底。
-func (a *App) workspaceName(id string) string {
-	if w := a.workspace(id); w != nil {
-		return w.Name
-	}
-	return locales.WorkspaceTitle()
 }
 
 // content 是图标栏右侧的主区域。每个页面自己决定是否带侧栏、是否滚动。
-func (a *App) content(c *ui.Context, selected *string) {
+func (a *App) content(c *ui.Context) {
 	tk := theme.Of(c)
 	ui.Box(c).Grow(1).Background(tk.BgBase).Children(func() {
 		a.router.View(c, func(r *ui.Route) {
@@ -137,7 +92,7 @@ func (a *App) content(c *ui.Context, selected *string) {
 				home.View(c)
 			case r.Match(routeCollections):
 				r.Title(locales.CollectionsTitle())
-				collection.View(c, a.store, a.router, domain.ID(*selected), a.workspaceName(*selected))
+				collection.View(c, a.store, a.router)
 			case r.Match(routeCollection):
 				r.Title(locales.RequestPageTitle())
 				request.View(c, a.router)

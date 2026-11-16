@@ -36,6 +36,9 @@ const (
 	SchemaSecrets     = "rddpostman.secrets"
 	SchemaGlobals     = "rddpostman.globals"
 
+	// DefaultEnvironmentName 是工作区初始默认环境的名称。
+	DefaultEnvironmentName = "默认环境"
+
 	// Version 是当前写入的格式版本。
 	Version = 3
 )
@@ -93,15 +96,17 @@ type Node struct {
 // Request 是一个请求的传输配置。认证放在 Node.Auth 上，
 // 以便目录级继承（request → folder → collection）。
 type Request struct {
-	Protocol      string  `json:"protocol,omitempty"`
-	Method        string  `json:"method,omitempty"`
-	URL           string  `json:"url,omitempty"`
-	PathVariables []KV    `json:"pathVariables,omitempty"`
-	Query         []KV    `json:"query,omitempty"`
-	Headers       []KV    `json:"headers,omitempty"`
-	Cookies       []KV    `json:"cookies,omitempty"`
-	Body          Body    `json:"body,omitzero"`
-	Options       Options `json:"options,omitzero"`
+	Protocol      string    `json:"protocol,omitempty"`
+	Method        string    `json:"method,omitempty"`
+	URL           string    `json:"url,omitempty"`
+	PathVariables []KV      `json:"pathVariables,omitempty"`
+	Query         []KV      `json:"query,omitempty"`
+	Headers       []KV      `json:"headers,omitempty"`
+	Cookies       []KV      `json:"cookies,omitempty"`
+	Body          Body      `json:"body,omitzero"`
+	Options       Options   `json:"options,omitzero"`
+	CreatedAt     time.Time `json:"createdAt,omitzero"`
+	UpdatedAt     time.Time `json:"updatedAt,omitzero"`
 }
 
 // BodyMode 是请求体的类型。
@@ -161,12 +166,14 @@ type Auth struct {
 // ID 用于列表行状态与 secret 索引，Secret 为 true 时真实值不写进业务文件。
 // 环境变量的本机覆盖值存在 Local.CurrentValues，按 ID 索引。
 type KV struct {
-	ID      ID     `json:"id,omitempty"`
-	Key     string `json:"key"`
-	Value   string `json:"value,omitempty"`
-	Desc    string `json:"desc,omitempty"`
-	Enabled bool   `json:"enabled"`
-	Secret  bool   `json:"secret,omitempty"`
+	ID        ID        `json:"id,omitempty"`
+	Key       string    `json:"key"`
+	Value     string    `json:"value,omitempty"`
+	Desc      string    `json:"desc,omitempty"`
+	Enabled   bool      `json:"enabled"`
+	Secret    bool      `json:"secret,omitempty"`
+	CreatedAt time.Time `json:"createdAt,omitzero"`
+	UpdatedAt time.Time `json:"updatedAt,omitzero"`
 }
 
 // Environment 是一组可切换的环境变量，对应 environments/<名称>.environment.json。
@@ -183,24 +190,31 @@ type Environment struct {
 
 // Local 是工作区的本机状态，对应 local.json，不参与 Git 同步。
 type Local struct {
-	Schema                string        `json:"schema"`
-	Version               int           `json:"version"`
-	SelectedEnvironmentID ID            `json:"selectedEnvironmentID,omitempty"`
-	CurrentValues         map[ID]string `json:"currentValues,omitempty"`
+	Schema                 string        `json:"schema"`
+	Version                int           `json:"version"`
+	SelectedEnvironmentID  ID            `json:"selectedEnvironmentID,omitempty"`
+	CollectionEnvironments map[ID]ID     `json:"collectionEnvironments,omitempty"`
+	CurrentValues          map[ID]string `json:"currentValues,omitempty"`
+	CreatedAt              time.Time     `json:"createdAt,omitzero"`
+	UpdatedAt              time.Time     `json:"updatedAt,omitzero"`
 }
 
 // Secrets 保存 secret 变量的真实值，按 KV.ID 索引，对应 secrets.json（0600）。
 type Secrets struct {
-	Schema  string        `json:"schema"`
-	Version int           `json:"version"`
-	Values  map[ID]string `json:"values,omitempty"`
+	Schema    string        `json:"schema"`
+	Version   int           `json:"version"`
+	Values    map[ID]string `json:"values,omitempty"`
+	CreatedAt time.Time     `json:"createdAt,omitzero"`
+	UpdatedAt time.Time     `json:"updatedAt,omitzero"`
 }
 
 // Globals 是跨工作区的全局变量，对应数据根目录下的 globals.json。
 type Globals struct {
-	Schema    string `json:"schema"`
-	Version   int    `json:"version"`
-	Variables []KV   `json:"variables,omitempty"`
+	Schema    string    `json:"schema"`
+	Version   int       `json:"version"`
+	Variables []KV      `json:"variables,omitempty"`
+	CreatedAt time.Time `json:"createdAt,omitzero"`
+	UpdatedAt time.Time `json:"updatedAt,omitzero"`
 }
 
 // Response 是一次请求的结果，只留在内存里，不落盘。
@@ -226,6 +240,7 @@ type HistoryEntry struct {
 	BodyRef      string    `json:"bodyRef,omitempty"`
 	Error        string    `json:"error,omitempty"`
 	At           time.Time `json:"at"`
+	CreatedAt    time.Time `json:"createdAt,omitzero"`
 }
 
 // NewID 生成稳定的随机 ID。
@@ -315,6 +330,12 @@ func (e Environment) Clone() Environment {
 // Clone 深拷贝本机状态。
 func (l Local) Clone() Local {
 	out := l
+	if l.CollectionEnvironments != nil {
+		out.CollectionEnvironments = make(map[ID]ID, len(l.CollectionEnvironments))
+		for k, v := range l.CollectionEnvironments {
+			out.CollectionEnvironments[k] = v
+		}
+	}
 	if l.CurrentValues != nil {
 		out.CurrentValues = make(map[ID]string, len(l.CurrentValues))
 		for k, v := range l.CurrentValues {

@@ -8,6 +8,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"time"
 
 	"rddpostman/internal/domain"
 )
@@ -37,6 +38,12 @@ type Ref struct {
 type Input struct {
 	Name        string
 	Description string
+}
+
+// HistoryQuery 是查询历史记录的参数。
+type HistoryQuery struct {
+	Limit  int       // 最多返回条数，0 表示不限
+	Before time.Time // 只返回此时间之前的记录，零值表示不过滤
 }
 
 // Bundle 是一个工作区的完整内存视图，由后端一次性加载。
@@ -84,4 +91,9 @@ type Backend interface {
 
 	LoadGlobals(ctx context.Context) (domain.Globals, error)
 	SaveGlobals(ctx context.Context, g domain.Globals) error
+
+	// AppendHistory 追加一条历史记录。
+	AppendHistory(ctx context.Context, ref Ref, entry domain.HistoryEntry) error
+	// LoadHistory 按时间倒序返回历史记录。
+	LoadHistory(ctx context.Context, ref Ref, query HistoryQuery) ([]domain.HistoryEntry, error)
 }

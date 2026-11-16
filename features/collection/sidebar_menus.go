@@ -49,7 +49,10 @@ func addMenuButton(c *ui.Context, props pageProps) {
 			})
 		}
 		item("collection", "library", locales.NewCollection(), func() {
-			props.actions.createCollection()
+			props.state.newCollOpen = true
+			props.state.newCollName = ""
+			props.state.newCollDesc = ""
+			props.state.newCollErr = ""
 		})
 		if len(props.collections) > 0 {
 			item("folder", "folder-plus", locales.NewFolder(), func() {

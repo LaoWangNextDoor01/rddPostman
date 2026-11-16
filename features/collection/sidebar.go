@@ -1,6 +1,8 @@
 package collection
 
 import (
+	"strings"
+
 	"rddpostman/components/theme"
 	v1 "rddpostman/components/v1"
 	"rddpostman/components/v1/icons"
@@ -25,11 +27,15 @@ func sidebar(c *ui.Context, props pageProps) {
 				ui.Icon(c, icons.Get("search")).FontSize(m.IconXS).
 					TextColor(tk.TextMuted)
 				ui.TextInputBase(c, search).Grow(1).FontSize(m.FontXS).
-					Placeholder(locales.SearchRequests())
+					Placeholder(locales.SearchRequests()).OnChange(func() {
+					// TODO: 搜索当前workspace中的结合、文件夹、请求等
+				})
 			})
 
 			addMenuButton(c, props)
 			environmentMenuButton(c, props)
+
+			// TODO：待添加其他功能
 			v1.MiniButton(c, v1.RdButtonOptions{
 				Key:      "more",
 				Label:    "more",
@@ -71,6 +77,75 @@ func sidebar(c *ui.Context, props pageProps) {
 			collectionTree(c, props.state, buildTree(props.collections), actions)
 		})
 	})
+
+	newCollectionDialog(c, props)
+}
+
+// newCollectionDialog 弹出新建集合对话框。
+func newCollectionDialog(c *ui.Context, props pageProps) {
+	m := theme.Metrics
+	tk := theme.Of(c)
+	state := props.state
+
+	ui.DialogBase(c, &state.newCollOpen, func(backdrop, panel ui.Element) {
+		backdrop.Background(tk.Overlay)
+		panel.Width(420).Padding(m.Space4).Gap(m.Space3)
+		theme.DialogPanel(c, panel)
+		panel.Children(func() {
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+				ui.Icon(c, icons.Get("library")).FontSize(m.IconMD).TextColor(tk.Accent)
+				ui.Text(c, locales.NewCollection()).FontSize(m.FontMD).Bold().
+					TextColor(tk.TextPrimary)
+			})
+			ui.Text(c, locales.NewCollectionDesc(props.workspaceName)).
+				FontSize(m.FontXS).TextColor(tk.TextMuted)
+
+			ui.Text(c, locales.CollectionNameLabel()).FontSize(m.FontSM).
+				FontWeight(500).TextColor(tk.TextSecondary)
+			in := ui.TextInput(c, &state.newCollName).Height(m.SizeXL).
+				FillWidth().Padding(0, m.Space2).Radius(m.RadiusSM).
+				Placeholder(locales.CollectionNamePlaceholder())
+			if state.newCollErr != "" {
+				ui.Text(c, state.newCollErr).FontSize(m.FontXS).TextColor(tk.Danger)
+			}
+
+			ui.Text(c, locales.CollectionDescriptionLabel()).FontSize(m.FontSM).
+				FontWeight(500).TextColor(tk.TextSecondary)
+			ui.TextArea(c, &state.newCollDesc).FillWidth().MinHeight(80).
+				MaxHeight(180).Padding(m.Space2, m.Space2).Radius(m.RadiusSM).
+				FontSize(m.FontSM).FixedLineHeight(20).
+				Placeholder(locales.CollectionDescriptionPlaceholder())
+
+			submit := func() {
+				name := strings.TrimSpace(state.newCollName)
+				if name == "" {
+					state.newCollErr = locales.CollectionNameRequired()
+					return
+				}
+				coll, err := props.actions.createCollection(name, state.newCollDesc)
+				if err != nil {
+					state.newCollErr = err.Error()
+					return
+				}
+				state.newCollOpen = false
+				state.newCollErr = ""
+				state.openTab(string(coll.ID))
+			}
+
+			if in.Submitted() {
+				submit()
+			}
+
+			ui.Row(c).Gap(m.Space2).Justify(ui.End).Children(func() {
+				if ui.Button(c, locales.Cancel()).Clicked() {
+					state.newCollOpen = false
+				}
+				if ui.PrimaryButton(c, locales.CreateCollection()).Clicked() {
+					submit()
+				}
+			})
+		})
+	})
 }
 
 // emptySidebar 是设计稿里的空侧栏：图标、标题、说明与新建按钮，垂直居中。
@@ -101,7 +176,10 @@ func emptySidebar(c *ui.Context, props pageProps) {
 				btn.Background(tk.Accent.Mix(tk.TextPrimary, 0.06))
 			}
 			if btn.Clicked() {
-				props.actions.createCollection()
+				props.state.newCollOpen = true
+				props.state.newCollName = ""
+				props.state.newCollDesc = ""
+				props.state.newCollErr = ""
 			}
 			btn.Children(func() {
 				ui.Icon(c, icons.Get("plus")).FontSize(m.IconXS).

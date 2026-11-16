@@ -2,6 +2,7 @@ package collection
 
 import (
 	"rddpostman/components/theme"
+	v1 "rddpostman/components/v1"
 	"rddpostman/components/v1/icons"
 	"rddpostman/internal/domain"
 	"rddpostman/locales"
@@ -22,12 +23,15 @@ func tabBar(c *ui.Context) ui.Element {
 // tabBarTrailing 画 tab 条右侧：新建 tab、终端与更多。
 func tabBarTrailing(c *ui.Context) {
 	m := theme.Metrics
-	tk := theme.Of(c)
-	ui.Box(c).Width(m.Space3)
-	ui.Box(c).Size(m.IconMD, m.IconMD).Radius(m.RadiusSM).Center().
-		Background(tk.BgElevated).Children(func() {
-		ui.Icon(c, icons.Get("plus")).FontSize(m.IconMD).
-			TextColor(tk.TextMuted)
+	ui.Box(c).Width(m.Space1 - 2)
+	// ADD
+	v1.MiniButton(c, v1.RdButtonOptions{
+		Key:      "tab-add",
+		Label:    "tab add",
+		Icon:     icons.Get("plus"),
+		Size:     m.SizeLG,
+		IconSize: m.IconMD,
+		Radius:   m.RadiusMD,
 	})
 	ui.Spacer(c)
 	// 设计稿右侧固定灰 #71717A，没有对应的主题变量。
@@ -81,14 +85,14 @@ func tabsBar(c *ui.Context, props pageProps) {
 						}
 					case tabNode == nil:
 						// 集合用集合图标，文件夹用文件夹图标，避免类型混淆。
-						ui.Icon(c, icons.Get("library")).Size(13, 11).
+						ui.Icon(c, icons.Get("library")).Size(14, 14).
 							TextColor(tk.TextSecondary)
-						ui.Text(c, coll.Name).FontSize(m.FontMD).
+						ui.Text(c, coll.Name).FontSize(m.FontSM).
 							TextColor(tabNameColor(tk, selected)).SingleLine()
 					default:
-						ui.Icon(c, icons.Get("folder")).Size(13, 11).
+						ui.Icon(c, icons.Get("folder")).Size(14, 14).
 							TextColor(tk.TextSecondary)
-						ui.Text(c, tabNode.Name).FontSize(m.FontMD).
+						ui.Text(c, tabNode.Name).FontSize(m.FontSM).
 							TextColor(tabNameColor(tk, selected)).SingleLine()
 					}
 					close := ui.ButtonBase(c.Key("close-" + id)).Width(m.SizeXS - 2).

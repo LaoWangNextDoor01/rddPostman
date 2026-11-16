@@ -1,11 +1,12 @@
 package collection
 
 import (
+	"strings"
+
 	"rddpostman/components/theme"
 	"rddpostman/components/v1/icons"
 	"rddpostman/internal/domain"
 	"rddpostman/locales"
-	"strings"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -97,8 +98,7 @@ func collectionTree(c *ui.Context, state *workspace, rows []*treeNode, actions t
 				row.Background(tk.HoverSurface)
 			}
 			if row.Clicked() {
-				state.selected = n.id
-				state.openTab(n.id)
+				actions.open(n)
 			}
 			row.Children(func() {
 				if expandable {

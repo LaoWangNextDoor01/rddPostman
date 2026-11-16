@@ -6,21 +6,31 @@ import (
 	"rddpostman/internal/domain"
 	"rddpostman/internal/nav"
 	"rddpostman/internal/store"
-	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
 
-// View 绘制集合工作区。集合数据来自 store，当前工作区由标题栏选择。
-func View(c *ui.Context, db *store.Store, n nav.Navigator, workspaceID domain.ID, workspaceName string) {
+// View 绘制集合工作区。集合数据与当前活跃工作区均来自 store 快照。
+func View(c *ui.Context, db *store.Store, n nav.Navigator) {
+	if db == nil {
+		return
+	}
+	snap := db.Snapshot()
+	ws := snap.ActiveWorkspace()
+	if ws == nil {
+		return
+	}
+	workspaceID := ws.ID
+	workspaceName := ws.Name
 	m := theme.Metrics
 	root := ui.Box(c).Grow(1)
-	state := *ui.Local(root, "workspace", newWorkspace)
+	state := *ui.Local(root, "workspace-"+string(workspaceID), newWorkspace)
 	width := ui.Local(root, "sidebar-width", func() float32 {
 		return m.SidebarWidth
 	})
-	collections := workspaceCollections(db, workspaceID)
-	environments, selectedEnv := workspaceEnvironments(db, workspaceID)
+	collections := ws.Collections
+	environments := ws.Environments
+	selectedEnv := ws.SelectedEnvironmentID
 	props := pageProps{
 		workspaceID:   workspaceID,
 		workspaceName: workspaceName,
@@ -31,16 +41,12 @@ func View(c *ui.Context, db *store.Store, n nav.Navigator, workspaceID domain.ID
 	}
 	props.actions = pageActions{
 		// 创建集合
-		createCollection: func() {
-			if db == nil {
-				return
-			}
-			// 新建与查看共用同一个概览页：直接建好默认集合再打开。
-			coll, err := db.CreateCollection(workspaceID, locales.NewCollection(), "")
+		createCollection: func(name, desc string) (*domain.Collection, error) {
+			coll, err := db.CreateCollection(workspaceID, name, desc)
 			if err != nil {
-				return
+				return nil, err
 			}
-			state.openTab(string(coll.ID))
+			return coll, nil
 		},
 		createNode: func(targetID domain.ID, kind domain.Kind) {
 			createNodeIn(db, state, collections, kind, string(targetID))
@@ -65,6 +71,24 @@ func View(c *ui.Context, db *store.Store, n nav.Navigator, workspaceID domain.ID
 				return
 			}
 			_ = db.RenameNode(coll.ID, node.ID, name)
+		},
+		updateDescription: func(id, desc string) {
+			coll, node := findNode(collections, id)
+			if coll == nil {
+				return
+			}
+			if node == nil {
+				_ = db.UpdateCollection(coll.ID, func(c *domain.Collection) {
+					c.Description = desc
+				})
+				return
+			}
+			_ = db.UpdateNode(coll.ID, node.ID, func(n *domain.Node) {
+				n.Description = desc
+			})
+		},
+		updateNode: func(collID, nodeID domain.ID, fn func(*domain.Node)) {
+			_ = db.UpdateNode(collID, nodeID, fn)
 		},
 		navigate: n.Push,
 	}

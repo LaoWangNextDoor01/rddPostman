@@ -17,11 +17,13 @@ type pageProps struct {
 
 // pageActions 是所有写操作的外置回调，统一由 View 接到 store。
 type pageActions struct {
-	createCollection  func()
+	createCollection  func(name, description string) (*domain.Collection, error)
 	createNode        func(targetID domain.ID, kind domain.Kind)
 	deleteRow         func(row *treeNode)
 	selectEnvironment func(id domain.ID)
 	openTab           func(id string)
 	rename            func(id, name string)
+	updateDescription func(id, description string)
+	updateNode        func(collID, nodeID domain.ID, fn func(*domain.Node))
 	navigate          func(path string)
 }

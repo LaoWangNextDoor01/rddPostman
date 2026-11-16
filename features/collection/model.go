@@ -5,12 +5,16 @@ import "rddpostman/internal/domain"
 // workspace 是集合页的会话状态：打开的 tab、树上选中项与弹层开关。
 // 集合与请求本身来自 store 快照，这里不保存业务数据。
 type workspace struct {
-	tabs     []string
-	selected string
-	active   string
-	addOpen  bool
-	open     map[string]*bool  // 目录展开状态，缺省展开
-	segs     map[string]string // 每个 tab 当前选中的分段
+	tabs        []string
+	selected    string
+	active      string
+	addOpen     bool
+	newCollOpen bool
+	newCollName string
+	newCollDesc string
+	newCollErr  string
+	open        map[string]*bool  // 目录展开状态，缺省展开
+	segs        map[string]string // 每个 tab 当前选中的分段
 }
 
 func newWorkspace() *workspace {
