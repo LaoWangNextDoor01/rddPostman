@@ -120,7 +120,8 @@ func requestTab(c *ui.Context, props pageProps, coll *domain.Collection, n *doma
 
 // 1. 面包屑导航与可编辑请求名称
 func reqBreadcrumb(c *ui.Context, props pageProps, n *domain.Node, activeID string,
-	title *reqTitleState, tk theme.Tokens, m theme.Metric) {
+	title *reqTitleState, tk theme.Tokens, m theme.Metric,
+) {
 	crumbs := nodeTrail(props.collections, activeID)
 
 	ui.Row(c).Height(26).Gap(m.Space1).AlignItems(ui.Center).Children(func() {
@@ -198,19 +199,20 @@ func reqBreadcrumb(c *ui.Context, props pageProps, n *domain.Node, activeID stri
 		}
 
 		ui.Spacer(c)
-		ui.Text(c, "已保存").FontSize(10).TextColor(tk.TextMuted)
+		ui.Text(c, "已保存").FontSize(m.FontSM).TextColor(tk.TextMuted)
 	})
 }
 
 // 2. 请求行：Method 下拉 + URL 输入框 + 发送按钮
 func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.Node,
-	activeID string, state *reqSessionState, tk theme.Tokens, m theme.Metric) {
+	activeID string, state *reqSessionState, tk theme.Tokens, m theme.Metric,
+) {
 	req := n.Request
 
 	ui.Row(c).Height(36).Gap(m.Space2).AlignItems(ui.Center).Children(func() {
 		// 请求类型选择器（点击弹出 Dropdown）
 		methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
-		methodBtn := ui.ButtonBase(c.Key("req-method-btn-" + activeID)).
+		methodBtn := ui.ButtonBase(c.Key("req-method-btn-"+activeID)).
 			Height(34).PaddingX(10).Gap(6).AlignItems(ui.Center).
 			Radius(m.RadiusMD).Background(tk.BgElevated).Border(m.Border, tk.Border)
 		if methodBtn.Hovered() {
@@ -287,7 +289,8 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 
 // 3. 请求配置 Tab 切换区
 func reqConfigTabs(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.Node,
-	activeID string, state *reqSessionState, tk theme.Tokens, m theme.Metric) {
+	activeID string, state *reqSessionState, tk theme.Tokens, m theme.Metric,
+) {
 	req := n.Request
 
 	tabLabels := []string{
@@ -340,7 +343,8 @@ func reqConfigTabs(c *ui.Context, props pageProps, coll *domain.Collection, n *d
 
 // 通用键值对表格编辑器（用于 Params 和 Headers）
 func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
-	title string, items []domain.KV, onUpdate func([]domain.KV)) {
+	title string, items []domain.KV, onUpdate func([]domain.KV),
+) {
 	ui.Column(c).Grow(1).Children(func() {
 		// 表头
 		ui.Row(c).Height(26).PaddingX(8).AlignItems(ui.Center).
@@ -451,7 +455,8 @@ func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 
 // 认证配置面板
 func renderAuthEditor(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.Node,
-	state *reqSessionState, tk theme.Tokens, m theme.Metric) {
+	state *reqSessionState, tk theme.Tokens, m theme.Metric,
+) {
 	req := n.Request
 	currType := string(n.Auth.Type)
 	if currType == "" {
@@ -570,7 +575,8 @@ func renderAuthEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 
 // 请求体配置面板
 func renderBodyEditor(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.Node,
-	state *reqSessionState, tk theme.Tokens, m theme.Metric) {
+	state *reqSessionState, tk theme.Tokens, m theme.Metric,
+) {
 	req := n.Request
 	mode := string(req.Body.Mode)
 	if mode == "" {
@@ -647,7 +653,8 @@ func renderBodyEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 
 // 传输设置面板
 func renderSettingsEditor(c *ui.Context, props pageProps, coll *domain.Collection,
-	n *domain.Node, tk theme.Tokens, m theme.Metric) {
+	n *domain.Node, tk theme.Tokens, m theme.Metric,
+) {
 	req := n.Request
 
 	timeoutStr := "10000"
@@ -680,7 +687,8 @@ func renderSettingsEditor(c *ui.Context, props pageProps, coll *domain.Collectio
 
 // 4. 底部响应区：支持 Body, Headers, Cookies 的 Tab 切换
 func responsePane(c *ui.Context, props pageProps, n *domain.Node,
-	state *reqSessionState, tk theme.Tokens, m theme.Metric) {
+	state *reqSessionState, tk theme.Tokens, m theme.Metric,
+) {
 	ui.Column(c).Fill().Background(tk.BgSurface).Children(func() {
 		// 响应头状态行
 		ui.Row(c).Height(38).PaddingX(m.Space4).Gap(m.Space2).
@@ -808,7 +816,8 @@ func renderResponseBody(c *ui.Context, body string, tk theme.Tokens, m theme.Met
 
 // tabsRowWithAction 是支持点击切换的下划线 Tab 行
 func tabsRowWithAction(c *ui.Context, labels []string, active int,
-	onSelect func(int), trailing func()) {
+	onSelect func(int), trailing func(),
+) {
 	m := theme.Metrics
 	tk := theme.Of(c)
 	ui.Row(c).Height(32).Gap(m.Space5).
