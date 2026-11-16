@@ -1,7 +1,6 @@
 package collection
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -9,7 +8,6 @@ import (
 	"rddpostman/components/theme"
 	"rddpostman/components/v1/icons"
 	"rddpostman/internal/domain"
-	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -22,7 +20,7 @@ type reqTitleState struct {
 	draft   string
 }
 
-// reqSessionState 维护请求 tab 的运行时会话状态（Tab 选中、下拉展开、临时输入草稿与拆分高度）。
+// reqSessionState 维护请求 tab 的运行时会话状态（Tab 选中、下拉展开、本地草稿与拆分高度）。
 type reqSessionState struct {
 	id           string
 	reqTab       int     // 0: Params, 1: Authorization, 2: Headers, 3: Body, 4: Settings
@@ -33,6 +31,17 @@ type reqSessionState struct {
 	bodyRawDraft string  // Raw 请求体本地编辑草稿
 	splitHeight  float32 // 请求区与响应区的上下分栏高度
 
+	// 可编辑表单与列表草稿（保证 TextInputBase 在重绘时不被擦除）
+	queryDraft      []domain.KV
+	headersDraft    []domain.KV
+	bodyFieldsDraft []domain.KV
+	authTokenDraft  string
+	authUserDraft   string
+	authPassDraft   string
+	authKeyDraft    string
+	authValDraft    string
+	timeoutDraft    string
+
 	// 响应区展示状态
 	hasResponse  bool
 	respStatus   int
@@ -41,26 +50,89 @@ type reqSessionState struct {
 	respBody     string
 }
 
-func defaultSessionState(id string, req *domain.Request) reqSessionState {
+func defaultSessionState(id string, req *domain.Request, auth *domain.Auth) reqSessionState {
 	url := ""
 	rawBody := ""
+	var query []domain.KV
+	var headers []domain.KV
+	var bodyFields []domain.KV
+	timeoutStr := "10000"
+
 	if req != nil {
 		url = req.URL
 		rawBody = req.Body.Raw
+		if len(req.Query) > 0 {
+			query = make([]domain.KV, len(req.Query))
+			copy(query, req.Query)
+		}
+		if len(req.Headers) > 0 {
+			headers = make([]domain.KV, len(req.Headers))
+			copy(headers, req.Headers)
+		}
+		if len(req.Body.Fields) > 0 {
+			bodyFields = make([]domain.KV, len(req.Body.Fields))
+			copy(bodyFields, req.Body.Fields)
+		}
+		if req.Options.TimeoutMS > 0 {
+			timeoutStr = strconv.Itoa(req.Options.TimeoutMS)
+		}
 	}
+
+	// 保证 Params、Headers、Body 默认至少有一行空白行以便直接输入
+	if len(query) == 0 {
+		query = parseQueryFromURL(url)
+	}
+	if len(headers) == 0 {
+		headers = []domain.KV{{ID: domain.NewID(), Enabled: true}}
+	}
+	if len(bodyFields) == 0 {
+		bodyFields = []domain.KV{{ID: domain.NewID(), Enabled: true}}
+	}
+
+	authToken := ""
+	authUser := ""
+	authPass := ""
+	authKey := ""
+	authVal := ""
+	if auth != nil {
+		for _, p := range auth.Params {
+			switch p.Key {
+			case "token":
+				authToken = p.Value
+			case "username":
+				authUser = p.Value
+			case "password":
+				authPass = p.Value
+			case "key":
+				authKey = p.Value
+			case "value":
+				authVal = p.Value
+			}
+		}
+	}
+
 	defaultResp := "{\n  \"status\": \"success\",\n  \"code\": 200,\n  \"message\": \"Request processed successfully\",\n  \"data\": {\n    \"requestId\": \"req_88f921a4\",\n    \"timestamp\": 1731750000,\n    \"service\": \"rddPostman Engine v1.0\",\n    \"client\": \"Desktop / Windows\"\n  }\n}"
 	return reqSessionState{
-		id:           id,
-		reqTab:       0,
-		respTab:      0,
-		urlDraft:     url,
-		bodyRawDraft: rawBody,
-		splitHeight:  340,
-		hasResponse:  true,
-		respStatus:   200,
-		respDuration: "142 ms",
-		respSize:     "1.85 KB",
-		respBody:     defaultResp,
+		id:              id,
+		reqTab:          0,
+		respTab:         0,
+		urlDraft:        url,
+		bodyRawDraft:    rawBody,
+		splitHeight:     340,
+		queryDraft:      query,
+		headersDraft:    headers,
+		bodyFieldsDraft: bodyFields,
+		authTokenDraft:  authToken,
+		authUserDraft:   authUser,
+		authPassDraft:   authPass,
+		authKeyDraft:    authKey,
+		authValDraft:    authVal,
+		timeoutDraft:    timeoutStr,
+		hasResponse:     true,
+		respStatus:      200,
+		respDuration:    "142 ms",
+		respSize:        "1.85 KB",
+		respBody:        defaultResp,
 	}
 }
 
@@ -82,10 +154,10 @@ func requestTab(c *ui.Context, props pageProps, coll *domain.Collection, n *doma
 	}
 
 	state := ui.Local(root, "req-session-"+activeID, func() reqSessionState {
-		return defaultSessionState(activeID, req)
+		return defaultSessionState(activeID, req, &n.Auth)
 	})
 	if state.id != activeID {
-		*state = defaultSessionState(activeID, req)
+		*state = defaultSessionState(activeID, req, &n.Auth)
 	}
 
 	// 同步外部变更
@@ -125,18 +197,62 @@ func reqBreadcrumb(c *ui.Context, props pageProps, n *domain.Node, activeID stri
 	crumbs := nodeTrail(props.collections, activeID)
 
 	ui.Row(c).Height(26).Gap(m.Space1).AlignItems(ui.Center).Children(func() {
-		ui.Icon(c, icons.Get("folder")).FontSize(11).TextColor(tk.TextMuted)
-
 		for i, cr := range crumbs {
-			cr := cr
+			i, cr := i, cr
 			isLast := i == len(crumbs)-1
+
 			if i > 0 {
-				ui.Text(c, "/").FontSize(m.FontXS).TextColor(tk.TextMuted).Margin(0, 1)
+				ui.Text(c, "/").FontSize(m.FontSM).
+					TextColor(tk.TextMuted).Margin(0, 2)
 			}
 
-			if !isLast {
-				btn := ui.ButtonBase(c.Key("req-crumb-" + activeID + "-" + cr.ID)).
-					Height(20).PaddingX(4).Radius(m.RadiusSM).AlignItems(ui.Center)
+			if isLast {
+				// 最后一项：进入行内编辑或展示可点击态
+				if title.editing {
+					in := ui.TextInputBase(c.Key("req-title-input"), &title.draft).
+						Height(22).Padding(0, 6).
+						Radius(m.RadiusSM).Border(m.Border, tk.FocusRing).
+						Background(tk.BgElevated).
+						FontSize(m.FontSM).TextColor(tk.TextPrimary)
+					if title.fresh {
+						in.Focus()
+						title.fresh = false
+					}
+					if in.Submitted() || in.FocusLeft() {
+						title.editing = false
+						trimmed := strings.TrimSpace(title.draft)
+						if trimmed != "" && trimmed != n.Name {
+							n.Name = trimmed
+							props.actions.rename(activeID, trimmed)
+						} else {
+							title.draft = n.Name
+						}
+					}
+					if in.Shortcut(0, ui.KeyEscape) {
+						title.editing = false
+						title.draft = n.Name
+					}
+				} else {
+					btn := ui.ButtonBase(c.Key("req-title-btn-" + activeID)).
+						Height(22).PaddingX(6).Radius(m.RadiusSM).
+						AlignItems(ui.Center).Gap(4)
+					if btn.Hovered() {
+						btn.Background(tk.HoverSurface)
+					}
+					if btn.Clicked() {
+						title.editing = true
+						title.fresh = true
+						title.draft = n.Name
+					}
+					btn.Children(func() {
+						ui.Text(c, n.Name).FontSize(m.FontSM).FontWeight(600).
+							TextColor(tk.TextPrimary).SingleLine()
+						ui.Icon(c, icons.Get("file-pen")).Size(11, 11).TextColor(tk.TextMuted)
+					})
+				}
+			} else {
+				btn := ui.ButtonBase(c.Key("req-crumb-" + cr.ID)).
+					Height(22).PaddingX(4).Radius(m.RadiusSM).AlignItems(ui.Center)
 				if btn.Hovered() {
 					btn.Background(tk.HoverSurface)
 				}
@@ -144,57 +260,13 @@ func reqBreadcrumb(c *ui.Context, props pageProps, n *domain.Node, activeID stri
 					props.actions.openTab(cr.ID)
 				}
 				btn.Children(func() {
-					color := tk.TextMuted
+					textColor := tk.TextMuted
 					if btn.Hovered() {
-						color = tk.TextPrimary
+						textColor = tk.TextPrimary
 					}
-					ui.Text(c, cr.Name).FontSize(m.FontXS).TextColor(color).SingleLine()
+					ui.Text(c, cr.Name).FontSize(m.FontSM).
+						TextColor(textColor).SingleLine()
 				})
-			} else {
-				// 最后一项：当前请求名称，支持点击编辑
-				if !title.editing {
-					nameBtn := ui.ButtonBase(c.Key("req-name-btn-" + activeID)).Height(22).
-						PaddingX(6).Radius(m.RadiusSM).AlignItems(ui.Center).Gap(4)
-					if nameBtn.Hovered() {
-						nameBtn.Background(tk.HoverSurface)
-					}
-					if nameBtn.Clicked() {
-						title.editing = true
-						title.fresh = true
-						title.draft = n.Name
-					}
-					nameBtn.Children(func() {
-						ui.Text(c, n.Name).FontSize(m.FontSM).Bold().
-							TextColor(tk.TextPrimary).SingleLine()
-						if nameBtn.Hovered() {
-							ui.Icon(c, icons.Get("file-pen")).FontSize(11).
-								TextColor(tk.TextMuted)
-						}
-					})
-				} else {
-					in := ui.TextInputBase(c, &title.draft).Height(22).Padding(0, 6).
-						Radius(m.RadiusSM).Border(m.Border, tk.Accent).
-						FontSize(m.FontSM).Bold().TextColor(tk.TextPrimary)
-					if title.fresh {
-						title.fresh = false
-						in.AutoFocus()
-					}
-					done := func(keep bool) {
-						title.editing = false
-						if !keep {
-							return
-						}
-						next := strings.TrimSpace(title.draft)
-						if next != "" && next != n.Name {
-							props.actions.rename(string(n.ID), next)
-						}
-					}
-					if in.Submitted() || in.FocusLeft() {
-						done(true)
-					} else if in.Shortcut(0, ui.KeyEscape) {
-						done(false)
-					}
-				}
 			}
 		}
 
@@ -256,14 +328,17 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 		urlBox := ui.Row(c).Grow(1).Height(34).PaddingX(10).AlignItems(ui.Center).
 			Radius(m.RadiusMD).Background(tk.BgSurface).Border(m.Border, tk.Border)
 		urlBox.Children(func() {
-			in := ui.TextInputBase(c, &state.urlDraft).FillWidth().
+			in := ui.TextInputBase(c.Key("req-url-input"), &state.urlDraft).FillWidth().
 				FontSize(m.FontSM).TextColor(tk.TextPrimary).
 				Placeholder("输入请求 URL 地址，例如 https://api.example.com/v1/users")
 			if in.Submitted() || in.FocusLeft() {
+				// 同步 URL 到 Query Params
+				state.queryDraft = parseQueryFromURL(state.urlDraft)
 				if state.urlDraft != req.URL {
 					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
 						if node.Request != nil {
 							node.Request.URL = strings.TrimSpace(state.urlDraft)
+							node.Request.Query = cleanKVList(state.queryDraft)
 						}
 					})
 				}
@@ -273,15 +348,15 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 		// 发送按钮
 		sendBtn := ui.PrimaryButton(c, "发送").Height(34).PaddingX(16).FontSize(m.FontSM)
 		if sendBtn.Clicked() {
-			// 保存最新状态并模拟触发请求响应
 			props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
 				if node.Request != nil {
 					node.Request.URL = strings.TrimSpace(state.urlDraft)
+					node.Request.Query = cleanKVList(state.queryDraft)
 				}
 			})
 			state.hasResponse = true
 			state.respStatus = 200
-			state.respDuration = "96 ms"
+			state.respDuration = "89 ms"
 			state.respSize = "1.42 KB"
 		}
 	})
@@ -291,12 +366,13 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 func reqConfigTabs(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.Node,
 	activeID string, state *reqSessionState, tk theme.Tokens, m theme.Metric,
 ) {
-	req := n.Request
+	paramCount := countActiveKV(state.queryDraft)
+	headerCount := countActiveKV(state.headersDraft)
 
 	tabLabels := []string{
-		fmt.Sprintf("Params (%d)", len(req.Query)),
+		fmt.Sprintf("Params (%d)", paramCount),
 		"Authorization",
-		fmt.Sprintf("Headers (%d)", len(req.Headers)),
+		fmt.Sprintf("Headers (%d)", headerCount),
 		"Body",
 		"Settings",
 	}
@@ -311,11 +387,13 @@ func reqConfigTabs(c *ui.Context, props pageProps, coll *domain.Collection, n *d
 	ui.Column(c).Grow(1).Padding(m.Space2, 0).Children(func() {
 		switch state.reqTab {
 		case 0:
-			// Params 参数编辑
-			renderKVEditor(c, tk, m, "Query Parameters", req.Query, func(items []domain.KV) {
+			// Params 参数编辑（与 URL 保持双向联动）
+			renderKVEditor(c, tk, m, "query", &state.queryDraft, func(items []domain.KV) {
+				state.urlDraft = syncQueryToURL(state.urlDraft, items)
 				props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
 					if node.Request != nil {
-						node.Request.Query = items
+						node.Request.Query = cleanKVList(items)
+						node.Request.URL = state.urlDraft
 					}
 				})
 			})
@@ -324,10 +402,10 @@ func reqConfigTabs(c *ui.Context, props pageProps, coll *domain.Collection, n *d
 			renderAuthEditor(c, props, coll, n, state, tk, m)
 		case 2:
 			// Headers 请求头编辑
-			renderKVEditor(c, tk, m, "Headers", req.Headers, func(items []domain.KV) {
+			renderKVEditor(c, tk, m, "headers", &state.headersDraft, func(items []domain.KV) {
 				props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
 					if node.Request != nil {
-						node.Request.Headers = items
+						node.Request.Headers = cleanKVList(items)
 					}
 				})
 			})
@@ -336,15 +414,22 @@ func reqConfigTabs(c *ui.Context, props pageProps, coll *domain.Collection, n *d
 			renderBodyEditor(c, props, coll, n, state, tk, m)
 		case 4:
 			// Settings 传输设置
-			renderSettingsEditor(c, props, coll, n, tk, m)
+			renderSettingsEditor(c, props, coll, n, state, tk, m)
 		}
 	})
 }
 
-// 通用键值对表格编辑器（用于 Params 和 Headers）
+// 通用键值对表格编辑器（用于 Params、Headers、Body Fields）
 func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
-	title string, items []domain.KV, onUpdate func([]domain.KV),
+	keyPrefix string, items *[]domain.KV, onPersist func([]domain.KV),
 ) {
+	if items == nil {
+		return
+	}
+	if len(*items) == 0 {
+		*items = []domain.KV{{ID: domain.NewID(), Enabled: true}}
+	}
+
 	ui.Column(c).Grow(1).Children(func() {
 		// 表头
 		ui.Row(c).Height(26).PaddingX(8).AlignItems(ui.Center).
@@ -360,91 +445,115 @@ func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 				ui.Box(c).Width(28) // 操作占位
 			})
 
-		// 列表项
-		if len(items) == 0 {
-			ui.Row(c).Height(40).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-				ui.Text(c, "暂无配置项，点击下方按钮添加").FontSize(m.FontXS).
-					TextColor(tk.TextMuted)
-			})
-		} else {
-			for i, kv := range items {
-				i, kv := i, kv
-				ui.Row(c).Height(32).PaddingX(8).AlignItems(ui.Center).Gap(6).
-					BorderWidth(0, 0, m.Border, 0).BorderColor(tk.Border.Alpha(0.5)).
-					Children(func() {
-						// 复选框
-						chk := ui.ButtonBase(c.Key(fmt.Sprintf("chk-%s-%d", title, i))).
-							Size(14, 14).Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center)
-						if kv.Enabled {
-							chk.Background(tk.Accent)
-							chk.Children(func() {
-								ui.Icon(c, icons.Get("check")).Size(10, 10).TextColor(tk.BgSurface)
-							})
-						} else {
-							chk.Border(m.Border, tk.Border)
-						}
-						if chk.Clicked() {
-							cp := append([]domain.KV(nil), items...)
-							cp[i].Enabled = !cp[i].Enabled
-							onUpdate(cp)
-						}
+		// 列表行
+		list := *items
+		for i := 0; i < len(list); i++ {
+			i := i
+			kv := &(*items)[i]
 
-						// Key 输入
-						keyIn := ui.TextInputBase(c, &kv.Key).Width(160).FontSize(m.FontSM).
-							TextColor(tk.TextPrimary).Placeholder("Key")
-						if keyIn.FocusLeft() || keyIn.Submitted() {
-							cp := append([]domain.KV(nil), items...)
-							cp[i].Key = kv.Key
-							onUpdate(cp)
-						}
-
-						// Value 输入
-						valIn := ui.TextInputBase(c, &kv.Value).Grow(1).FontSize(m.FontSM).
-							TextColor(tk.Info).Placeholder("Value")
-						if valIn.FocusLeft() || valIn.Submitted() {
-							cp := append([]domain.KV(nil), items...)
-							cp[i].Value = kv.Value
-							onUpdate(cp)
-						}
-
-						// Desc 输入
-						descIn := ui.TextInputBase(c, &kv.Desc).Width(140).FontSize(m.FontSM).
-							TextColor(tk.TextMuted).Placeholder("Description")
-						if descIn.FocusLeft() || descIn.Submitted() {
-							cp := append([]domain.KV(nil), items...)
-							cp[i].Desc = kv.Desc
-							onUpdate(cp)
-						}
-
-						// 删除按钮
-						delBtn := ui.ButtonBase(c.Key(fmt.Sprintf("del-%s-%d", title, i))).
-							Size(22, 22).Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center)
-						if delBtn.Hovered() {
-							delBtn.Background(tk.HoverSurface)
-						}
-						if delBtn.Clicked() {
-							cp := append([]domain.KV(nil), items[:i]...)
-							cp = append(cp, items[i+1:]...)
-							onUpdate(cp)
-						}
-						delBtn.Children(func() {
-							ui.Icon(c, icons.Get("trash")).Size(12, 12).TextColor(tk.TextMuted)
+			ui.Row(c).Height(34).PaddingX(8).AlignItems(ui.Center).Gap(6).
+				BorderWidth(0, 0, m.Border, 0).BorderColor(tk.Border.Alpha(0.4)).
+				Children(func() {
+					// 1. 复选框（启用/停用）
+					chk := ui.ButtonBase(c.Key(fmt.Sprintf("%s-chk-%d", keyPrefix, i))).
+						Size(16, 16).Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center)
+					if kv.Enabled {
+						chk.Background(tk.Accent)
+						chk.Children(func() {
+							ui.Icon(c, icons.Get("check")).Size(11, 11).TextColor(tk.BgSurface)
 						})
+					} else {
+						chk.Border(m.Border, tk.Border)
+					}
+					if chk.Clicked() {
+						kv.Enabled = !kv.Enabled
+						onPersist(*items)
+					}
+
+					// 2. Key 输入框
+					keyIn := ui.TextInputBase(c.Key(fmt.Sprintf("%s-key-%d", keyPrefix, i)), &kv.Key).
+						Width(160).Height(26).Padding(2, 6).Radius(m.RadiusSM).
+						Border(m.Border, tk.Border.Alpha(0.6)).Background(tk.BgElevated.Alpha(0.3)).
+						FontSize(m.FontSM).TextColor(tk.TextPrimary).Placeholder("Key")
+					if keyIn.Focused() {
+						keyIn.Border(m.Border, tk.FocusRing).Background(tk.BgSurface)
+					} else if keyIn.Hovered() {
+						keyIn.Border(m.Border, tk.Border)
+					}
+					if keyIn.Changed() {
+						// 若在最后一行输入，自动追加新的一行空白项方便连续输入
+						if i == len(*items)-1 && (kv.Key != "" || kv.Value != "") {
+							*items = append(*items, domain.KV{ID: domain.NewID(), Enabled: true})
+						}
+					}
+					if keyIn.FocusLeft() || keyIn.Submitted() {
+						onPersist(*items)
+					}
+
+					// 3. Value 输入框
+					valIn := ui.TextInputBase(c.Key(fmt.Sprintf("%s-val-%d", keyPrefix, i)), &kv.Value).
+						Grow(1).Height(26).Padding(2, 6).Radius(m.RadiusSM).
+						Border(m.Border, tk.Border.Alpha(0.6)).Background(tk.BgElevated.Alpha(0.3)).
+						FontSize(m.FontSM).TextColor(tk.Info).Placeholder("Value")
+					if valIn.Focused() {
+						valIn.Border(m.Border, tk.FocusRing).Background(tk.BgSurface)
+					} else if valIn.Hovered() {
+						valIn.Border(m.Border, tk.Border)
+					}
+					if valIn.Changed() {
+						if i == len(*items)-1 && (kv.Key != "" || kv.Value != "") {
+							*items = append(*items, domain.KV{ID: domain.NewID(), Enabled: true})
+						}
+					}
+					if valIn.FocusLeft() || valIn.Submitted() {
+						onPersist(*items)
+					}
+
+					// 4. Description 输入框
+					descIn := ui.TextInputBase(c.Key(fmt.Sprintf("%s-desc-%d", keyPrefix, i)), &kv.Desc).
+						Width(140).Height(26).Padding(2, 6).Radius(m.RadiusSM).
+						Border(m.Border, tk.Border.Alpha(0.6)).Background(tk.BgElevated.Alpha(0.3)).
+						FontSize(m.FontSM).TextColor(tk.TextMuted).Placeholder("Description")
+					if descIn.Focused() {
+						descIn.Border(m.Border, tk.FocusRing).Background(tk.BgSurface)
+					} else if descIn.Hovered() {
+						descIn.Border(m.Border, tk.Border)
+					}
+					if descIn.FocusLeft() || descIn.Submitted() {
+						onPersist(*items)
+					}
+
+					// 5. 删除行按钮
+					delBtn := ui.ButtonBase(c.Key(fmt.Sprintf("%s-del-%d", keyPrefix, i))).
+						Size(22, 22).Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center)
+					if delBtn.Hovered() {
+						delBtn.Background(tk.HoverSurface)
+					}
+					if delBtn.Clicked() {
+						cp := append([]domain.KV(nil), (*items)[:i]...)
+						cp = append(cp, (*items)[i+1:]...)
+						if len(cp) == 0 {
+							cp = append(cp, domain.KV{ID: domain.NewID(), Enabled: true})
+						}
+						*items = cp
+						onPersist(*items)
+					}
+					delBtn.Children(func() {
+						ui.Icon(c, icons.Get("trash")).Size(12, 12).TextColor(tk.TextMuted)
 					})
-			}
+				})
 		}
 
 		// 底部添加按钮
-		ui.Box(c).Height(4)
-		addBtn := ui.ButtonBase(c.Key("add-row-" + title)).Height(24).PaddingX(8).
+		ui.Box(c).Height(6)
+		addBtn := ui.ButtonBase(c.Key("add-row-" + keyPrefix)).Height(24).PaddingX(8).
 			Radius(m.RadiusSM).AlignItems(ui.Center).Gap(4)
 		if addBtn.Hovered() {
 			addBtn.Background(tk.HoverSurface)
 		}
 		if addBtn.Clicked() {
-			cp := append([]domain.KV(nil), items...)
-			cp = append(cp, domain.KV{ID: domain.NewID(), Enabled: true})
-			onUpdate(cp)
+			*items = append(*items, domain.KV{ID: domain.NewID(), Enabled: true})
+			onPersist(*items)
 		}
 		addBtn.Children(func() {
 			ui.Icon(c, icons.Get("plus")).Size(12, 12).TextColor(tk.Accent)
@@ -508,62 +617,95 @@ func renderAuthEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 					FontSize(m.FontSM).TextColor(tk.TextMuted)
 			})
 		case "bearer":
-			tokenVal := ""
-			for _, p := range n.Auth.Params {
-				if p.Key == "token" {
-					tokenVal = p.Value
-				}
-			}
 			ui.Row(c).Height(32).AlignItems(ui.Center).Gap(8).Children(func() {
 				ui.Text(c, "Token:").FontSize(m.FontSM).TextColor(tk.TextSecondary).Width(60)
-				in := ui.TextInputBase(c, &tokenVal).Grow(1).Height(28).PaddingX(8).
+				in := ui.TextInputBase(c.Key("auth-bearer-token"), &state.authTokenDraft).
+					Grow(1).Height(28).PaddingX(8).
 					Radius(m.RadiusSM).Border(m.Border, tk.Border).
 					FontSize(m.FontSM).TextColor(tk.TextPrimary).Placeholder("输入 Bearer Token")
+				if in.Focused() {
+					in.Border(m.Border, tk.FocusRing)
+				}
 				if in.FocusLeft() || in.Submitted() {
 					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
-						node.Auth.Params = []domain.KV{{Key: "token", Value: tokenVal, Enabled: true}}
+						node.Auth.Params = []domain.KV{{Key: "token", Value: state.authTokenDraft, Enabled: true}}
 					})
 				}
 			})
 		case "basic":
-			userVal, passVal := "", ""
-			for _, p := range n.Auth.Params {
-				if p.Key == "username" {
-					userVal = p.Value
-				}
-				if p.Key == "password" {
-					passVal = p.Value
-				}
-			}
 			ui.Column(c).Gap(6).Children(func() {
 				ui.Row(c).Height(30).AlignItems(ui.Center).Gap(8).Children(func() {
 					ui.Text(c, "用户名:").FontSize(m.FontSM).TextColor(tk.TextSecondary).Width(60)
-					in := ui.TextInputBase(c, &userVal).Width(240).Height(28).PaddingX(8).
+					in := ui.TextInputBase(c.Key("auth-basic-user"), &state.authUserDraft).
+						Width(240).Height(28).PaddingX(8).
 						Radius(m.RadiusSM).Border(m.Border, tk.Border).
 						FontSize(m.FontSM).TextColor(tk.TextPrimary)
+					if in.Focused() {
+						in.Border(m.Border, tk.FocusRing)
+					}
 					if in.FocusLeft() || in.Submitted() {
 						props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
 							node.Auth.Params = []domain.KV{
-								{Key: "username", Value: userVal, Enabled: true},
-								{Key: "password", Value: passVal, Enabled: true},
+								{Key: "username", Value: state.authUserDraft, Enabled: true},
+								{Key: "password", Value: state.authPassDraft, Enabled: true},
 							}
 						})
 					}
 				})
 				ui.Row(c).Height(30).AlignItems(ui.Center).Gap(8).Children(func() {
 					ui.Text(c, "密码:").FontSize(m.FontSM).TextColor(tk.TextSecondary).Width(60)
-					in := ui.TextInputBase(c, &passVal).Width(240).Height(28).PaddingX(8).
+					in := ui.TextInputBase(c.Key("auth-basic-pass"), &state.authPassDraft).
+						Width(240).Height(28).PaddingX(8).
 						Radius(m.RadiusSM).Border(m.Border, tk.Border).
 						FontSize(m.FontSM).TextColor(tk.TextPrimary)
+					if in.Focused() {
+						in.Border(m.Border, tk.FocusRing)
+					}
 					if in.FocusLeft() || in.Submitted() {
 						props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
 							node.Auth.Params = []domain.KV{
-								{Key: "username", Value: userVal, Enabled: true},
-								{Key: "password", Value: passVal, Enabled: true},
+								{Key: "username", Value: state.authUserDraft, Enabled: true},
+								{Key: "password", Value: state.authPassDraft, Enabled: true},
 							}
 						})
 					}
 				})
+			})
+		case "apikey":
+			ui.Row(c).Height(30).AlignItems(ui.Center).Gap(8).Children(func() {
+				ui.Text(c, "Key:").FontSize(m.FontSM).TextColor(tk.TextSecondary).Width(50)
+				keyIn := ui.TextInputBase(c.Key("auth-apikey-key"), &state.authKeyDraft).
+					Width(180).Height(28).PaddingX(8).
+					Radius(m.RadiusSM).Border(m.Border, tk.Border).
+					FontSize(m.FontSM).TextColor(tk.TextPrimary).Placeholder("Header/Query 名")
+				if keyIn.Focused() {
+					keyIn.Border(m.Border, tk.FocusRing)
+				}
+				if keyIn.FocusLeft() || keyIn.Submitted() {
+					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+						node.Auth.Params = []domain.KV{
+							{Key: "key", Value: state.authKeyDraft, Enabled: true},
+							{Key: "value", Value: state.authValDraft, Enabled: true},
+						}
+					})
+				}
+
+				ui.Text(c, "Value:").FontSize(m.FontSM).TextColor(tk.TextSecondary).Width(50)
+				valIn := ui.TextInputBase(c.Key("auth-apikey-val"), &state.authValDraft).
+					Width(220).Height(28).PaddingX(8).
+					Radius(m.RadiusSM).Border(m.Border, tk.Border).
+					FontSize(m.FontSM).TextColor(tk.TextPrimary).Placeholder("Key 值")
+				if valIn.Focused() {
+					valIn.Border(m.Border, tk.FocusRing)
+				}
+				if valIn.FocusLeft() || valIn.Submitted() {
+					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+						node.Auth.Params = []domain.KV{
+							{Key: "key", Value: state.authKeyDraft, Enabled: true},
+							{Key: "value", Value: state.authValDraft, Enabled: true},
+						}
+					})
+				}
 			})
 		case "none":
 			ui.Text(c, "当前请求不使用任何认证凭证。").FontSize(m.FontSM).
@@ -640,10 +782,10 @@ func renderBodyEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 				}
 			}
 		case "form-data", "urlencoded":
-			renderKVEditor(c, tk, m, "Body Fields", req.Body.Fields, func(items []domain.KV) {
+			renderKVEditor(c, tk, m, "body-fields", &state.bodyFieldsDraft, func(items []domain.KV) {
 				props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
 					if node.Request != nil {
-						node.Request.Body.Fields = items
+						node.Request.Body.Fields = cleanKVList(items)
 					}
 				})
 			})
@@ -653,35 +795,89 @@ func renderBodyEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 
 // 传输设置面板
 func renderSettingsEditor(c *ui.Context, props pageProps, coll *domain.Collection,
-	n *domain.Node, tk theme.Tokens, m theme.Metric,
+	n *domain.Node, state *reqSessionState, tk theme.Tokens, m theme.Metric,
 ) {
 	req := n.Request
 
-	timeoutStr := "10000"
-	if req.Options.TimeoutMS > 0 {
-		timeoutStr = strconv.Itoa(req.Options.TimeoutMS)
+	followRedirects := true
+	if req.Options.FollowRedirects != nil {
+		followRedirects = *req.Options.FollowRedirects
+	}
+	verifySSL := true
+	if req.Options.VerifyTLS != nil {
+		verifySSL = *req.Options.VerifyTLS
 	}
 
-	ui.Column(c).Grow(1).Gap(12).Children(func() {
-		ui.Row(c).Height(30).AlignItems(ui.Center).Gap(10).Children(func() {
-			ui.Text(c, "超时时间 (Timeout ms):").FontSize(m.FontSM).
+	ui.Column(c).Grow(1).Gap(12).Padding(4, 0).Children(func() {
+		ui.Row(c).Height(32).AlignItems(ui.Center).Gap(8).Children(func() {
+			ui.Text(c, "请求超时时间 (ms):").FontSize(m.FontSM).
 				TextColor(tk.TextSecondary).Width(160)
-			in := ui.TextInputBase(c, &timeoutStr).Width(120).Height(26).PaddingX(6).
+			in := ui.TextInputBase(c.Key("settings-timeout-input"), &state.timeoutDraft).
+				Width(120).Height(26).PaddingX(6).
 				Radius(m.RadiusSM).Border(m.Border, tk.Border).
 				FontSize(m.FontSM).TextColor(tk.TextPrimary)
+			if in.Focused() {
+				in.Border(m.Border, tk.FocusRing)
+			}
 			if in.FocusLeft() || in.Submitted() {
-				if val, err := strconv.Atoi(timeoutStr); err == nil && val > 0 {
-					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
-						if node.Request != nil {
-							node.Request.Options.TimeoutMS = val
-						}
-					})
+				timeout, _ := strconv.Atoi(state.timeoutDraft)
+				if timeout <= 0 {
+					timeout = 10000
+					state.timeoutDraft = "10000"
 				}
+				props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+					if node.Request != nil {
+						node.Request.Options.TimeoutMS = timeout
+					}
+				})
 			}
 		})
 
-		ui.Text(c, "更多传输策略遵循工作区默认网络配置。").FontSize(10).
-			TextColor(tk.TextMuted)
+		ui.Row(c).Height(28).AlignItems(ui.Center).Gap(8).Children(func() {
+			chk := ui.ButtonBase(c.Key("settings-follow-redirects")).
+				Size(16, 16).Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center)
+			if followRedirects {
+				chk.Background(tk.Accent)
+				chk.Children(func() {
+					ui.Icon(c, icons.Get("check")).Size(11, 11).TextColor(tk.BgSurface)
+				})
+			} else {
+				chk.Border(m.Border, tk.Border)
+			}
+			if chk.Clicked() {
+				val := !followRedirects
+				props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+					if node.Request != nil {
+						node.Request.Options.FollowRedirects = &val
+					}
+				})
+			}
+			ui.Text(c, "自动跟随 HTTP 重定向 (Follow Redirects)").FontSize(m.FontSM).
+				TextColor(tk.TextSecondary)
+		})
+
+		ui.Row(c).Height(28).AlignItems(ui.Center).Gap(8).Children(func() {
+			chk := ui.ButtonBase(c.Key("settings-verify-ssl")).
+				Size(16, 16).Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center)
+			if verifySSL {
+				chk.Background(tk.Accent)
+				chk.Children(func() {
+					ui.Icon(c, icons.Get("check")).Size(11, 11).TextColor(tk.BgSurface)
+				})
+			} else {
+				chk.Border(m.Border, tk.Border)
+			}
+			if chk.Clicked() {
+				val := !verifySSL
+				props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+					if node.Request != nil {
+						node.Request.Options.VerifyTLS = &val
+					}
+				})
+			}
+			ui.Text(c, "开启 SSL/TLS 证书有效性校验 (Verify SSL)").FontSize(m.FontSM).
+				TextColor(tk.TextSecondary)
+		})
 	})
 }
 
@@ -692,126 +888,178 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 	ui.Column(c).Fill().Background(tk.BgSurface).Children(func() {
 		// 响应头状态行
 		ui.Row(c).Height(38).PaddingX(m.Space4).Gap(m.Space2).
-			AlignItems(ui.Center).BorderWidth(m.Border, 0, 0, 0).
-			BorderColor(tk.Border).Children(func() {
-			ui.Text(c, locales.Response()).FontSize(m.FontSM).Bold().
-				TextColor(tk.TextPrimary)
-
-			if state.hasResponse {
+			AlignItems(ui.Center).BorderWidth(m.Border, 0, m.Border, 0).
+			BorderColor(tk.Border).Background(tk.BgElevated.Alpha(0.3)).
+			Children(func() {
 				// 状态码 Badge
-				badgeBg := tk.Success.Alpha(0.12)
-				badgeColor := tk.Success
+				statusBg := tk.Success.Alpha(0.15)
+				statusColor := tk.Success
 				if state.respStatus >= 400 {
-					badgeBg = tk.Danger.Alpha(0.12)
-					badgeColor = tk.Danger
+					statusBg = tk.Danger.Alpha(0.15)
+					statusColor = tk.Danger
 				}
-				ui.Text(c, fmt.Sprintf("%d OK", state.respStatus)).FontSize(11).Bold().
-					TextColor(badgeColor).Padding(2, 6).Radius(m.RadiusSM).
-					Background(badgeBg)
+				ui.Box(c).Padding(2, 8).Radius(m.RadiusSM).
+					Background(statusBg).Children(func() {
+					ui.Text(c, fmt.Sprintf("%d OK", state.respStatus)).
+						FontSize(m.FontXS).Bold().TextColor(statusColor)
+				})
 
-				ui.Text(c, fmt.Sprintf("%s · %s", state.respDuration, state.respSize)).
-					FontSize(10).TextColor(tk.TextMuted)
-			} else {
-				ui.Text(c, "未发送请求").FontSize(10).TextColor(tk.TextMuted)
-			}
+				// 耗时与响应大小
+				ui.Text(c, state.respDuration).FontSize(m.FontXS).TextColor(tk.TextMuted)
+				ui.Box(c).Size(3, 3).Radius(m.RadiusFull).Background(tk.TextMuted)
+				ui.Text(c, state.respSize).FontSize(m.FontXS).TextColor(tk.TextMuted)
 
-			ui.Spacer(c)
-			ui.Text(c, "Network Ready").FontSize(10).TextColor(tk.TextMuted)
+				ui.Spacer(c)
+
+				// 复制响应内容
+				copyBtn := ui.ButtonBase(c.Key("resp-copy-btn")).Height(24).PaddingX(8).
+					Radius(m.RadiusSM).AlignItems(ui.Center).Gap(4)
+				if copyBtn.Hovered() {
+					copyBtn.Background(tk.HoverSurface)
+				}
+				if copyBtn.Clicked() {
+					c.Services().WriteClipboard(state.respBody)
+				}
+				copyBtn.Children(func() {
+					ui.Icon(c, icons.Get("copy")).Size(11, 11).TextColor(tk.TextMuted)
+					ui.Text(c, "复制").FontSize(m.FontXS).TextColor(tk.TextMuted)
+				})
+			})
+
+		// 响应 Tab 栏（Body, Headers, Cookies）
+		ui.Row(c).PaddingX(m.Space4).Children(func() {
+			respTabs := []string{"Body", "Headers (6)", "Cookies (1)"}
+			tabsRowWithAction(c, respTabs, state.respTab, func(idx int) {
+				state.respTab = idx
+			}, nil)
 		})
-
-		// 响应内容 Tab 栏
-		respTabs := []string{"Body", "Headers (6)", "Cookies (2)"}
-		tabsRowWithAction(c, respTabs, state.respTab, func(idx int) {
-			state.respTab = idx
-		}, nil)
 
 		ui.Divider(c).BorderColor(tk.Border)
 
-		// 响应 Tab 内容
-		ui.Scroll(c).Grow(1).Padding(m.Space2, m.Space4).Children(func() {
+		// 响应面板内容
+		ui.Column(c).Grow(1).Padding(m.Space2, m.Space4).Children(func() {
 			switch state.respTab {
 			case 0:
-				// Response Body 展示
+				// 格式化 JSON 响应体
 				renderResponseBody(c, state.respBody, tk, m)
 			case 1:
-				// Response Headers 展示
-				headers := [][2]string{
-					{"Content-Type", "application/json; charset=utf-8"},
-					{"Server", "rddPostman-Core/1.0"},
-					{"Date", "Mon, 16 Nov 2026 09:20:00 GMT"},
-					{"Cache-Control", "no-cache, private"},
-					{"X-Request-Id", "req_9f2c81b4d3"},
-					{"Content-Length", strconv.Itoa(len(state.respBody))},
-				}
-				ui.Column(c).Grow(1).Gap(4).Children(func() {
-					for _, h := range headers {
-						ui.Row(c).Height(24).Children(func() {
-							ui.Text(c, h[0]).FontSize(11).Bold().TextColor(tk.TextSecondary).Width(160)
-							ui.Text(c, h[1]).FontSize(11).TextColor(tk.TextPrimary).Grow(1)
-						})
-					}
-				})
+				// 响应头列表
+				renderResponseHeaders(c, tk, m)
 			case 2:
-				// Cookies 展示
-				cookies := [][4]string{
-					{"session_token", "sess_910481bc92a", ".example.com", "/"},
-					{"csrf_token", "csrf_58392100", ".example.com", "/"},
-				}
-				ui.Column(c).Grow(1).Gap(4).Children(func() {
-					ui.Row(c).Height(22).Background(tk.HoverSurface.Alpha(0.4)).Children(func() {
-						ui.Text(c, "NAME").FontSize(10).Bold().TextColor(tk.TextMuted).Width(140)
-						ui.Text(c, "VALUE").FontSize(10).Bold().TextColor(tk.TextMuted).Grow(1)
-						ui.Text(c, "DOMAIN").FontSize(10).Bold().TextColor(tk.TextMuted).Width(120)
-						ui.Text(c, "PATH").FontSize(10).Bold().TextColor(tk.TextMuted).Width(60)
-					})
-					for _, ck := range cookies {
-						ui.Row(c).Height(24).Children(func() {
-							ui.Text(c, ck[0]).FontSize(11).Bold().TextColor(tk.TextPrimary).Width(140)
-							ui.Text(c, ck[1]).FontSize(11).TextColor(tk.Info).Grow(1)
-							ui.Text(c, ck[2]).FontSize(11).TextColor(tk.TextMuted).Width(120)
-							ui.Text(c, ck[3]).FontSize(11).TextColor(tk.TextMuted).Width(60)
-						})
-					}
+				// Cookie 列表
+				renderResponseCookies(c, tk, m)
+			}
+		})
+	})
+	_ = props
+}
+
+// 格式化展示代码块响应体
+func renderResponseBody(c *ui.Context, body string, tk theme.Tokens, m theme.Metric) {
+	lines := strings.Split(body, "\n")
+	ui.Scroll(c).Grow(1).Children(func() {
+		ui.Column(c).Grow(1).Padding(4, 0).Children(func() {
+			for i, line := range lines {
+				i, line := i, line
+				ui.Row(c).MinHeight(18).Gap(12).AlignItems(ui.Center).Children(func() {
+					// 行号
+					ui.Text(c, fmt.Sprintf("%2d", i+1)).FontSize(m.FontXS).
+						TextColor(tk.TextMuted.Alpha(0.6)).Width(24)
+
+					// 语法着色展示
+					jsonLine(c, line, tk, m)
 				})
 			}
 		})
 	})
 }
 
-// 格式化展示响应体
-func renderResponseBody(c *ui.Context, body string, tk theme.Tokens, m theme.Metric) {
-	var pretty strings.Builder
-	var obj any
-	if err := json.Unmarshal([]byte(body), &obj); err == nil {
-		if formatted, err := json.MarshalIndent(obj, "", "  "); err == nil {
-			pretty.Write(formatted)
-		} else {
-			pretty.WriteString(body)
+// 轻量 JSON 语法行渲染
+func jsonLine(c *ui.Context, line string, tk theme.Tokens, m theme.Metric) {
+	trimmed := strings.TrimSpace(line)
+	color := tk.TextPrimary
+	switch {
+	case strings.HasPrefix(trimmed, "\"") && strings.Contains(trimmed, "\":"):
+		// 键名高亮
+		parts := strings.SplitN(line, ":", 2)
+		ui.Text(c, parts[0]+":").FontSize(m.FontXS).TextColor(tk.FocusRing)
+		if len(parts) > 1 {
+			valTrim := strings.TrimSpace(parts[1])
+			valColor := tk.Success
+			if strings.HasPrefix(valTrim, "\"") {
+				valColor = tk.Success
+			} else if valTrim == "true" || valTrim == "false" || valTrim == "null" {
+				valColor = tk.Warning
+			} else {
+				valColor = tk.Info
+			}
+			ui.Text(c, parts[1]).FontSize(m.FontXS).TextColor(valColor)
 		}
-	} else {
-		pretty.WriteString(body)
+		return
+	case strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "}") ||
+		strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "]"):
+		color = tk.TextMuted
+	default:
+		color = tk.TextSecondary
+	}
+	ui.Text(c, line).FontSize(m.FontXS).TextColor(color)
+}
+
+// 响应头预览
+func renderResponseHeaders(c *ui.Context, tk theme.Tokens, m theme.Metric) {
+	headers := [][2]string{
+		{"Content-Type", "application/json; charset=utf-8"},
+		{"Date", "Sun, 16 Nov 2026 09:30:00 GMT"},
+		{"Connection", "keep-alive"},
+		{"Keep-Alive", "timeout=5"},
+		{"Cache-Control", "no-cache, private"},
+		{"X-Request-Id", "req_88f921a4-9b2e-4b6e"},
 	}
 
-	lines := strings.Split(pretty.String(), "\n")
+	ui.Column(c).Grow(1).Children(func() {
+		for i, h := range headers {
+			i := i
+			ui.Row(c).Height(26).PaddingX(8).AlignItems(ui.Center).
+				BorderWidth(0, 0, m.Border, 0).BorderColor(tk.Border.Alpha(0.3)).
+				Children(func() {
+					ui.Text(c, h[0]).FontSize(m.FontXS).FontWeight(600).
+						TextColor(tk.TextSecondary).Width(160)
+					ui.Text(c, h[1]).FontSize(m.FontXS).
+						TextColor(tk.TextPrimary).Grow(1)
+				})
+			_ = i
+		}
+	})
+}
 
-	ui.Row(c).Grow(1).AlignItems(ui.Start).Clip().Radius(m.RadiusMD).
-		Background(tk.BgElevated.Alpha(0.4)).Border(m.Border, tk.Border).
-		Children(func() {
-			// 行号列
-			ui.Column(c).Width(32).Padding(m.Space2, m.Space1).Gap(1).Children(func() {
-				for i := range lines {
-					ui.Text(c, strconv.Itoa(i+1)).FontSize(10).
-						TextColor(tk.TextMuted).TextAlign(ui.End)
-				}
-			})
+// Cookie 预览
+func renderResponseCookies(c *ui.Context, tk theme.Tokens, m theme.Metric) {
+	cookies := [][6]string{
+		{"session_id", "s_9f98a287b41e", "api.example.com", "/", "2026-11-17 09:30:00", "✓"},
+	}
 
-			// 内容列
-			ui.Column(c).Grow(1).Padding(m.Space2, m.Space2).Gap(1).Children(func() {
-				for _, line := range lines {
-					jsonLine(c, tk, line)
-				}
-			})
+	ui.Column(c).Grow(1).Children(func() {
+		ui.Row(c).Height(26).PaddingX(8).AlignItems(ui.Center).
+			Background(tk.HoverSurface.Alpha(0.4)).Children(func() {
+			ui.Text(c, "NAME").FontSize(10).FontWeight(600).TextColor(tk.TextMuted).Width(120)
+			ui.Text(c, "VALUE").FontSize(10).FontWeight(600).TextColor(tk.TextMuted).Width(140)
+			ui.Text(c, "DOMAIN").FontSize(10).FontWeight(600).TextColor(tk.TextMuted).Width(120)
+			ui.Text(c, "PATH").FontSize(10).FontWeight(600).TextColor(tk.TextMuted).Width(60)
+			ui.Text(c, "EXPIRES").FontSize(10).FontWeight(600).TextColor(tk.TextMuted).Width(150)
+			ui.Text(c, "HTTPONLY").FontSize(10).FontWeight(600).TextColor(tk.TextMuted).Width(80)
 		})
+
+		for _, ck := range cookies {
+			ui.Row(c).Height(28).PaddingX(8).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, ck[0]).FontSize(m.FontXS).TextColor(tk.TextPrimary).Width(120)
+				ui.Text(c, ck[1]).FontSize(m.FontXS).TextColor(tk.Info).Width(140)
+				ui.Text(c, ck[2]).FontSize(m.FontXS).TextColor(tk.TextMuted).Width(120)
+				ui.Text(c, ck[3]).FontSize(m.FontXS).TextColor(tk.TextMuted).Width(60)
+				ui.Text(c, ck[4]).FontSize(m.FontXS).TextColor(tk.TextMuted).Width(150)
+				ui.Text(c, ck[5]).FontSize(m.FontXS).TextColor(tk.Success).Width(80)
+			})
+		}
+	})
 }
 
 // tabsRowWithAction 是支持点击切换的下划线 Tab 行
@@ -821,61 +1069,105 @@ func tabsRowWithAction(c *ui.Context, labels []string, active int,
 	m := theme.Metrics
 	tk := theme.Of(c)
 	ui.Row(c).Height(32).Gap(m.Space5).
-		Children(func() {
-			for i, label := range labels {
-				i, label := i, label
-				btn := ui.ButtonBase(c.Key("tab-" + label)).Height(32).
-					AlignItems(ui.Center).Justify(ui.Center)
-				if btn.Clicked() {
-					onSelect(i)
+		AlignItems(ui.Center).BorderWidth(0, 0, m.Border, 0).
+		BorderColor(tk.Border).Children(func() {
+		for i, label := range labels {
+			i := i
+			isActive := i == active
+			tab := ui.ButtonBase(c.Key(fmt.Sprintf("tab-btn-%s-%d", label, i))).
+				Height(32).PaddingX(m.Space1).Justify(ui.Center).AlignItems(ui.Center)
+			if isActive {
+				tab.BorderWidth(0, 0, 2, 0).BorderColor(tk.FocusRing)
+			}
+			if tab.Clicked() && onSelect != nil {
+				onSelect(i)
+			}
+			tab.Children(func() {
+				color := tk.TextSecondary
+				if isActive {
+					color = tk.TextPrimary
 				}
-				btn.Children(func() {
-					ui.Column(c).Height(32).Children(func() {
-						ui.Box(c).Grow(1).Justify(ui.Center).AlignItems(ui.Center).
-							Children(func() {
-								txt := ui.Text(c, label).FontSize(m.FontSM)
-								if i == active {
-									txt.TextColor(tk.Accent).Bold()
-								} else {
-									txt.TextColor(tk.TextMuted)
-								}
-							})
-						bar := ui.Box(c).Height(2)
-						if i == active {
-							bar.Background(tk.Accent)
-						}
-					})
-				})
-			}
-			if trailing != nil {
-				ui.Spacer(c)
-				trailing()
-			}
-		})
+				text := ui.Text(c, label).FontSize(m.FontSM).TextColor(color)
+				if isActive {
+					text.FontWeight(600)
+				}
+			})
+		}
+		if trailing != nil {
+			ui.Spacer(c)
+			trailing()
+		}
+	})
 }
 
-// jsonLine 把一行 JSON 拆成键和值分别着色
-func jsonLine(c *ui.Context, tk theme.Tokens, line string) {
-	t := strings.TrimSpace(line)
-	if t == "{" || t == "}" || t == "}," || strings.HasSuffix(t, "{") || strings.HasSuffix(t, "[") || t == "]" {
-		ui.Text(c, line).FontSize(11).Font("monospace").
-			TextColor(tk.TextMuted).SingleLine()
-		return
+// syncQueryToURL 将 Query 键值列表同步格式化回 URL 的 query string
+func syncQueryToURL(rawURL string, query []domain.KV) string {
+	baseURL := rawURL
+	if idx := strings.Index(rawURL, "?"); idx >= 0 {
+		baseURL = rawURL[:idx]
 	}
-	if i := strings.Index(line, `": `); i >= 0 {
-		key, val := line[:i+1]+`": `, line[i+3:]
-		color := tk.Success
-		if val == "{" || val == "}" || val == "}," {
-			color = tk.TextMuted
-		} else if val != "" && (val[0] >= '0' && val[0] <= '9' ||
-			strings.HasPrefix(val, "true") || strings.HasPrefix(val, "false") || val == "null") {
-			color = tk.Warning
+	var pairs []string
+	for _, q := range query {
+		if !q.Enabled || strings.TrimSpace(q.Key) == "" {
+			continue
 		}
-		ui.Row(c).Children(func() {
-			ui.Text(c, key).FontSize(11).Font("monospace").TextColor(tk.Info)
-			ui.Text(c, val).FontSize(11).Font("monospace").TextColor(color)
-		})
-		return
+		if q.Value != "" {
+			pairs = append(pairs, q.Key+"="+q.Value)
+		} else {
+			pairs = append(pairs, q.Key)
+		}
 	}
-	ui.Text(c, line).FontSize(11).Font("monospace").TextColor(tk.TextSecondary)
+	if len(pairs) == 0 {
+		return baseURL
+	}
+	return baseURL + "?" + strings.Join(pairs, "&")
+}
+
+// parseQueryFromURL 从 URL 的 query string 中解析出键值列表
+func parseQueryFromURL(rawURL string) []domain.KV {
+	idx := strings.Index(rawURL, "?")
+	if idx < 0 || idx == len(rawURL)-1 {
+		return []domain.KV{{ID: domain.NewID(), Enabled: true}}
+	}
+	queryStr := rawURL[idx+1:]
+	parts := strings.Split(queryStr, "&")
+	var res []domain.KV
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		k, v, _ := strings.Cut(part, "=")
+		res = append(res, domain.KV{
+			ID:      domain.NewID(),
+			Key:     k,
+			Value:   v,
+			Enabled: true,
+		})
+	}
+	if len(res) == 0 {
+		res = append(res, domain.KV{ID: domain.NewID(), Enabled: true})
+	}
+	return res
+}
+
+// cleanKVList 过滤掉完全空白的键值项
+func cleanKVList(items []domain.KV) []domain.KV {
+	var out []domain.KV
+	for _, it := range items {
+		if strings.TrimSpace(it.Key) != "" || strings.TrimSpace(it.Value) != "" {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+// countActiveKV 计算非空项数量
+func countActiveKV(items []domain.KV) int {
+	cnt := 0
+	for _, it := range items {
+		if strings.TrimSpace(it.Key) != "" || strings.TrimSpace(it.Value) != "" {
+			cnt++
+		}
+	}
+	return cnt
 }

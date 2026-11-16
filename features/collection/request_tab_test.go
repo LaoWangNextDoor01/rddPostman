@@ -29,7 +29,7 @@ func TestRequestTabRender(t *testing.T) {
 		},
 		Request: &domain.Request{
 			Method: "GET",
-			URL:    "https://api.example.com/v1/users/me",
+			URL:    "https://api.example.com/v1/users/me?include=profile,settings",
 			Headers: []domain.KV{
 				{Key: "Accept", Value: "application/json", Enabled: true, Desc: "期望返回格式"},
 			},
@@ -94,7 +94,7 @@ func TestRequestTabRender(t *testing.T) {
 		tabView := func(c *ui.Context) {
 			root := ui.Column(c).Grow(1)
 			state := ui.Local(root, "req-session-"+string(reqNode.ID), func() reqSessionState {
-				s := defaultSessionState(string(reqNode.ID), reqNode.Request)
+				s := defaultSessionState(string(reqNode.ID), reqNode.Request, &reqNode.Auth)
 				s.reqTab = tabIndex
 				return s
 			})
@@ -114,7 +114,7 @@ func TestRequestTabRender(t *testing.T) {
 		rView := func(c *ui.Context) {
 			root := ui.Column(c).Grow(1)
 			state := ui.Local(root, "req-session-"+string(reqNode.ID), func() reqSessionState {
-				s := defaultSessionState(string(reqNode.ID), reqNode.Request)
+				s := defaultSessionState(string(reqNode.ID), reqNode.Request, &reqNode.Auth)
 				s.respTab = rTab
 				return s
 			})
@@ -150,7 +150,7 @@ func TestRequestTabRender(t *testing.T) {
 	rLineView := func(c *ui.Context) {
 		root := ui.Column(c).Grow(1)
 		state := ui.Local(root, "req-session-"+string(reqNode.ID), func() reqSessionState {
-			s := defaultSessionState(string(reqNode.ID), reqNode.Request)
+			s := defaultSessionState(string(reqNode.ID), reqNode.Request, &reqNode.Auth)
 			s.methodOpen = true
 			return s
 		})
@@ -162,6 +162,75 @@ func TestRequestTabRender(t *testing.T) {
 		t.Fatal("请求行下拉打开态渲染失败：图像为空")
 	}
 
+	// 6. 测试 URL 与 Query 参数的互相同步逻辑
+	parsed := parseQueryFromURL("https://api.example.com/items?page=1&limit=20")
+	if len(parsed) != 2 || parsed[0].Key != "page" || parsed[0].Value != "1" {
+		t.Fatalf("parseQueryFromURL 失败，得到: %+v", parsed)
+	}
+
+	syncedURL := syncQueryToURL("https://api.example.com/items", []domain.KV{
+		{Key: "sort", Value: "desc", Enabled: true},
+		{Key: "archived", Value: "false", Enabled: false}, // 禁用不拼接到 URL
+		{Key: "", Value: "ignore", Enabled: true},         // 空 Key 忽略
+	})
+	if syncedURL != "https://api.example.com/items?sort=desc" {
+		t.Fatalf("syncQueryToURL 失败，得到: %s", syncedURL)
+	}
+
 	_ = renamed
 	_ = nodeUpdated
+}
+
+func TestParamsEditingAndPersistence(t *testing.T) {
+	node := &domain.Node{
+		ID:   "req-test",
+		Name: "测试请求",
+		Request: &domain.Request{
+			Method: "GET",
+			URL:    "https://api.example.com/test",
+		},
+	}
+	coll := &domain.Collection{
+		ID:    "coll-test",
+		Items: []*domain.Node{node},
+	}
+
+	persisted := false
+	props := pageProps{
+		collections: []*domain.Collection{coll},
+		actions: pageActions{
+			updateNode: func(collID, nodeID domain.ID, fn func(*domain.Node)) {
+				persisted = true
+				fn(node)
+			},
+		},
+	}
+
+	state := defaultSessionState("req-test", node.Request, nil)
+	if len(state.queryDraft) == 0 {
+		t.Fatal("queryDraft 应当至少有一行可编辑项")
+	}
+
+	// 模拟在 queryDraft 中输入参数
+	state.queryDraft[0].Key = "filter"
+	state.queryDraft[0].Value = "active"
+
+	// 触发更新持久化
+	state.urlDraft = syncQueryToURL(state.urlDraft, state.queryDraft)
+	props.actions.updateNode(coll.ID, node.ID, func(n *domain.Node) {
+		if n.Request != nil {
+			n.Request.Query = cleanKVList(state.queryDraft)
+			n.Request.URL = state.urlDraft
+		}
+	})
+
+	if !persisted {
+		t.Fatal("updateNode 未被调用")
+	}
+	if node.Request.URL != "https://api.example.com/test?filter=active" {
+		t.Fatalf("URL 未被同步更新，当前: %s", node.Request.URL)
+	}
+	if len(node.Request.Query) != 1 || node.Request.Query[0].Key != "filter" {
+		t.Fatalf("Query 未正确持久化，当前: %+v", node.Request.Query)
+	}
 }

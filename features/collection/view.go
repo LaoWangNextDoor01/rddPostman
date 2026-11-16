@@ -90,6 +90,10 @@ func View(c *ui.Context, db *store.Store, n nav.Navigator) {
 		updateNode: func(collID, nodeID domain.ID, fn func(*domain.Node)) {
 			_ = db.UpdateNode(collID, nodeID, fn)
 		},
+
+		// sendRequest: func(){
+
+		// },
 		navigate: n.Push,
 	}
 	root.Children(func() {
