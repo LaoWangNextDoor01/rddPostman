@@ -11,6 +11,7 @@ import (
 	"rddpostman/internal/transport"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 )
 
 // reqTitleState 维护请求名称的面包屑行内编辑态。
@@ -56,6 +57,7 @@ type reqSessionState struct {
 	respHeaders  []domain.KV
 	respCookies  []transport.ResponseCookie
 	respError    string
+	respEditor   *editor.State
 }
 
 func defaultSessionState(id string, req *domain.Request, auth *domain.Auth) reqSessionState {
@@ -140,6 +142,16 @@ func defaultSessionState(id string, req *domain.Request, auth *domain.Auth) reqS
 		respDuration:    "-",
 		respSize:        "-",
 		respBody:        "",
+		respEditor: func() *editor.State {
+			buf := editor.NewBuffer("")
+			buf.SetLanguage(editor.LanguageNamed("JSON"))
+			return &editor.State{
+				Buffer:      buf,
+				ReadOnly:    true,
+				SoftWrap:    true,
+				LineNumbers: editor.LineNumbersOn,
+			}
+		}(),
 	}
 }
 
@@ -1067,9 +1079,9 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 
 			switch state.respTab {
 			case 0:
-				// 格式化展示响应体
+				// 使用 MyGo 原生内置代码编辑器展示响应体
 				if len(state.respBody) > 0 {
-					renderResponseBody(c, state.respBody, tk, m)
+					renderResponseBody(c, state, tk, m)
 				} else if state.respError == "" {
 					ui.Row(c).Height(60).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 						ui.Text(c, "响应体内容为空").FontSize(m.FontSM).TextColor(tk.TextMuted)
@@ -1087,55 +1099,22 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 	_ = props
 }
 
-// 格式化展示代码块响应体
-func renderResponseBody(c *ui.Context, body string, tk theme.Tokens, m theme.Metric) {
-	lines := strings.Split(body, "\n")
-	ui.Scroll(c).Grow(1).Children(func() {
-		ui.Column(c).Grow(1).Padding(4, 0).Children(func() {
-			for i, line := range lines {
-				i, line := i, line
-				ui.Row(c).MinHeight(18).Gap(12).AlignItems(ui.Center).Children(func() {
-					// 行号
-					ui.Text(c, fmt.Sprintf("%2d", i+1)).FontSize(m.FontXS).
-						TextColor(tk.TextMuted.Alpha(0.6)).Width(24)
-
-					// 语法着色展示
-					jsonLine(c, line, tk, m)
-				})
-			}
-		})
-	})
-}
-
-// 轻量 JSON 语法行渲染
-func jsonLine(c *ui.Context, line string, tk theme.Tokens, m theme.Metric) {
-	trimmed := strings.TrimSpace(line)
-	color := tk.TextPrimary
-	switch {
-	case strings.HasPrefix(trimmed, "\"") && strings.Contains(trimmed, "\":"):
-		// 键名高亮
-		parts := strings.SplitN(line, ":", 2)
-		ui.Text(c, parts[0]+":").FontSize(m.FontXS).TextColor(tk.FocusRing)
-		if len(parts) > 1 {
-			valTrim := strings.TrimSpace(parts[1])
-			valColor := tk.Success
-			if strings.HasPrefix(valTrim, "\"") {
-				valColor = tk.Success
-			} else if valTrim == "true" || valTrim == "false" || valTrim == "null" {
-				valColor = tk.Warning
-			} else {
-				valColor = tk.Info
-			}
-			ui.Text(c, parts[1]).FontSize(m.FontXS).TextColor(valColor)
+// 使用 MyGo 原生内置的 code editor 组件展示响应体
+func renderResponseBody(c *ui.Context, state *reqSessionState, tk theme.Tokens, m theme.Metric) {
+	if state.respEditor == nil {
+		buf := editor.NewBuffer(state.respBody)
+		buf.SetLanguage(editor.LanguageNamed("JSON"))
+		state.respEditor = &editor.State{
+			Buffer:      buf,
+			ReadOnly:    true,
+			SoftWrap:    true,
+			LineNumbers: editor.LineNumbersOn,
 		}
-		return
-	case strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "}") ||
-		strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "]"):
-		color = tk.TextMuted
-	default:
-		color = tk.TextSecondary
+	} else if state.respEditor.Buffer.String() != state.respBody {
+		state.respEditor.Buffer.Reset(state.respBody)
 	}
-	ui.Text(c, line).FontSize(m.FontXS).TextColor(color)
+
+	editor.View(c, state.respEditor).Fill()
 }
 
 // 响应头列表展示
