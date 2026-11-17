@@ -1,11 +1,15 @@
 package collection
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"rddpostman/components/theme"
 	"rddpostman/internal/domain"
+	"rddpostman/internal/transport"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -72,6 +76,19 @@ func TestRequestTabRender(t *testing.T) {
 				nodeUpdated = true
 				fn(reqNode)
 			},
+			resolveAuth: func(collID, nodeID domain.ID) domain.Auth {
+				return domain.Auth{Type: domain.AuthBearer}
+			},
+			sendRequest: func(collID, nodeID domain.ID, req domain.Request, auth domain.Auth, onDone func(*transport.Response)) func() {
+				onDone(&transport.Response{
+					StatusCode:    200,
+					StatusText:    "OK",
+					Duration:      120 * time.Millisecond,
+					Size:          1024,
+					FormattedBody: `{"ok":true}`,
+				})
+				return func() {}
+			},
 			navigate: func(path string) {},
 		},
 	}
@@ -116,6 +133,9 @@ func TestRequestTabRender(t *testing.T) {
 			state := ui.Local(root, "req-session-"+string(reqNode.ID), func() reqSessionState {
 				s := defaultSessionState(string(reqNode.ID), reqNode.Request, &reqNode.Auth)
 				s.respTab = rTab
+				s.hasResponse = true
+				s.respHeaders = []domain.KV{{Key: "Content-Type", Value: "application/json"}}
+				s.respCookies = []transport.ResponseCookie{{Name: "session", Value: "xyz"}}
 				return s
 			})
 			state.respTab = rTab
@@ -170,8 +190,8 @@ func TestRequestTabRender(t *testing.T) {
 
 	syncedURL := syncQueryToURL("https://api.example.com/items", []domain.KV{
 		{Key: "sort", Value: "desc", Enabled: true},
-		{Key: "archived", Value: "false", Enabled: false}, // 禁用不拼接到 URL
-		{Key: "", Value: "ignore", Enabled: true},         // 空 Key 忽略
+		{Key: "archived", Value: "false", Enabled: false},
+		{Key: "", Value: "ignore", Enabled: true},
 	})
 	if syncedURL != "https://api.example.com/items?sort=desc" {
 		t.Fatalf("syncQueryToURL 失败，得到: %s", syncedURL)
@@ -211,11 +231,9 @@ func TestParamsEditingAndPersistence(t *testing.T) {
 		t.Fatal("queryDraft 应当至少有一行可编辑项")
 	}
 
-	// 模拟在 queryDraft 中输入参数
 	state.queryDraft[0].Key = "filter"
 	state.queryDraft[0].Value = "active"
 
-	// 触发更新持久化
 	state.urlDraft = syncQueryToURL(state.urlDraft, state.queryDraft)
 	props.actions.updateNode(coll.ID, node.ID, func(n *domain.Node) {
 		if n.Request != nil {
@@ -232,5 +250,71 @@ func TestParamsEditingAndPersistence(t *testing.T) {
 	}
 	if len(node.Request.Query) != 1 || node.Request.Query[0].Key != "filter" {
 		t.Fatalf("Query 未正确持久化，当前: %+v", node.Request.Query)
+	}
+}
+
+func TestSendRequestWithRealServerAndInterpolation(t *testing.T) {
+	// 验证：真实 HTTP 发送、{{变量}} 插值与认证生效
+	receivedAuth := ""
+	receivedHeader := ""
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		receivedHeader = r.Header.Get("X-Env")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"code":200,"msg":"success"}`))
+	}))
+	defer ts.Close()
+
+	// 模拟变量层：{{host}} -> ts.URL, {{token}} -> my-secret-token, {{envName}} -> production
+	vars := map[string]domain.Variable{
+		"host":    {Key: "host", Value: ts.URL},
+		"token":   {Key: "token", Value: "my-secret-token"},
+		"envName": {Key: "envName", Value: "production"},
+	}
+
+	rawReq := domain.Request{
+		Method: "POST",
+		URL:    "{{host}}/v1/test",
+		Headers: []domain.KV{
+			{Key: "X-Env", Value: "{{envName}}", Enabled: true},
+		},
+	}
+	rawAuth := domain.Auth{
+		Type: domain.AuthBearer,
+		Params: []domain.KV{
+			{Key: "token", Value: "{{token}}", Enabled: true},
+		},
+	}
+
+	// 1. 变量插值
+	preparedReq, missingReq := domain.Prepare(rawReq, vars)
+	if len(missingReq) > 0 {
+		t.Fatalf("unexpected missing vars: %v", missingReq)
+	}
+	if preparedReq.URL != ts.URL+"/v1/test" {
+		t.Fatalf("URL variable not substituted: %s", preparedReq.URL)
+	}
+
+	// 2. 认证插值
+	preparedAuth, missingAuth := domain.PrepareAuth(rawAuth, vars)
+	if len(missingAuth) > 0 {
+		t.Fatalf("unexpected missing auth vars: %v", missingAuth)
+	}
+
+	// 3. 真实发送
+	resp, err := transport.Send(context.Background(), preparedReq, preparedAuth)
+	if err != nil {
+		t.Fatalf("transport.Send error: %v", err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if receivedAuth != "Bearer my-secret-token" {
+		t.Fatalf("server did not receive expected Bearer auth, got: %s", receivedAuth)
+	}
+	if receivedHeader != "production" {
+		t.Fatalf("server did not receive expected X-Env header, got: %s", receivedHeader)
 	}
 }

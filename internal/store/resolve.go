@@ -50,6 +50,53 @@ func (s *Store) PrepareRequest(wsID, collID, nodeID domain.ID) (domain.Request, 
 	return req, preparedAuth, mergeMissing(missing, authMissing), nil
 }
 
+// PrepareRequestWith 基于传入的 Request 和 Auth（包含 UI 实时编辑草稿）解析最终变量插值与认证继承配置。
+func (s *Store) PrepareRequestWith(wsID, collID, nodeID domain.ID, draftReq domain.Request, draftAuth domain.Auth) (domain.Request, domain.Auth, []string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	st := s.states[wsID]
+	if st == nil {
+		return domain.Request{}, domain.Auth{}, nil, ErrNotFound
+	}
+	var coll *domain.Collection
+	for _, c := range st.collections {
+		if c.ID == collID {
+			coll = c
+			break
+		}
+	}
+
+	vars := s.variablesLocked(st, collID, nodeID)
+	req, missing := domain.Prepare(draftReq, vars)
+
+	var auth domain.Auth
+	if draftAuth.Type != "" && draftAuth.Type != domain.AuthInherit {
+		auth = draftAuth
+	} else if coll != nil {
+		auth = s.authChainLocked(coll, nodeID)
+	} else {
+		auth = domain.Auth{Type: domain.AuthNone}
+	}
+
+	preparedAuth, authMissing := domain.PrepareAuth(auth, vars)
+	return req, preparedAuth, mergeMissing(missing, authMissing), nil
+}
+
+// ResolveAuth 计算指定节点的生效认证配置（沿继承链）。
+func (s *Store) ResolveAuth(collID, nodeID domain.ID) domain.Auth {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, st := range s.states {
+		for _, c := range st.collections {
+			if c.ID == collID {
+				return s.authChainLocked(c, nodeID)
+			}
+		}
+	}
+	return domain.Auth{Type: domain.AuthNone}
+}
+
 func (s *Store) variablesLocked(st *state, collID, nodeID domain.ID) map[string]domain.Variable {
 	layers := []domain.Layer{
 		{Source: domain.VarGlobal, Vars: s.globals.Variables},

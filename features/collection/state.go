@@ -1,6 +1,9 @@
 package collection
 
-import "rddpostman/internal/domain"
+import (
+	"rddpostman/internal/domain"
+	"rddpostman/internal/transport"
+)
 
 // 页面状态与动作写在这里，仅 collection 包内使用。
 
@@ -25,5 +28,7 @@ type pageActions struct {
 	rename            func(id, name string)
 	updateDescription func(id, description string)
 	updateNode        func(collID, nodeID domain.ID, fn func(*domain.Node))
+	sendRequest       func(collID, nodeID domain.ID, req domain.Request, auth domain.Auth, onDone func(*transport.Response)) func()
+	resolveAuth       func(collID, nodeID domain.ID) domain.Auth
 	navigate          func(path string)
 }

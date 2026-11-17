@@ -2,10 +2,14 @@
 package collection
 
 import (
+	"context"
+	"time"
+
 	"rddpostman/components/theme"
 	"rddpostman/internal/domain"
 	"rddpostman/internal/nav"
 	"rddpostman/internal/store"
+	"rddpostman/internal/transport"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -90,10 +94,51 @@ func View(c *ui.Context, db *store.Store, n nav.Navigator) {
 		updateNode: func(collID, nodeID domain.ID, fn func(*domain.Node)) {
 			_ = db.UpdateNode(collID, nodeID, fn)
 		},
+		resolveAuth: func(collID, nodeID domain.ID) domain.Auth {
+			return db.ResolveAuth(collID, nodeID)
+		},
+		sendRequest: func(collID, nodeID domain.ID, req domain.Request, auth domain.Auth, onDone func(*transport.Response)) func() {
+			ctx, cancel := context.WithCancel(context.Background())
+			go func() {
+				// 1. 变量插值与认证继承解析
+				prepReq, prepAuth, _, err := db.PrepareRequestWith(workspaceID, collID, nodeID, req, auth)
+				if err != nil {
+					resp := &transport.Response{
+						StatusCode: 0,
+						StatusText: "Error",
+						Error:      "准备请求参数失败: " + err.Error(),
+						Timestamp:  time.Now(),
+					}
+					onDone(resp)
+					c.Invalidate()
+					return
+				}
 
-		// sendRequest: func(){
+				// 2. 真实网络发送
+				resp, _ := transport.Send(ctx, prepReq, prepAuth)
 
-		// },
+				// 3. 记录请求历史
+				if resp != nil {
+					_ = db.RecordHistory(workspaceID, domain.HistoryEntry{
+						WorkspaceID:  workspaceID,
+						CollectionID: collID,
+						RequestID:    nodeID,
+						Method:       prepReq.Method,
+						URL:          prepReq.URL,
+						Status:       resp.StatusCode,
+						DurationMS:   resp.DurationMS,
+						Size:         resp.Size,
+						Error:        resp.Error,
+						At:           resp.Timestamp,
+					})
+				}
+
+				// 4. 回调响应并触发重绘
+				onDone(resp)
+				c.Invalidate()
+			}()
+			return cancel
+		},
 		navigate: n.Push,
 	}
 	root.Children(func() {
