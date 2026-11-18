@@ -65,6 +65,19 @@ func addMenuButton(c *ui.Context, props pageProps) {
 
 		ui.Divider(c)
 
+		item("import-curl", "code", "从 cURL 导入", func() {
+			props.state.importCurlOpen = true
+			props.state.importCurlText = ""
+			props.state.importCurlErr = ""
+		})
+		item("import-postman", "file", "导入 Postman 集合", func() {
+			props.state.importPostmanOpen = true
+			props.state.importPostmanText = ""
+			props.state.importPostmanErr = ""
+		})
+
+		ui.Divider(c)
+
 		item("environment", "globe", locales.RailEnvironments(), func() {
 			props.actions.navigate(routes.Environments)
 		})

@@ -4,6 +4,8 @@ package transport
 
 import (
 	"bytes"
+	"compress/flate"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -11,29 +13,37 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"rddpostman/internal/domain"
+	"rddpostman/internal/scripting"
 )
 
 // Response 是 HTTP 请求发送后返回的结构化响应数据。
 type Response struct {
-	StatusCode    int              `json:"statusCode"`
-	StatusText    string           `json:"statusText"`
-	Proto         string           `json:"proto"`
-	Duration      time.Duration    `json:"duration"`
-	DurationMS    int              `json:"durationMS"`
-	Size          int64            `json:"size"`
-	Headers       []domain.KV      `json:"headers"`
-	Cookies       []ResponseCookie `json:"cookies"`
-	Body          []byte           `json:"-"`
-	BodyString    string           `json:"bodyString"`
-	FormattedBody string           `json:"formattedBody"`
-	Error         string           `json:"error,omitempty"`
-	Timestamp     time.Time        `json:"timestamp"`
+	StatusCode    int                 `json:"statusCode"`
+	StatusText    string              `json:"statusText"`
+	Proto         string              `json:"proto"`
+	Duration      time.Duration       `json:"duration"`
+	DurationMS    int                 `json:"durationMS"`
+	Size          int64               `json:"size"`
+	ContentType   string              `json:"contentType"`
+	Headers       []domain.KV         `json:"headers"`
+	Cookies       []ResponseCookie    `json:"cookies"`
+	TestResults   []domain.TestResult `json:"testResults,omitempty"`
+	UpdatedEnv    map[string]string   `json:"updatedEnv,omitempty"`
+	Body          []byte              `json:"-"`
+	BodyString    string              `json:"bodyString"`
+	FormattedBody string              `json:"formattedBody"`
+	Error         string              `json:"error,omitempty"`
+	Timestamp     time.Time           `json:"timestamp"`
 }
 
 // ResponseCookie 描述响应中解析出的单个 Cookie。
@@ -50,6 +60,17 @@ type ResponseCookie struct {
 // Send 执行 HTTP 请求发送并返回结构化响应。
 // 默认不抛出 Go error，而是将连接中断、超时等网络错误包装在 Response.Error 中返回，便于 UI 展示。
 func Send(ctx context.Context, r domain.Request, auth domain.Auth) (*Response, error) {
+	if r.PreRequestScript != "" {
+		sCtx := scripting.NewScriptContext(0, "", 0, nil, "", nil)
+		_ = sCtx.RunPreRequestScript(r.PreRequestScript)
+		for k, v := range sCtx.Variables {
+			r.URL = strings.ReplaceAll(r.URL, "{{"+k+"}}", v)
+		}
+		for k, v := range sCtx.Environment {
+			r.URL = strings.ReplaceAll(r.URL, "{{"+k+"}}", v)
+		}
+	}
+
 	req, err := BuildHTTPRequest(ctx, r, auth)
 	if err != nil {
 		return &Response{
@@ -88,6 +109,24 @@ func Send(ctx context.Context, r domain.Request, auth domain.Auth) (*Response, e
 	limitReader := io.LimitReader(resp.Body, 10<<20)
 	bodyBytes, readErr := io.ReadAll(limitReader)
 
+	// 自动解压 gzip / deflate 响应体
+	contentEncoding := strings.ToLower(resp.Header.Get("Content-Encoding"))
+	if contentEncoding == "gzip" || (len(bodyBytes) > 2 && bodyBytes[0] == 0x1f && bodyBytes[1] == 0x8b) {
+		if gzReader, err := gzip.NewReader(bytes.NewReader(bodyBytes)); err == nil {
+			if decompressed, err := io.ReadAll(gzReader); err == nil {
+				bodyBytes = decompressed
+			}
+			_ = gzReader.Close()
+		}
+	} else if contentEncoding == "deflate" {
+		if flateReader := flate.NewReader(bytes.NewReader(bodyBytes)); flateReader != nil {
+			if decompressed, err := io.ReadAll(flateReader); err == nil {
+				bodyBytes = decompressed
+			}
+			_ = flateReader.Close()
+		}
+	}
+
 	bodyStr := string(bodyBytes)
 	formattedBody := bodyStr
 	if len(bodyBytes) > 0 {
@@ -95,6 +134,12 @@ func Send(ctx context.Context, r domain.Request, auth domain.Auth) (*Response, e
 		if json.Indent(&prettyBuf, bodyBytes, "", "  ") == nil {
 			formattedBody = prettyBuf.String()
 		}
+	}
+
+	// 提取 Content-Type
+	contentType := resp.Header.Get("Content-Type")
+	if idx := strings.Index(contentType, ";"); idx > 0 {
+		contentType = strings.TrimSpace(contentType[:idx])
 	}
 
 	// 解析响应标头
@@ -135,6 +180,16 @@ func Send(ctx context.Context, r domain.Request, auth domain.Auth) (*Response, e
 		errMsg = fmt.Sprintf("读取响应体发生错误: %v", readErr)
 	}
 
+	var testResults []domain.TestResult
+	var updatedEnv map[string]string
+	if r.TestsScript != "" {
+		sCtx := scripting.NewScriptContext(resp.StatusCode, resp.Status, int(duration.Milliseconds()), respHeaders, formattedBody, nil)
+		testResults = sCtx.RunTestsScript(r.TestsScript)
+		if len(sCtx.Environment) > 0 {
+			updatedEnv = sCtx.Environment
+		}
+	}
+
 	return &Response{
 		StatusCode:    resp.StatusCode,
 		StatusText:    strings.TrimPrefix(resp.Status, fmt.Sprintf("%d ", resp.StatusCode)),
@@ -142,8 +197,11 @@ func Send(ctx context.Context, r domain.Request, auth domain.Auth) (*Response, e
 		Duration:      duration,
 		DurationMS:    int(duration.Milliseconds()),
 		Size:          int64(len(bodyBytes)),
+		ContentType:   contentType,
 		Headers:       respHeaders,
 		Cookies:       respCookies,
+		TestResults:   testResults,
+		UpdatedEnv:    updatedEnv,
 		Body:          bodyBytes,
 		BodyString:    bodyStr,
 		FormattedBody: formattedBody,
@@ -159,7 +217,10 @@ func BuildHTTPRequest(ctx context.Context, r domain.Request, auth domain.Auth) (
 		return nil, fmt.Errorf("URL 不能为空")
 	}
 
-	// 自动补充 scheme（默认 http://）
+	// 1. 替换路径变量（如 /users/:id 或 /users/{id}）
+	rawURL = ApplyPathVariables(rawURL, r.PathVariables)
+
+	// 2. 自动补充 scheme（默认 http://）
 	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
 		rawURL = "http://" + rawURL
 	}
@@ -219,13 +280,45 @@ func BuildHTTPRequest(ctx context.Context, r domain.Request, auth domain.Auth) (
 		var b bytes.Buffer
 		mw := multipart.NewWriter(&b)
 		for _, f := range r.Body.Fields {
-			if f.Enabled && strings.TrimSpace(f.Key) != "" {
+			if !f.Enabled || strings.TrimSpace(f.Key) == "" {
+				continue
+			}
+			isFile := f.Type == "file" || strings.HasPrefix(f.Value, "@")
+			filePath := strings.TrimPrefix(f.Value, "@")
+			if isFile && filePath != "" {
+				file, err := os.Open(filePath)
+				if err != nil {
+					return nil, fmt.Errorf("打开表单上传文件失败 (%s): %w", filePath, err)
+				}
+				filename := filepath.Base(filePath)
+				part, err := mw.CreateFormFile(f.Key, filename)
+				if err != nil {
+					_ = file.Close()
+					return nil, fmt.Errorf("创建表单文件字段失败 (%s): %w", f.Key, err)
+				}
+				if _, err := io.Copy(part, file); err != nil {
+					_ = file.Close()
+					return nil, fmt.Errorf("读取表单上传文件失败: %w", err)
+				}
+				_ = file.Close()
+			} else {
 				_ = mw.WriteField(f.Key, f.Value)
 			}
 		}
 		_ = mw.Close()
 		bodyReader = &b
 		defaultContentType = mw.FormDataContentType()
+	case domain.BodyBinary:
+		if r.Body.File != "" {
+			data, err := os.ReadFile(r.Body.File)
+			if err != nil {
+				return nil, fmt.Errorf("打开二进制文件失败 (%s): %w", r.Body.File, err)
+			}
+			bodyReader = bytes.NewReader(data)
+		} else if r.Body.Raw != "" {
+			bodyReader = strings.NewReader(r.Body.Raw)
+		}
+		defaultContentType = "application/octet-stream"
 	case domain.BodyGraphQL:
 		if r.Body.GraphQL != nil {
 			payload, _ := json.Marshal(map[string]any{
@@ -338,8 +431,17 @@ func buildHTTPClient(opts domain.Options) *http.Client {
 		verifyTLS = *opts.VerifyTLS
 	}
 
+	proxyFunc := http.ProxyFromEnvironment
+	if opts.DisableProxy {
+		proxyFunc = nil
+	} else if opts.ProxyURL != "" {
+		if pURL, err := url.Parse(opts.ProxyURL); err == nil {
+			proxyFunc = http.ProxyURL(pURL)
+		}
+	}
+
 	tr := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
+		Proxy: proxyFunc,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: !verifyTLS,
 		},
@@ -354,6 +456,10 @@ func buildHTTPClient(opts domain.Options) *http.Client {
 		Timeout:   timeout,
 	}
 
+	if !opts.DisableCookieJar {
+		client.Jar = getDefaultCookieJar()
+	}
+
 	if !followRedirects {
 		client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
@@ -361,6 +467,18 @@ func buildHTTPClient(opts domain.Options) *http.Client {
 	}
 
 	return client
+}
+
+var (
+	defaultCookieJarOnce sync.Once
+	defaultCookieJar     http.CookieJar
+)
+
+func getDefaultCookieJar() http.CookieJar {
+	defaultCookieJarOnce.Do(func() {
+		defaultCookieJar, _ = cookiejar.New(nil)
+	})
+	return defaultCookieJar
 }
 
 // FormatDuration 将 time.Duration 格式化为适合 Postman UI 的耗时字符串（如 42 ms 或 1.25 s）
@@ -383,4 +501,9 @@ func FormatSize(bytes int64) string {
 		return fmt.Sprintf("%.2f KB", float64(bytes)/1024.0)
 	}
 	return fmt.Sprintf("%.2f MB", float64(bytes)/(1024.0*1024.0))
+}
+
+// ApplyPathVariables 将 URL 中的路径变量（支持 :key 与 {key} 语法）替换为真实值。
+func ApplyPathVariables(rawURL string, pathVars []domain.KV) string {
+	return domain.ApplyPathVariables(rawURL, pathVars)
 }

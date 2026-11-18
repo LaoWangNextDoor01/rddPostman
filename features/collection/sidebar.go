@@ -72,13 +72,27 @@ func sidebar(c *ui.Context, props pageProps) {
 			copy: func(text string) {
 				c.Services().WriteClipboard(text)
 			},
+			duplicate: func(row *treeNode) {
+				if props.actions.duplicateNode != nil {
+					props.actions.duplicateNode(row.id)
+				}
+			},
 		}
 		ui.Scroll(c).Grow(1).Padding(m.Space1).Children(func() {
-			collectionTree(c, props.state, buildTree(props.collections), actions)
+			nodes := filterTree(buildTree(props.collections), *search, props.state)
+			if len(nodes) == 0 && *search != "" {
+				ui.Box(c).Padding(m.Space3).Center().Children(func() {
+					ui.Text(c, "未搜索到匹配请求").FontSize(m.FontXS).TextColor(tk.TextMuted)
+				})
+			} else {
+				collectionTree(c, props.state, nodes, actions)
+			}
 		})
 	})
 
 	newCollectionDialog(c, props)
+	importCurlDialog(c, props)
+	importPostmanDialog(c, props)
 }
 
 // newCollectionDialog 弹出新建集合对话框。
@@ -141,6 +155,115 @@ func newCollectionDialog(c *ui.Context, props pageProps) {
 					state.newCollOpen = false
 				}
 				if ui.PrimaryButton(c, locales.CreateCollection()).Clicked() {
+					submit()
+				}
+			})
+		})
+	})
+}
+
+// importCurlDialog 弹出从 cURL 导入请求的对话框。
+func importCurlDialog(c *ui.Context, props pageProps) {
+	m := theme.Metrics
+	tk := theme.Of(c)
+	state := props.state
+
+	ui.DialogBase(c, &state.importCurlOpen, func(backdrop, panel ui.Element) {
+		backdrop.Background(tk.Overlay)
+		panel.Width(520).Padding(m.Space4).Gap(m.Space3)
+		theme.DialogPanel(c, panel)
+		panel.Children(func() {
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+				ui.Icon(c, icons.Get("code")).FontSize(m.IconMD).TextColor(tk.Accent)
+				ui.Text(c, "从 cURL 导入请求").FontSize(m.FontMD).Bold().
+					TextColor(tk.TextPrimary)
+			})
+			ui.Text(c, "输入或粘贴标准的 cURL 命令，自动解析请求方法、URL、标头、认证与请求体并创建请求。").
+				FontSize(m.FontXS).TextColor(tk.TextMuted)
+
+			ui.TextArea(c, &state.importCurlText).FillWidth().MinHeight(120).
+				MaxHeight(240).Padding(m.Space2, m.Space2).Radius(m.RadiusSM).
+				FontSize(m.FontSM).FixedLineHeight(20).
+				Placeholder("curl -X POST https://api.example.com/login -H \"Content-Type: application/json\" -d '{\"user\":\"admin\"}'")
+
+			if state.importCurlErr != "" {
+				ui.Text(c, state.importCurlErr).FontSize(m.FontXS).TextColor(tk.Danger)
+			}
+
+			submit := func() {
+				trimmed := strings.TrimSpace(state.importCurlText)
+				if trimmed == "" {
+					state.importCurlErr = "请输入有效的 cURL 命令"
+					return
+				}
+				targetID := domain.ID(state.selected)
+				if err := props.actions.importCurl(targetID, trimmed); err != nil {
+					state.importCurlErr = "解析 cURL 失败: " + err.Error()
+					return
+				}
+				state.importCurlOpen = false
+				state.importCurlErr = ""
+			}
+
+			ui.Row(c).Gap(m.Space2).Justify(ui.End).Children(func() {
+				if ui.Button(c, locales.Cancel()).Clicked() {
+					state.importCurlOpen = false
+				}
+				if ui.PrimaryButton(c, "导入请求").Clicked() {
+					submit()
+				}
+			})
+		})
+	})
+}
+
+// importPostmanDialog 弹出从 Postman 集合导入的对话框。
+func importPostmanDialog(c *ui.Context, props pageProps) {
+	m := theme.Metrics
+	tk := theme.Of(c)
+	state := props.state
+
+	ui.DialogBase(c, &state.importPostmanOpen, func(backdrop, panel ui.Element) {
+		backdrop.Background(tk.Overlay)
+		panel.Width(560).Padding(m.Space4).Gap(m.Space3)
+		theme.DialogPanel(c, panel)
+		panel.Children(func() {
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+				ui.Icon(c, icons.Get("file")).FontSize(m.IconMD).TextColor(tk.Accent)
+				ui.Text(c, "导入 Postman 集合 (v2.1)").FontSize(m.FontMD).Bold().
+					TextColor(tk.TextPrimary)
+			})
+			ui.Text(c, "粘贴 Postman Collection v2.1 格式的 JSON 文本，将完整导入集合、目录树、请求、环境变量与前后置脚本。").
+				FontSize(m.FontXS).TextColor(tk.TextMuted)
+
+			ui.TextArea(c, &state.importPostmanText).FillWidth().MinHeight(150).
+				MaxHeight(280).Padding(m.Space2, m.Space2).Radius(m.RadiusSM).
+				FontSize(m.FontSM).FixedLineHeight(20).
+				Placeholder("{\n  \"info\": {\n    \"name\": \"My Postman Collection\",\n    \"schema\": \"https://schema.getpostman.com/json/collection/v2.1.0/collection.json\"\n  },\n  \"item\": [...]\n}")
+
+			if state.importPostmanErr != "" {
+				ui.Text(c, state.importPostmanErr).FontSize(m.FontXS).TextColor(tk.Danger)
+			}
+
+			submit := func() {
+				trimmed := strings.TrimSpace(state.importPostmanText)
+				if trimmed == "" {
+					state.importPostmanErr = "请输入有效的 Postman 集合 JSON"
+					return
+				}
+				if err := props.actions.importCollection(trimmed); err != nil {
+					state.importPostmanErr = "导入失败: " + err.Error()
+					return
+				}
+				state.importPostmanOpen = false
+				state.importPostmanErr = ""
+			}
+
+			ui.Row(c).Gap(m.Space2).Justify(ui.End).Children(func() {
+				if ui.Button(c, locales.Cancel()).Clicked() {
+					state.importPostmanOpen = false
+				}
+				if ui.PrimaryButton(c, "导入集合").Clicked() {
 					submit()
 				}
 			})

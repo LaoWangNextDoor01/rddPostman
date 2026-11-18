@@ -3,10 +3,13 @@ package collection
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"rddpostman/components/theme"
+	"rddpostman/internal/curl"
 	"rddpostman/internal/domain"
+	"rddpostman/internal/importer"
 	"rddpostman/internal/nav"
 	"rddpostman/internal/store"
 	"rddpostman/internal/transport"
@@ -54,6 +57,77 @@ func View(c *ui.Context, db *store.Store, n nav.Navigator) {
 		},
 		createNode: func(targetID domain.ID, kind domain.Kind) {
 			createNodeIn(db, state, collections, kind, string(targetID))
+		},
+		duplicateNode: func(nodeID string) {
+			coll, node := findNode(collections, nodeID)
+			if coll == nil || node == nil {
+				return
+			}
+			cloned, err := db.DuplicateNode(coll.ID, node.ID)
+			if err != nil {
+				return
+			}
+			state.openTab(string(cloned.ID))
+			state.selected = string(cloned.ID)
+		},
+		importCurl: func(targetID domain.ID, curlCmd string) error {
+			req, parsedAuth, err := curl.FromCurl(curlCmd)
+			if err != nil {
+				return err
+			}
+			coll, parentNode := findNode(collections, string(targetID))
+			if coll == nil {
+				if len(collections) > 0 {
+					coll = collections[0]
+				} else {
+					var createErr error
+					coll, createErr = db.CreateCollection(workspaceID, "默认集合", "")
+					if createErr != nil {
+						return createErr
+					}
+				}
+			}
+			reqName := "cURL Request"
+			if req.URL != "" {
+				parts := strings.Split(strings.TrimRight(req.URL, "/"), "/")
+				if len(parts) > 0 && parts[len(parts)-1] != "" {
+					reqName = parts[len(parts)-1]
+				}
+			}
+			node := &domain.Node{
+				ID:      domain.NewID(),
+				Kind:    domain.KindRequest,
+				Name:    reqName,
+				Request: &req,
+				Auth:    parsedAuth,
+			}
+			parentID := domain.ID("")
+			if parentNode != nil && parentNode.Kind == domain.KindFolder {
+				parentID = parentNode.ID
+			} else if parentNode != nil && parentNode.Kind == domain.KindRequest {
+				if p, ok := domain.ParentOf(coll.Items, parentNode.ID); ok && p != nil {
+					parentID = p.ID
+				}
+			}
+			if err := db.AddNode(coll.ID, parentID, node); err != nil {
+				return err
+			}
+			state.openTab(string(node.ID))
+			state.selected = string(node.ID)
+			return nil
+		},
+		importCollection: func(jsonData string) error {
+			parsed, err := importer.ParsePostmanCollection([]byte(jsonData))
+			if err != nil {
+				return err
+			}
+			imported, err := db.ImportCollection(workspaceID, parsed)
+			if err != nil {
+				return err
+			}
+			state.openTab(string(imported.ID))
+			state.selected = string(imported.ID)
+			return nil
 		},
 		deleteRow: func(row *treeNode) {
 			removeTreeRow(db, state, workspaceID, collections, row)
@@ -117,7 +191,7 @@ func View(c *ui.Context, db *store.Store, n nav.Navigator) {
 				// 2. 真实网络发送
 				resp, _ := transport.Send(ctx, prepReq, prepAuth)
 
-				// 3. 记录请求历史
+				// 3. 记录请求历史并同步由脚本更新的环境变量（pm.environment.set）
 				if resp != nil {
 					_ = db.RecordHistory(workspaceID, domain.HistoryEntry{
 						WorkspaceID:  workspaceID,
@@ -131,6 +205,12 @@ func View(c *ui.Context, db *store.Store, n nav.Navigator) {
 						Error:        resp.Error,
 						At:           resp.Timestamp,
 					})
+
+					if len(resp.UpdatedEnv) > 0 && selectedEnv != "" {
+						for k, v := range resp.UpdatedEnv {
+							_ = db.SetEnvironmentVariable(workspaceID, selectedEnv, k, v)
+						}
+					}
 				}
 
 				// 4. 回调响应并触发重绘

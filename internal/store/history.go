@@ -42,3 +42,14 @@ func (s *Store) History(wsID domain.ID, limit int) ([]domain.HistoryEntry, error
 	}
 	return s.backend.LoadHistory(context.Background(), st.ref, storage.HistoryQuery{Limit: limit})
 }
+
+// ClearHistory 清空指定工作区的历史记录。
+func (s *Store) ClearHistory(wsID domain.ID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.states[wsID]
+	if st == nil {
+		return ErrNotFound
+	}
+	return s.backend.ClearHistory(context.Background(), st.ref)
+}

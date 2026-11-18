@@ -319,3 +319,76 @@ func nodeExists(st *state, collID, nodeID domain.ID) bool {
 	}
 	return false
 }
+
+// DuplicateNode 克隆已有节点（请求或目录）并放置在同级位置。
+func (s *Store) DuplicateNode(collID, nodeID domain.ID) (*domain.Node, error) {
+	s.mu.Lock()
+	st, old := s.findCollectionLocked(collID)
+	if st == nil {
+		s.mu.Unlock()
+		return nil, ErrNotFound
+	}
+	src := domain.FindIn(old.Items, nodeID)
+	if src == nil {
+		s.mu.Unlock()
+		return nil, ErrNotFound
+	}
+	parentID := domain.ID("")
+	if p, ok := domain.ParentOf(old.Items, nodeID); ok && p != nil {
+		parentID = p.ID
+	}
+	clone := src.Clone()
+	clone.ID = domain.NewID()
+	clone.Name = clone.Name + " Copy"
+	s.mu.Unlock()
+
+	if err := s.AddNode(collID, parentID, clone); err != nil {
+		return nil, err
+	}
+	return clone, nil
+}
+
+// ImportCollection 将一个完整的集合树（包括其子目录、请求和变量）导入到指定工作区。
+func (s *Store) ImportCollection(wsID domain.ID, coll *domain.Collection) (*domain.Collection, error) {
+	if coll == nil {
+		return nil, errors.New("集合为空")
+	}
+	createdColl, err := s.CreateCollection(wsID, coll.Name, coll.Description)
+	if err != nil {
+		return nil, err
+	}
+	if len(coll.Variables) > 0 || coll.Auth.Type != "" {
+		_ = s.UpdateCollection(createdColl.ID, func(c *domain.Collection) {
+			c.Variables = coll.Variables
+			c.Auth = coll.Auth
+		})
+	}
+
+	var addSubTree func(parentID domain.ID, nodes []*domain.Node) error
+	addSubTree = func(parentID domain.ID, nodes []*domain.Node) error {
+		for _, n := range nodes {
+			cloned := n.Clone()
+			cloned.ID = domain.NewID()
+			children := cloned.Children
+			cloned.Children = nil
+			if err := s.AddNode(createdColl.ID, parentID, cloned); err != nil {
+				return err
+			}
+			if len(children) > 0 {
+				if err := addSubTree(cloned.ID, children); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+
+	if err := addSubTree("", coll.Items); err != nil {
+		return nil, err
+	}
+
+	s.mu.Lock()
+	_, finalColl := s.findCollectionLocked(createdColl.ID)
+	s.mu.Unlock()
+	return finalColl, nil
+}

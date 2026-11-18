@@ -13,8 +13,16 @@ type workspace struct {
 	newCollName string
 	newCollDesc string
 	newCollErr  string
-	open        map[string]*bool  // 目录展开状态，缺省展开
-	segs        map[string]string // 每个 tab 当前选中的分段
+
+	importCurlOpen    bool
+	importCurlText    string
+	importCurlErr     string
+	importPostmanOpen bool
+	importPostmanText string
+	importPostmanErr  string
+
+	open map[string]*bool  // 目录展开状态，缺省展开
+	segs map[string]string // 每个 tab 当前选中的分段
 }
 
 func newWorkspace() *workspace {

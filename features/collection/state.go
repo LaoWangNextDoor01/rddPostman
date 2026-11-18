@@ -22,6 +22,9 @@ type pageProps struct {
 type pageActions struct {
 	createCollection  func(name, description string) (*domain.Collection, error)
 	createNode        func(targetID domain.ID, kind domain.Kind)
+	duplicateNode     func(nodeID string)
+	importCurl        func(targetID domain.ID, curlCmd string) error
+	importCollection  func(jsonData string) error
 	deleteRow         func(row *treeNode)
 	selectEnvironment func(id domain.ID)
 	openTab           func(id string)

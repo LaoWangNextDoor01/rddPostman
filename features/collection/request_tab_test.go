@@ -105,8 +105,8 @@ func TestRequestTabRender(t *testing.T) {
 		t.Fatal("RequestTab 常规模式渲染失败：图像为空")
 	}
 
-	// 2. 测试所有请求配置 Tab 切换
-	tabs := []int{0, 1, 2, 3, 4}
+	// 2. 测试所有请求配置 Tab 切换 (Params, Auth, Headers, Body, Scripts, Settings)
+	tabs := []int{0, 1, 2, 3, 4, 5}
 	for _, tabIndex := range tabs {
 		tabView := func(c *ui.Context) {
 			root := ui.Column(c).Grow(1)
@@ -125,8 +125,8 @@ func TestRequestTabRender(t *testing.T) {
 		}
 	}
 
-	// 3. 测试响应区各个 Tab 切换
-	respTabs := []int{0, 1, 2}
+	// 3. 测试响应区各个 Tab 切换 (Body, Headers, Cookies, Test Results)
+	respTabs := []int{0, 1, 2, 3}
 	for _, rTab := range respTabs {
 		rView := func(c *ui.Context) {
 			root := ui.Column(c).Grow(1)
@@ -136,6 +136,10 @@ func TestRequestTabRender(t *testing.T) {
 				s.hasResponse = true
 				s.respHeaders = []domain.KV{{Key: "Content-Type", Value: "application/json"}}
 				s.respCookies = []transport.ResponseCookie{{Name: "session", Value: "xyz"}}
+				s.respTestResults = []domain.TestResult{
+					{Name: "Status is 200", Passed: true},
+					{Name: "Response time is reasonable", Passed: false, Error: "响应耗时超出限制"},
+				}
 				return s
 			})
 			state.respTab = rTab
@@ -316,5 +320,82 @@ func TestSendRequestWithRealServerAndInterpolation(t *testing.T) {
 	}
 	if receivedHeader != "production" {
 		t.Fatalf("server did not receive expected X-Env header, got: %s", receivedHeader)
+	}
+}
+
+func TestScriptsAndSettingsTabRender(t *testing.T) {
+	ws := newWorkspace()
+	reqNode := &domain.Node{
+		ID:        "req-script-1",
+		Kind:      domain.KindRequest,
+		Name:      "脚本测试",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request: &domain.Request{
+			Method:           "POST",
+			URL:              "https://api.example.com/test",
+			PreRequestScript: `pm.variables.set("timestamp", "1609459200");`,
+			TestsScript:      `pm.test("Status is 200", function () { pm.response.to.have.status(200); });`,
+			Options: domain.Options{
+				ProxyURL:         "http://127.0.0.1:7890",
+				DisableCookieJar: false,
+			},
+		},
+	}
+	coll := &domain.Collection{
+		ID:    "coll-1",
+		Name:  "集合",
+		Items: []*domain.Node{reqNode},
+	}
+
+	props := pageProps{
+		workspaceID: "ws-1",
+		collections: []*domain.Collection{coll},
+		state:       ws,
+		actions: pageActions{
+			updateNode: func(collID, nodeID domain.ID, fn func(*domain.Node)) {
+				fn(reqNode)
+			},
+			resolveAuth: func(collID, nodeID domain.ID) domain.Auth {
+				return domain.Auth{}
+			},
+		},
+	}
+
+	tt := ui.NewTester(func(c *ui.Context) {
+		requestTab(c, props, coll, reqNode, string(reqNode.ID))
+	}, 960, 700)
+	tt.Frame()
+	if tt.Image() == nil {
+		t.Fatal("ScriptsAndSettingsTabRender failed: image is nil")
+	}
+}
+
+func TestImportCurlAndPostmanDialogsRender(t *testing.T) {
+	ws := newWorkspace()
+	ws.importCurlOpen = true
+	ws.importCurlText = "curl -X POST https://api.example.com/login -H \"Content-Type: application/json\" -d '{\"user\":\"admin\"}'"
+	ws.importPostmanOpen = true
+	ws.importPostmanText = "{\"info\":{\"name\":\"TestColl\",\"schema\":\"https://schema.getpostman.com/json/collection/v2.1.0/collection.json\"},\"item\":[]}"
+
+	props := pageProps{
+		workspaceID: "ws-1",
+		state:       ws,
+	}
+
+	ttCurl := ui.NewTester(func(c *ui.Context) {
+		importCurlDialog(c, props)
+	}, 600, 400)
+	ttCurl.Frame()
+	if ttCurl.Image() == nil {
+		t.Fatal("importCurlDialog render image is nil")
+	}
+
+	ttPostman := ui.NewTester(func(c *ui.Context) {
+		importPostmanDialog(c, props)
+	}, 600, 400)
+	ttPostman.Frame()
+	if ttPostman.Image() == nil {
+		t.Fatal("importPostmanDialog render image is nil")
 	}
 }

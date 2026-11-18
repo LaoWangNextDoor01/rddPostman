@@ -237,6 +237,55 @@ func (s *Store) DeleteEnvironment(wsID, envID domain.ID) error {
 	return nil
 }
 
+// SetEnvironmentVariable 设置或更新指定环境的某个变量值（常用于脚本中 pm.environment.set 自动写入）。
+func (s *Store) SetEnvironmentVariable(wsID, envID domain.ID, key, val string) error {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return errors.New("变量键不能为空")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.states[wsID]
+	if st == nil {
+		return ErrNotFound
+	}
+	if st.readOnly {
+		return ErrReadOnly
+	}
+
+	var target *domain.Environment
+	for i := range st.envs {
+		if st.envs[i].ID == envID {
+			target = &st.envs[i]
+			break
+		}
+	}
+	if target == nil {
+		return ErrNotFound
+	}
+
+	found := false
+	for i := range target.Vars {
+		if target.Vars[i].Key == key {
+			target.Vars[i].Value = val
+			target.Vars[i].Enabled = true
+			found = true
+			break
+		}
+	}
+	if !found {
+		target.Vars = append(target.Vars, domain.KV{
+			ID:      domain.NewID(),
+			Key:     key,
+			Value:   val,
+			Enabled: true,
+		})
+	}
+
+	return s.saveEnvironmentLocked(st, *target)
+}
+
 // SetDefaultEnvironment 设置工作区的默认环境。
 func (s *Store) SetDefaultEnvironment(wsID, envID domain.ID) error {
 	s.mu.Lock()

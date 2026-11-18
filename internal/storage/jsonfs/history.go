@@ -92,6 +92,18 @@ func (f *FS) LoadHistory(ctx context.Context, ref storage.Ref, query storage.His
 	return out, nil
 }
 
+// ClearHistory 删除工作区下的所有历史记录文件。
+func (f *FS) ClearHistory(ctx context.Context, ref storage.Ref) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	dir := filepath.Join(f.abs(ref.Path), historyDir)
+	if err := os.RemoveAll(dir); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 func readJSONL(path string) ([]domain.HistoryEntry, error) {
 	file, err := os.Open(path)
 	if err != nil {

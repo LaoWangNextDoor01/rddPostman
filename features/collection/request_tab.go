@@ -2,11 +2,13 @@ package collection
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
 	"rddpostman/components/theme"
 	"rddpostman/components/v1/icons"
+	"rddpostman/internal/curl"
 	"rddpostman/internal/domain"
 	"rddpostman/internal/transport"
 
@@ -25,8 +27,9 @@ type reqTitleState struct {
 // reqSessionState 维护请求 tab 的运行时会话状态（Tab 选中、下拉展开、本地草稿与拆分高度）。
 type reqSessionState struct {
 	id           string
-	reqTab       int     // 0: Params, 1: Authorization, 2: Headers, 3: Body, 4: Settings
-	respTab      int     // 0: Body, 1: Headers, 2: Cookies
+	reqTab       int     // 0: Params, 1: Authorization, 2: Headers, 3: Body, 4: Scripts, 5: Settings
+	respTab      int     // 0: Body, 1: Headers, 2: Cookies, 3: Test Results
+	scriptSubTab int     // 0: Pre-request Script, 1: Tests Script
 	methodOpen   bool    // 请求方式下拉菜单开关
 	authTypeOpen bool    // 认证方式下拉菜单开关
 	urlDraft     string  // URL 本地编辑草稿
@@ -34,43 +37,104 @@ type reqSessionState struct {
 	splitHeight  float32 // 请求区与响应区的上下分栏高度
 
 	// 可编辑表单与列表草稿（保证 TextInputBase 在重绘时不被擦除）
-	queryDraft      []domain.KV
-	headersDraft    []domain.KV
-	bodyFieldsDraft []domain.KV
-	authTokenDraft  string
-	authUserDraft   string
-	authPassDraft   string
-	authKeyDraft    string
-	authValDraft    string
-	timeoutDraft    string
+	pathVarsDraft         []domain.KV
+	queryDraft            []domain.KV
+	headersDraft          []domain.KV
+	bodyFieldsDraft       []domain.KV
+	authTokenDraft        string
+	authUserDraft         string
+	authPassDraft         string
+	authKeyDraft          string
+	authValDraft          string
+	timeoutDraft          string
+	preScriptDraft        string
+	testsScriptDraft      string
+	proxyDraft            string
+	disableProxyDraft     bool
+	disableCookieJarDraft bool
 
 	// 发送执行态与取消控制
 	sending  bool
 	cancelFn func()
 
 	// 响应区展示状态
-	hasResponse  bool
-	respStatus   int
-	respDuration string
-	respSize     string
-	respBody     string
-	respHeaders  []domain.KV
-	respCookies  []transport.ResponseCookie
-	respError    string
-	respEditor   *editor.State
+	hasResponse     bool
+	respStatus      int
+	respDuration    string
+	respSize        string
+	respBody        string
+	respHeaders     []domain.KV
+	respCookies     []transport.ResponseCookie
+	respTestResults []domain.TestResult
+	respError       string
+	respEditor      *editor.State
+}
+
+// extractPathVariables 从 URL 中提取路径变量（:id 或 {id}），保留已有值
+func extractPathVariables(rawURL string, existing []domain.KV) []domain.KV {
+	varMap := make(map[string]domain.KV)
+	for _, kv := range existing {
+		varMap[kv.Key] = kv
+	}
+
+	reColon := regexp.MustCompile(`:([a-zA-Z_][a-zA-Z0-9_]*)`)
+	reBrace := regexp.MustCompile(`\{([a-zA-Z0-9_-]+)\}`)
+
+	var out []domain.KV
+	seen := make(map[string]bool)
+
+	for _, m := range reColon.FindAllStringSubmatch(rawURL, -1) {
+		key := m[1]
+		if !seen[key] {
+			seen[key] = true
+			if ex, ok := varMap[key]; ok {
+				out = append(out, ex)
+			} else {
+				out = append(out, domain.KV{ID: domain.NewID(), Key: key, Enabled: true})
+			}
+		}
+	}
+	for _, m := range reBrace.FindAllStringSubmatch(rawURL, -1) {
+		key := m[1]
+		if !seen[key] {
+			seen[key] = true
+			if ex, ok := varMap[key]; ok {
+				out = append(out, ex)
+			} else {
+				out = append(out, domain.KV{ID: domain.NewID(), Key: key, Enabled: true})
+			}
+		}
+	}
+	return out
 }
 
 func defaultSessionState(id string, req *domain.Request, auth *domain.Auth) reqSessionState {
 	url := ""
 	rawBody := ""
+	var pathVars []domain.KV
 	var query []domain.KV
 	var headers []domain.KV
 	var bodyFields []domain.KV
 	timeoutStr := "10000"
 
+	preScript := ""
+	testsScript := ""
+	proxyURL := ""
+	disableProxy := false
+	disableCookieJar := false
+
 	if req != nil {
 		url = req.URL
 		rawBody = req.Body.Raw
+		preScript = req.PreRequestScript
+		testsScript = req.TestsScript
+		proxyURL = req.Options.ProxyURL
+		disableProxy = req.Options.DisableProxy
+		disableCookieJar = req.Options.DisableCookieJar
+		if len(req.PathVariables) > 0 {
+			pathVars = make([]domain.KV, len(req.PathVariables))
+			copy(pathVars, req.PathVariables)
+		}
 		if len(req.Query) > 0 {
 			query = make([]domain.KV, len(req.Query))
 			copy(query, req.Query)
@@ -89,6 +153,7 @@ func defaultSessionState(id string, req *domain.Request, auth *domain.Auth) reqS
 	}
 
 	// 保证 Params、Headers、Body 默认至少有一行空白行以便直接输入
+	pathVars = extractPathVariables(url, pathVars)
 	if len(query) == 0 {
 		query = parseQueryFromURL(url)
 	}
@@ -128,6 +193,7 @@ func defaultSessionState(id string, req *domain.Request, auth *domain.Auth) reqS
 		urlDraft:        url,
 		bodyRawDraft:    rawBody,
 		splitHeight:     340,
+		pathVarsDraft:   pathVars,
 		queryDraft:      query,
 		headersDraft:    headers,
 		bodyFieldsDraft: bodyFields,
@@ -136,8 +202,13 @@ func defaultSessionState(id string, req *domain.Request, auth *domain.Auth) reqS
 		authPassDraft:   authPass,
 		authKeyDraft:    authKey,
 		authValDraft:    authVal,
-		timeoutDraft:    timeoutStr,
-		hasResponse:     false,
+		timeoutDraft:          timeoutStr,
+		preScriptDraft:        preScript,
+		testsScriptDraft:      testsScript,
+		proxyDraft:            proxyURL,
+		disableProxyDraft:     disableProxy,
+		disableCookieJarDraft: disableCookieJar,
+		hasResponse:           false,
 		respStatus:      0,
 		respDuration:    "-",
 		respSize:        "-",
@@ -351,13 +422,15 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 				FontSize(m.FontSM).TextColor(tk.TextPrimary).
 				Placeholder("输入请求 URL 地址，例如 https://api.example.com/v1/users 或 {{baseUrl}}/users")
 			if in.Submitted() || in.FocusLeft() {
-				// 同步 URL 到 Query Params
+				// 同步 URL 到 Query Params 与 Path Variables
 				state.queryDraft = parseQueryFromURL(state.urlDraft)
+				state.pathVarsDraft = extractPathVariables(state.urlDraft, state.pathVarsDraft)
 				if state.urlDraft != req.URL {
 					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
 						if node.Request != nil {
 							node.Request.URL = strings.TrimSpace(state.urlDraft)
 							node.Request.Query = cleanKVList(state.queryDraft)
+							node.Request.PathVariables = cleanKVList(state.pathVarsDraft)
 						}
 					})
 				}
@@ -379,12 +452,19 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 			if sendBtn.Clicked() {
 				// 1. 同步保存当前 UI 草稿到 node.Request
 				state.queryDraft = parseQueryFromURL(state.urlDraft)
+				state.pathVarsDraft = extractPathVariables(state.urlDraft, state.pathVarsDraft)
 				currReq := *req.Clone()
 				currReq.URL = strings.TrimSpace(state.urlDraft)
+				currReq.PathVariables = cleanKVList(state.pathVarsDraft)
 				currReq.Query = cleanKVList(state.queryDraft)
 				currReq.Headers = cleanKVList(state.headersDraft)
 				currReq.Body.Raw = state.bodyRawDraft
 				currReq.Body.Fields = cleanKVList(state.bodyFieldsDraft)
+				currReq.PreRequestScript = state.preScriptDraft
+				currReq.TestsScript = state.testsScriptDraft
+				currReq.Options.ProxyURL = state.proxyDraft
+				currReq.Options.DisableProxy = state.disableProxyDraft
+				currReq.Options.DisableCookieJar = state.disableCookieJarDraft
 
 				props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
 					if node.Request != nil {
@@ -409,6 +489,7 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 						state.respBody = resp.FormattedBody
 						state.respHeaders = resp.Headers
 						state.respCookies = resp.Cookies
+						state.respTestResults = resp.TestResults
 						state.respError = resp.Error
 					})
 					state.cancelFn = cancel
@@ -422,6 +503,21 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 					state.respBody = "{\n  \"message\": \"Simulated local response\"\n}"
 				}
 			}
+
+			curlBtn := ui.Button(c, "cURL").Height(34).PaddingX(12).FontSize(m.FontSM)
+			if curlBtn.Clicked() {
+				state.queryDraft = parseQueryFromURL(state.urlDraft)
+				state.pathVarsDraft = extractPathVariables(state.urlDraft, state.pathVarsDraft)
+				currReq := *req.Clone()
+				currReq.URL = strings.TrimSpace(state.urlDraft)
+				currReq.PathVariables = cleanKVList(state.pathVarsDraft)
+				currReq.Query = cleanKVList(state.queryDraft)
+				currReq.Headers = cleanKVList(state.headersDraft)
+				currReq.Body.Raw = state.bodyRawDraft
+				currReq.Body.Fields = cleanKVList(state.bodyFieldsDraft)
+				cmd := curl.ToCurl(currReq, n.Auth)
+				c.WriteClipboard(cmd)
+			}
 		}
 	})
 }
@@ -430,7 +526,7 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 func reqConfigTabs(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.Node,
 	activeID string, state *reqSessionState, tk theme.Tokens, m theme.Metric,
 ) {
-	paramCount := countActiveKV(state.queryDraft)
+	paramCount := countActiveKV(state.queryDraft) + countActiveKV(state.pathVarsDraft)
 	headerCount := countActiveKV(state.headersDraft)
 
 	tabLabels := []string{
@@ -438,6 +534,7 @@ func reqConfigTabs(c *ui.Context, props pageProps, coll *domain.Collection, n *d
 		"Authorization",
 		fmt.Sprintf("Headers (%d)", headerCount),
 		"Body",
+		"Scripts",
 		"Settings",
 	}
 
@@ -451,15 +548,34 @@ func reqConfigTabs(c *ui.Context, props pageProps, coll *domain.Collection, n *d
 	ui.Column(c).Grow(1).Padding(m.Space2, 0).Children(func() {
 		switch state.reqTab {
 		case 0:
-			// Params 参数编辑（与 URL 保持双向联动）
-			renderKVEditor(c, tk, m, "query", &state.queryDraft, func(items []domain.KV) {
-				state.urlDraft = syncQueryToURL(state.urlDraft, items)
-				props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
-					if node.Request != nil {
-						node.Request.Query = cleanKVList(items)
-						node.Request.URL = state.urlDraft
-					}
+			// Params 参数编辑（包含 Query 与 Path 变量，与 URL 保持双向联动）
+			ui.Column(c).Grow(1).Gap(10).Children(func() {
+				ui.Row(c).Height(20).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, "Query Parameters").FontSize(11).Bold().TextColor(tk.TextSecondary)
 				})
+				renderKVEditor(c, tk, m, "query", &state.queryDraft, func(items []domain.KV) {
+					state.urlDraft = syncQueryToURL(state.urlDraft, items)
+					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+						if node.Request != nil {
+							node.Request.Query = cleanKVList(items)
+							node.Request.URL = state.urlDraft
+						}
+					})
+				})
+
+				if len(state.pathVarsDraft) > 0 {
+					ui.Box(c).Height(8)
+					ui.Row(c).Height(20).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, "Path Variables").FontSize(11).Bold().TextColor(tk.TextSecondary)
+					})
+					renderKVEditor(c, tk, m, "pathvars", &state.pathVarsDraft, func(items []domain.KV) {
+						props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+							if node.Request != nil {
+								node.Request.PathVariables = cleanKVList(items)
+							}
+						})
+					})
+				}
 			})
 		case 1:
 			// Authorization 认证配置（带继承链生效计算展示）
@@ -477,6 +593,9 @@ func reqConfigTabs(c *ui.Context, props pageProps, coll *domain.Collection, n *d
 			// Body 请求体配置
 			renderBodyEditor(c, props, coll, n, state, tk, m)
 		case 4:
+			// Scripts 脚本与测试断言
+			renderScriptsEditor(c, props, coll, n, state, tk, m)
+		case 5:
 			// Settings 传输设置
 			renderSettingsEditor(c, props, coll, n, state, tk, m)
 		}
@@ -877,6 +996,111 @@ func renderBodyEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 	})
 }
 
+// 脚本与测试断言面板
+func renderScriptsEditor(c *ui.Context, props pageProps, coll *domain.Collection,
+	n *domain.Node, state *reqSessionState, tk theme.Tokens, m theme.Metric,
+) {
+	subTabs := []string{"前置脚本 (Pre-request Script)", "测试断言 (Tests Script)"}
+	tabsRowWithAction(c, subTabs, state.scriptSubTab, func(idx int) {
+		state.scriptSubTab = idx
+	}, nil)
+
+	ui.Divider(c).BorderColor(tk.Border)
+
+	ui.Column(c).Grow(1).Padding(m.Space2, 0).Gap(8).Children(func() {
+		if state.scriptSubTab == 0 {
+			// Pre-request Script
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				ui.Text(c, "快速插入代码片段:").FontSize(m.FontXS).TextColor(tk.TextMuted)
+				if ui.Button(c, "设置变量").Height(22).FontSize(m.FontXS).Clicked() {
+					if state.preScriptDraft != "" && !strings.HasSuffix(state.preScriptDraft, "\n") {
+						state.preScriptDraft += "\n"
+					}
+					state.preScriptDraft += "pm.variables.set(\"my_var\", \"value\");\n"
+					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+						if node.Request != nil {
+							node.Request.PreRequestScript = state.preScriptDraft
+						}
+					})
+				}
+				if ui.Button(c, "设置环境变量").Height(22).FontSize(m.FontXS).Clicked() {
+					if state.preScriptDraft != "" && !strings.HasSuffix(state.preScriptDraft, "\n") {
+						state.preScriptDraft += "\n"
+					}
+					state.preScriptDraft += "pm.environment.set(\"token\", \"secret\");\n"
+					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+						if node.Request != nil {
+							node.Request.PreRequestScript = state.preScriptDraft
+						}
+					})
+				}
+			})
+
+			ui.TextArea(c, &state.preScriptDraft).Fill().MinHeight(180).
+				Padding(m.Space2, m.Space2).Radius(m.RadiusSM).
+				FontSize(m.FontSM).FixedLineHeight(20).
+				Placeholder("// 在发送请求前执行的 JavaScript 脚本\npm.variables.set(\"timestamp\", \"1609459200\");\npm.environment.set(\"auth_token\", \"secret\");").
+				OnChange(func() {
+					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+						if node.Request != nil {
+							node.Request.PreRequestScript = state.preScriptDraft
+						}
+					})
+				})
+		} else {
+			// Tests Script
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				ui.Text(c, "快速插入测试断言:").FontSize(m.FontXS).TextColor(tk.TextMuted)
+				if ui.Button(c, "状态码 200").Height(22).FontSize(m.FontXS).Clicked() {
+					if state.testsScriptDraft != "" && !strings.HasSuffix(state.testsScriptDraft, "\n") {
+						state.testsScriptDraft += "\n"
+					}
+					state.testsScriptDraft += "pm.test(\"Status code is 200\", function () {\n    pm.response.to.have.status(200);\n});\n"
+					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+						if node.Request != nil {
+							node.Request.TestsScript = state.testsScriptDraft
+						}
+					})
+				}
+				if ui.Button(c, "耗时 < 500ms").Height(22).FontSize(m.FontXS).Clicked() {
+					if state.testsScriptDraft != "" && !strings.HasSuffix(state.testsScriptDraft, "\n") {
+						state.testsScriptDraft += "\n"
+					}
+					state.testsScriptDraft += "pm.test(\"Response time is below 500ms\", function () {\n    pm.response.to.have.responseTime.below(500);\n});\n"
+					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+						if node.Request != nil {
+							node.Request.TestsScript = state.testsScriptDraft
+						}
+					})
+				}
+				if ui.Button(c, "JSON 字段校验").Height(22).FontSize(m.FontXS).Clicked() {
+					if state.testsScriptDraft != "" && !strings.HasSuffix(state.testsScriptDraft, "\n") {
+						state.testsScriptDraft += "\n"
+					}
+					state.testsScriptDraft += "pm.test(\"Check JSON field\", function () {\n    var jsonData = pm.response.json();\n    pm.expect(jsonData.code).to.eq(0);\n});\n"
+					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+						if node.Request != nil {
+							node.Request.TestsScript = state.testsScriptDraft
+						}
+					})
+				}
+			})
+
+			ui.TextArea(c, &state.testsScriptDraft).Fill().MinHeight(180).
+				Padding(m.Space2, m.Space2).Radius(m.RadiusSM).
+				FontSize(m.FontSM).FixedLineHeight(20).
+				Placeholder("// 请求收到响应后执行的测试断言脚本\npm.test(\"Status code is 200\", function () {\n    pm.response.to.have.status(200);\n});\npm.test(\"Check code is 0\", function () {\n    pm.expect(pm.response.json().code).to.eql(0);\n});").
+				OnChange(func() {
+					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+						if node.Request != nil {
+							node.Request.TestsScript = state.testsScriptDraft
+						}
+					})
+				})
+		}
+	})
+}
+
 // 传输设置面板
 func renderSettingsEditor(c *ui.Context, props pageProps, coll *domain.Collection,
 	n *domain.Node, state *reqSessionState, tk theme.Tokens, m theme.Metric,
@@ -962,6 +1186,76 @@ func renderSettingsEditor(c *ui.Context, props pageProps, coll *domain.Collectio
 			ui.Text(c, "开启 SSL/TLS 证书有效性校验 (Verify SSL)").FontSize(m.FontSM).
 				TextColor(tk.TextSecondary)
 		})
+
+		useCookieJar := !state.disableCookieJarDraft
+		ui.Row(c).Height(28).AlignItems(ui.Center).Gap(8).Children(func() {
+			chk := ui.ButtonBase(c.Key("settings-cookie-jar")).
+				Size(16, 16).Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center)
+			if useCookieJar {
+				chk.Background(tk.Accent)
+				chk.Children(func() {
+					ui.Icon(c, icons.Get("check")).Size(11, 11).TextColor(tk.BgSurface)
+				})
+			} else {
+				chk.Border(m.Border, tk.Border)
+			}
+			if chk.Clicked() {
+				state.disableCookieJarDraft = !state.disableCookieJarDraft
+				val := state.disableCookieJarDraft
+				props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+					if node.Request != nil {
+						node.Request.Options.DisableCookieJar = val
+					}
+				})
+			}
+			ui.Text(c, "启用会话 Cookie 管理 (CookieJar 自动持久化并在后续请求中携带)").FontSize(m.FontSM).
+				TextColor(tk.TextSecondary)
+		})
+
+		ui.Row(c).Height(32).AlignItems(ui.Center).Gap(8).Children(func() {
+			ui.Text(c, "自定义代理 (Proxy URL):").FontSize(m.FontSM).
+				TextColor(tk.TextSecondary).Width(160)
+			in := ui.TextInputBase(c.Key("settings-proxy-input"), &state.proxyDraft).
+				Fill().Height(26).PaddingX(6).
+				Radius(m.RadiusSM).Border(m.Border, tk.Border).
+				Placeholder("例如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080").
+				FontSize(m.FontSM).TextColor(tk.TextPrimary)
+			if in.Focused() {
+				in.Border(m.Border, tk.FocusRing)
+			}
+			if in.FocusLeft() || in.Submitted() {
+				val := strings.TrimSpace(state.proxyDraft)
+				props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+					if node.Request != nil {
+						node.Request.Options.ProxyURL = val
+					}
+				})
+			}
+		})
+
+		ui.Row(c).Height(28).AlignItems(ui.Center).Gap(8).Children(func() {
+			chk := ui.ButtonBase(c.Key("settings-disable-proxy")).
+				Size(16, 16).Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center)
+			if state.disableProxyDraft {
+				chk.Background(tk.Accent)
+				chk.Children(func() {
+					ui.Icon(c, icons.Get("check")).Size(11, 11).TextColor(tk.BgSurface)
+				})
+			} else {
+				chk.Border(m.Border, tk.Border)
+			}
+			if chk.Clicked() {
+				state.disableProxyDraft = !state.disableProxyDraft
+				val := state.disableProxyDraft
+				props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+					if node.Request != nil {
+						node.Request.Options.DisableProxy = val
+					}
+				})
+			}
+			ui.Text(c, "禁用代理 (直连模式 Direct Connection，绕过系统代理)").FontSize(m.FontSM).
+				TextColor(tk.TextSecondary)
+		})
 	})
 }
 
@@ -1033,13 +1327,25 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 
 		headerCount := len(state.respHeaders)
 		cookieCount := len(state.respCookies)
+		totalTests := len(state.respTestResults)
+		passedTests := 0
+		for _, tr := range state.respTestResults {
+			if tr.Passed {
+				passedTests++
+			}
+		}
+		testTabLabel := "Test Results"
+		if totalTests > 0 {
+			testTabLabel = fmt.Sprintf("Test Results (%d/%d)", passedTests, totalTests)
+		}
 
-		// 响应 Tab 栏（Body, Headers, Cookies）
+		// 响应 Tab 栏（Body, Headers, Cookies, Test Results）
 		ui.Row(c).PaddingX(m.Space4).Children(func() {
 			respTabs := []string{
 				"Body",
 				fmt.Sprintf("Headers (%d)", headerCount),
 				fmt.Sprintf("Cookies (%d)", cookieCount),
+				testTabLabel,
 			}
 			tabsRowWithAction(c, respTabs, state.respTab, func(idx int) {
 				state.respTab = idx
@@ -1093,10 +1399,53 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 			case 2:
 				// 真实 Cookie 列表
 				renderResponseCookies(c, state.respCookies, tk, m)
+			case 3:
+				// 测试断言执行结果
+				renderTestResults(c, state.respTestResults, tk, m)
 			}
 		})
 	})
 	_ = props
+}
+
+// 测试断言列表展示
+func renderTestResults(c *ui.Context, results []domain.TestResult, tk theme.Tokens, m theme.Metric) {
+	if len(results) == 0 {
+		ui.Row(c).Height(80).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+			ui.Text(c, "本次请求未执行测试脚本。您可在上方「Scripts」Tab 中编写 pm.test(...) 测试断言。").
+				FontSize(m.FontSM).TextColor(tk.TextMuted)
+		})
+		return
+	}
+
+	ui.Scroll(c).Grow(1).Children(func() {
+		ui.Column(c).Grow(1).Gap(8).Padding(m.Space2, 0).Children(func() {
+			for _, tr := range results {
+				tr := tr
+				ui.Row(c).Padding(8, 12).Radius(m.RadiusSM).AlignItems(ui.Center).Gap(10).
+					Background(tk.HoverSurface.Alpha(0.4)).Children(func() {
+					if tr.Passed {
+						ui.Box(c).Padding(2, 6).Radius(m.RadiusSM).Background(tk.Success.Alpha(0.15)).Children(func() {
+							ui.Text(c, "PASS").FontSize(m.FontXS).Bold().TextColor(tk.Success)
+						})
+						ui.Icon(c, icons.Get("check")).Size(14, 14).TextColor(tk.Success)
+						ui.Text(c, tr.Name).FontSize(m.FontSM).Bold().TextColor(tk.TextPrimary)
+					} else {
+						ui.Box(c).Padding(2, 6).Radius(m.RadiusSM).Background(tk.Danger.Alpha(0.15)).Children(func() {
+							ui.Text(c, "FAIL").FontSize(m.FontXS).Bold().TextColor(tk.Danger)
+						})
+						ui.Icon(c, icons.Get("triangle-alert")).Size(14, 14).TextColor(tk.Danger)
+						ui.Column(c).Gap(4).Children(func() {
+							ui.Text(c, tr.Name).FontSize(m.FontSM).Bold().TextColor(tk.TextPrimary)
+							if tr.Error != "" {
+								ui.Text(c, tr.Error).FontSize(m.FontXS).TextColor(tk.Danger)
+							}
+						})
+					}
+				})
+			}
+		})
+	})
 }
 
 // 使用 MyGo 原生内置的 code editor 组件展示响应体

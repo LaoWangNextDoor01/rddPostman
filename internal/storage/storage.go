@@ -96,4 +96,6 @@ type Backend interface {
 	AppendHistory(ctx context.Context, ref Ref, entry domain.HistoryEntry) error
 	// LoadHistory 按时间倒序返回历史记录。
 	LoadHistory(ctx context.Context, ref Ref, query HistoryQuery) ([]domain.HistoryEntry, error)
+	// ClearHistory 清空工作区的所有历史记录。
+	ClearHistory(ctx context.Context, ref Ref) error
 }

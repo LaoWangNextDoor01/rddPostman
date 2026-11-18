@@ -33,10 +33,11 @@ type treeNode struct {
 
 // treeActions 是树行操作的外置回调，由页面负责接到 store。
 type treeActions struct {
-	create func(row *treeNode, kind treeKind)
-	remove func(row *treeNode)
-	open   func(row *treeNode)
-	copy   func(text string)
+	create    func(row *treeNode, kind treeKind)
+	remove    func(row *treeNode)
+	open      func(row *treeNode)
+	copy      func(text string)
+	duplicate func(row *treeNode)
 }
 
 // buildTree 把数据层的集合树转换成纯 UI 行模型。
@@ -211,6 +212,9 @@ func rowMenu(m *ui.Menu, n *treeNode, state *workspace, actions treeActions) {
 		if m.Item(locales.TreeOpen()).Chosen() {
 			actions.open(n)
 		}
+		if actions.duplicate != nil && m.Item("复制请求").Chosen() {
+			actions.duplicate(n)
+		}
 		m.Separator()
 		if m.Item(locales.TreeDelete()).Danger().Chosen() {
 			actions.remove(n)
@@ -246,4 +250,31 @@ func methodColor(tk theme.Tokens, method string) ui.Color {
 	default:
 		return tk.TextMuted
 	}
+}
+
+// filterTree 递归根据关键词匹配树节点（支持按名称、URL、Method 过滤），
+// 如果子节点命中则保留父节点并自动展开目录。
+func filterTree(nodes []*treeNode, keyword string, state *workspace) []*treeNode {
+	keyword = strings.ToLower(strings.TrimSpace(keyword))
+	if keyword == "" {
+		return nodes
+	}
+	var out []*treeNode
+	for _, n := range nodes {
+		filteredChildren := filterTree(n.children, keyword, state)
+		matched := strings.Contains(strings.ToLower(n.name), keyword) ||
+			strings.Contains(strings.ToLower(n.url), keyword) ||
+			strings.Contains(strings.ToLower(n.method), keyword)
+
+		if matched || len(filteredChildren) > 0 {
+			clone := *n
+			clone.children = filteredChildren
+			out = append(out, &clone)
+			if state != nil && len(filteredChildren) > 0 {
+				open := state.openFlag(n.id)
+				*open = true
+			}
+		}
+	}
+	return out
 }

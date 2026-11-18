@@ -98,10 +98,10 @@ func (a *App) content(c *ui.Context) {
 				request.View(c, a.router)
 			case r.Match(routeEnvironments):
 				r.Title(locales.EnvironmentTitle())
-				environment.View(c, a.router)
+				environment.View(c, a.store, a.router)
 			case r.Match(routeHistory):
 				r.Title(locales.HistoryTitle())
-				history.View(c, a.router)
+				history.View(c, a.store, a.router)
 			case r.Match(routeDocs):
 				r.Title(locales.DocsTitle())
 				placeholder(c, locales.DocsTitle(), locales.DocsDesc())

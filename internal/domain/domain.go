@@ -6,6 +6,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -96,17 +98,19 @@ type Node struct {
 // Request 是一个请求的传输配置。认证放在 Node.Auth 上，
 // 以便目录级继承（request → folder → collection）。
 type Request struct {
-	Protocol      string    `json:"protocol,omitempty"`
-	Method        string    `json:"method,omitempty"`
-	URL           string    `json:"url,omitempty"`
-	PathVariables []KV      `json:"pathVariables,omitempty"`
-	Query         []KV      `json:"query,omitempty"`
-	Headers       []KV      `json:"headers,omitempty"`
-	Cookies       []KV      `json:"cookies,omitempty"`
-	Body          Body      `json:"body,omitzero"`
-	Options       Options   `json:"options,omitzero"`
-	CreatedAt     time.Time `json:"createdAt,omitzero"`
-	UpdatedAt     time.Time `json:"updatedAt,omitzero"`
+	Protocol         string    `json:"protocol,omitempty"`
+	Method           string    `json:"method,omitempty"`
+	URL              string    `json:"url,omitempty"`
+	PathVariables    []KV      `json:"pathVariables,omitempty"`
+	Query            []KV      `json:"query,omitempty"`
+	Headers          []KV      `json:"headers,omitempty"`
+	Cookies          []KV      `json:"cookies,omitempty"`
+	Body             Body      `json:"body,omitzero"`
+	Options          Options   `json:"options,omitzero"`
+	PreRequestScript string    `json:"preRequestScript,omitempty"`
+	TestsScript      string    `json:"testsScript,omitempty"`
+	CreatedAt        time.Time `json:"createdAt,omitzero"`
+	UpdatedAt        time.Time `json:"updatedAt,omitzero"`
 }
 
 // BodyMode 是请求体的类型。
@@ -139,9 +143,19 @@ type GraphQL struct {
 
 // Options 是单请求级传输选项。指针字段用于区分「继承工作区默认」和「显式关闭」。
 type Options struct {
-	TimeoutMS       int   `json:"timeoutMS,omitempty"`
-	FollowRedirects *bool `json:"followRedirects,omitempty"`
-	VerifyTLS       *bool `json:"verifyTLS,omitempty"`
+	TimeoutMS        int    `json:"timeoutMS,omitempty"`
+	FollowRedirects  *bool  `json:"followRedirects,omitempty"`
+	VerifyTLS        *bool  `json:"verifyTLS,omitempty"`
+	ProxyURL         string `json:"proxyURL,omitempty"` // 自定义代理，如 "http://127.0.0.1:7890" 或 "socks5://127.0.0.1:1080"
+	DisableProxy     bool   `json:"disableProxy,omitempty"`
+	DisableCookieJar bool   `json:"disableCookieJar,omitempty"`
+}
+
+// TestResult 描述一条断言或自动化测试的执行结果。
+type TestResult struct {
+	Name   string `json:"name"`
+	Passed bool   `json:"passed"`
+	Error  string `json:"error,omitempty"`
 }
 
 // AuthType 是认证方式。
@@ -169,6 +183,7 @@ type KV struct {
 	ID        ID        `json:"id,omitempty"`
 	Key       string    `json:"key"`
 	Value     string    `json:"value,omitempty"`
+	Type      string    `json:"type,omitempty"` // 字段类型: "text" (默认) 或 "file"
 	Desc      string    `json:"desc,omitempty"`
 	Enabled   bool      `json:"enabled"`
 	Secret    bool      `json:"secret,omitempty"`
@@ -638,8 +653,10 @@ func substitute(s string, vars map[string]Variable, missing map[string]bool) str
 // dynamicValue 返回内置动态变量的当前值。
 func dynamicValue(name string) (string, bool) {
 	switch name {
-	case "$guid", "$uuid":
-		return string(NewID()) + string(NewID()), true
+	case "$guid", "$uuid", "$randomUUID":
+		b := make([]byte, 16)
+		_, _ = rand.Read(b)
+		return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16]), true
 	case "$timestamp":
 		return fmt.Sprintf("%d", time.Now().Unix()), true
 	case "$isoTimestamp":
@@ -650,7 +667,95 @@ func dynamicValue(name string) (string, bool) {
 			return "0", true
 		}
 		return fmt.Sprintf("%d", int(b[0])<<8|int(b[1])), true
+	case "$randomEmail":
+		b := make([]byte, 4)
+		_, _ = rand.Read(b)
+		return fmt.Sprintf("user_%x@example.com", b), true
+	case "$randomFirstName":
+		names := []string{"James", "Mary", "Robert", "Patricia", "John", "Jennifer", "Michael", "Linda"}
+		b := make([]byte, 1)
+		_, _ = rand.Read(b)
+		return names[int(b[0])%len(names)], true
+	case "$randomLastName":
+		names := []string{"Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis"}
+		b := make([]byte, 1)
+		_, _ = rand.Read(b)
+		return names[int(b[0])%len(names)], true
+	case "$randomFullName":
+		firsts := []string{"James", "Mary", "Robert", "Patricia", "John", "Jennifer"}
+		lasts := []string{"Smith", "Johnson", "Williams", "Brown", "Jones", "Miller"}
+		b := make([]byte, 2)
+		_, _ = rand.Read(b)
+		return firsts[int(b[0])%len(firsts)] + " " + lasts[int(b[1])%len(lasts)], true
+	case "$randomPhoneNumber":
+		b := make([]byte, 4)
+		_, _ = rand.Read(b)
+		val := (int(b[0])<<24 | int(b[1])<<16 | int(b[2])<<8 | int(b[3])) & 0x7fffffff
+		return fmt.Sprintf("138%08d", val%100000000), true
+	case "$randomPrice":
+		b := make([]byte, 2)
+		_, _ = rand.Read(b)
+		val := float64((int(b[0])<<8|int(b[1]))%10000) / 100.0
+		return fmt.Sprintf("%.2f", val), true
+	case "$randomBoolean":
+		b := make([]byte, 1)
+		_, _ = rand.Read(b)
+		if b[0]%2 == 0 {
+			return "true", true
+		}
+		return "false", true
+	case "$randomIP":
+		b := make([]byte, 4)
+		_, _ = rand.Read(b)
+		return fmt.Sprintf("%d.%d.%d.%d", b[0], b[1], b[2], b[3]), true
+	case "$randomAlphaNumeric":
+		chars := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+		b := make([]byte, 8)
+		_, _ = rand.Read(b)
+		var res strings.Builder
+		for _, v := range b {
+			res.WriteByte(chars[int(v)%len(chars)])
+		}
+		return res.String(), true
 	default:
 		return "", false
 	}
+}
+
+// ApplyPathVariables 将 URL 中的路径变量（支持 :key 与 {key} 语法）替换为真实值。
+func ApplyPathVariables(rawURL string, pathVars []KV) string {
+	if len(pathVars) == 0 {
+		return rawURL
+	}
+	varMap := make(map[string]string)
+	for _, pv := range pathVars {
+		if pv.Enabled && strings.TrimSpace(pv.Key) != "" {
+			varMap[strings.TrimSpace(pv.Key)] = pv.Value
+		}
+	}
+	if len(varMap) == 0 {
+		return rawURL
+	}
+
+	// 1. 替换 {key} 语法
+	reBrace := regexp.MustCompile(`\{([a-zA-Z0-9_-]+)\}`)
+	rawURL = reBrace.ReplaceAllStringFunc(rawURL, func(m string) string {
+		key := m[1 : len(m)-1]
+		if val, ok := varMap[key]; ok {
+			return url.PathEscape(val)
+		}
+		return m
+	})
+
+	// 2. 替换 :key 语法（要求紧随冒号的是字母或下划线，避免误判 :8080 等端口号）
+	reColon := regexp.MustCompile(`:([a-zA-Z_][a-zA-Z0-9_]*)`)
+	rawURL = reColon.ReplaceAllStringFunc(rawURL, func(m string) string {
+		key := m[1:]
+		if val, ok := varMap[key]; ok {
+			return url.PathEscape(val)
+		}
+		return m
+	})
+
+	return rawURL
 }

@@ -112,12 +112,15 @@ func TestMergeSecrets(t *testing.T) {
 }
 
 func TestDynamicVariables(t *testing.T) {
-	got, missing := Prepare(Request{URL: "{{$timestamp}}/{{$guid}}/{{$randomInt}}"}, nil)
+	got, missing := Prepare(Request{URL: "{{$timestamp}}/{{$guid}}/{{$randomUUID}}/{{$randomInt}}/{{$randomEmail}}/{{$randomFirstName}}/{{$randomPrice}}"}, nil)
 	if len(missing) != 0 {
 		t.Fatalf("动态变量不该算缺失: %v", missing)
 	}
 	if strings.Contains(got.URL, "{{") {
 		t.Errorf("动态变量没求值: %q", got.URL)
+	}
+	if !strings.Contains(got.URL, "@example.com") {
+		t.Errorf("expected $randomEmail in URL, got: %q", got.URL)
 	}
 }
 
