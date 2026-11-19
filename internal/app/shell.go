@@ -153,22 +153,87 @@ func (a *App) workspaceSelector(c *ui.Context) {
 			name = cur.Name
 		}
 		ui.Text(c, name).FontSize(m.FontSM).TextColor(tk.TextPrimary).SingleLine()
-		if cur != nil && cur.Default {
-			defaultBadge(c)
-		}
 		ui.Icon(c, icons.ChevronDown).FontSize(m.IconXS).TextColor(tk.TextMuted)
 	})
 
-	open := ui.Local(button, "open", func() bool { return false })
+	open := ui.Local(button, "open", func() bool {
+		return false
+	})
 
 	if button.Clicked() {
 		*open = !*open
 	}
-	v2.Popover(c, button, open, v2.PopoverOpts{Width: 330}, func(panel ui.Element) {
-		// 内容：搜索行、工作区列表、v2.PopoverDivider(c)、底部操作行
 
-		ui.Text(c, "测试")
-		//
+	v2.Popover(c, button, open, v2.PopoverOpts{Width: 300}, func(panel ui.Element) {
+		// 内容按设计稿 37:12830「overlay / workspace dropdown」重绘：
+		// 搜索行 → 工作区列表 → 1px 分割线 → 48px 底部操作行。
+
+		// 搜索行：内边距 12；搜索框 高32 圆角8 白底。
+		wsKw := ui.Local(panel, "search-value", func() string {
+			return ""
+		})
+		ui.Row(c).FillWidth().Padding(m.Space2, m.Space2, 0, m.Space2).Children(func() {
+			in := ui.TextInputBase(c.Key("ws-search"), wsKw).FillWidth().
+				Height(32).Padding(0, m.Space3).Radius(8).
+				Background(tk.BgSurface).Border(m.Border, tk.Border).
+				FontSize(m.FontMD).TextColor(tk.TextPrimary).
+				Placeholder("Search workspaces...")
+			if in.Focused() {
+				in.Border(m.Border, tk.Focus)
+			}
+		})
+
+		// 工作区列表（27-全局框架-Workspace列表Hover）：
+		// 行高 40、内边距 [10,16]、间距 12；左侧 32×32 圆角6 灰底 workspace 图标，
+		// 名称 14 Medium #212121；hover 整行 #F2F2F2。
+		ui.Scroll(c).MaxHeight(160).PaddingY(m.Space2).Children(func() {
+			ui.Column(c).Gap(m.Space05).PaddingX(m.Space1).Children(func() {
+				for _, v := range a.store.Snapshot().Workspaces {
+					row := ui.ButtonBase(c.Key("ws-"+string(v.ID))).FillWidth().
+						Height(30).Padding(10, 16).Radius(m.RadiusMD).
+						AlignItems(ui.Center).Gap(m.Space3).Label(v.Name)
+					if row.Hovered() {
+						row.Background(tk.BgSubtle) // #F2F2F2
+					}
+					if row.Clicked() {
+						_ = a.store.SetActiveWorkspace(v.ID)
+						*open = false
+					}
+					if cur.ID == v.ID {
+						row.Background(tk.BgSubtle)
+					}
+					row.Children(func() {
+						ui.Box(c).Size(26, 26).Radius(6).Background(tk.BgSubtle).
+							AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+							ui.Icon(c, icons.Layers).FontSize(m.IconSM).TextColor(tk.TextMuted)
+						})
+						ui.Text(c, v.Name).FontSize(m.FontMD).FontWeight(500).
+							TextColor(tk.TextPrimary).SingleLine().Grow(1)
+					})
+				}
+			})
+		})
+
+		// 分割线
+		ui.Box(c).FillWidth().Height(m.Border).Background(tk.Border)
+
+		// 底部操作行：高48，左右各一个按钮（图标+文字），中间 1px 竖分隔线。
+		ui.Row(c).FillWidth().Height(32).Children(func() {
+			ui.ButtonBase(c.Key("ws-create")).Grow(1).Height(32).
+				AlignItems(ui.Center).Justify(ui.Center).Gap(m.Space2).
+				Label("创建").Children(func() {
+				ui.Icon(c, icons.Plus).FontSize(14).TextColor(tk.TextPrimary)
+				ui.Text(c, "创建").FontSize(m.FontMD).FontWeight(500).
+					TextColor(tk.TextPrimary)
+			})
+			ui.Box(c).Width(m.Border).Height(24).Background(tk.Border)
+			ui.ButtonBase(c.Key("ws-view-all")).Grow(1).Height(32).
+				AlignItems(ui.Center).Justify(ui.Center).Gap(m.Space2).
+				Label("查看所有").Children(func() {
+				ui.Icon(c, icons.LayoutGrid).FontSize(16).TextColor(tk.TextPrimary)
+				ui.Text(c, "查看所有").FontSize(m.FontMD).TextColor(tk.TextPrimary)
+			})
+		})
 	})
 }
 

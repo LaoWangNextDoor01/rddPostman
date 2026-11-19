@@ -42,7 +42,7 @@ func Popover(c *ui.Context, anchor ui.Element, open *bool, o PopoverOpts, build 
 			Radius(m.RadiusLG).
 			Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.08)).
 			Shadow(0, 12, 28, 0, ui.RGBA(0, 0, 0, 0.14)).
-			Margin(m.Space2, 0, 0, 0)
+			Margin(m.Space1, 0, 0, 0)
 		if o.Width > 0 {
 			panel.Width(o.Width)
 		}
