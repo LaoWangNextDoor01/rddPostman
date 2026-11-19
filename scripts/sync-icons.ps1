@@ -53,4 +53,8 @@ if (-not $SameVersion -or -not (Test-Path $licensePath)) {
 }
 
 Set-Content -Path $Stamp -Value $Version -NoNewline
+
+# 4. 生成类型化图标变量（components/v1/icons/icons_gen.go，勿手改）
+go run ./scripts/gen-icons
+
 Write-Host "完成，图标目录与 $List 一致（Lucide $Version）。"

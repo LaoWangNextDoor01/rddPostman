@@ -54,7 +54,8 @@ var Metrics = Metric{
 
 	SizeXS: 20, SizeSM: 22, SizeMD: 24, SizeLG: 28, SizeXL: 34,
 
-	TitleBarHeight: 40, IconRailWidth: 52, SidebarWidth: 268, StatusBarHeight: 26,
+	// 标题栏兜底高度：跟随 Windows 系统按钮带（32）。正常情况用 c.TitleBar()。
+	TitleBarHeight: 32, IconRailWidth: 52, SidebarWidth: 268, StatusBarHeight: 26,
 
 	PagePaddingX: 24, PagePaddingY: 20,
 

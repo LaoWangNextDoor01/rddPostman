@@ -117,7 +117,7 @@ func content(c *ui.Context, db *store.Store, n nav.Navigator) {
 				for _, e := range envs {
 					e := e
 					isCurrentActive := e.ID == ws.SelectedEnvironmentID
-					badge := ui.ButtonBase(c.Key("switch-active-" + string(e.ID))).
+					badge := ui.ButtonBase(c.Key("switch-active-"+string(e.ID))).
 						Padding(m.Space1, m.Space2).Radius(m.RadiusSM)
 					if isCurrentActive {
 						badge.Background(tk.AccentSoft)
@@ -167,7 +167,7 @@ func content(c *ui.Context, db *store.Store, n nav.Navigator) {
 			for _, e := range envs {
 				e := e
 				isSelected := e.ID == *activeEnvID
-				tabBtn := ui.ButtonBase(c.Key("env-tab-" + string(e.ID))).
+				tabBtn := ui.ButtonBase(c.Key("env-tab-"+string(e.ID))).
 					Padding(m.Space2, m.Space3).Radius(m.RadiusMD)
 				if isSelected {
 					tabBtn.Background(tk.BgSurface).Border(m.Border, tk.Border)
@@ -202,7 +202,7 @@ func renderEnvironmentEditor(c *ui.Context, db *store.Store, wsID domain.ID, env
 	m := theme.Metrics
 	tk := theme.Of(c)
 
-	card := ui.Column(c.Key("env-editor-" + string(env.ID))).
+	card := ui.Column(c.Key("env-editor-"+string(env.ID))).
 		Margin(0, m.PagePaddingX, m.Space4, m.PagePaddingX).
 		Background(tk.BgSurface).Border(m.Border, tk.Border).
 		Radius(m.RadiusMD)

@@ -17,13 +17,13 @@ func main() {
 			Title:     "rddPostman",
 			Width:     1280,
 			Height:    800,
-			MinWidth:  960,
+			MinWidth:  120,
 			MinHeight: 600,
 			// Opens where the user left it last time.
-			StateKey: "main",
-			// The view draws the title bar under the window controls.
-			TitleBarStyle: mygo.TitleBarHidden,
-			Content:       ui.View(a.View),
+			StateKey:       "main",
+			TitleBarHeight: 36,
+			TitleBarStyle:  mygo.TitleBarHidden,
+			Content:        ui.View(a.View),
 		})
 	})
 	if err := mygo.App.Run(); err != nil {

@@ -41,3 +41,16 @@ link
 strikethrough
 table
 check
+user-round
+bell
+
+# Hub 导航菜单（Home 菜单按钮，02 §7 映射表）
+layout-grid
+boxes
+lock
+sparkles
+plug
+chart-column
+users
+arrow-left
+arrow-right

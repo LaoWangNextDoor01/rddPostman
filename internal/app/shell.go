@@ -7,55 +7,29 @@ import (
 	"strings"
 
 	"rddpostman/components/theme"
+	thV2 "rddpostman/components/theme/v2"
 	"rddpostman/components/v1/icons"
+	v2 "rddpostman/components/v2"
 	"rddpostman/internal/config"
-	"rddpostman/internal/domain"
 	"rddpostman/internal/logger"
 	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
 
-// railEntry 是图标栏的一项。label 和 desc 存函数，
-// 每一帧按当前语言取值，语言切换后不用重建列表。
-type railEntry struct {
-	id    string // 稳定的业务 ID，用作 key，不随语言变化
-	route string // 空表示暂未接页面
-	label func() string
-	desc  func() string
-	icon  *ui.SVG
-	key   ui.Key // 0 表示没有快捷键
-}
-
-// railEntries 是图标栏的模块项，顺序即显示顺序。
-var railEntries = []railEntry{
-	{"home", routerHome, locales.RailHome, locales.RailHomeDesc, icons.Get("house"), ui.Key1},
-	{"collections", routeCollections, locales.RailCollections, locales.RailCollectionsDesc, icons.Get("layers"), ui.Key2},
-	{"history", routeHistory, locales.RailHistory, locales.RailHistoryDesc, icons.Get("clock"), ui.Key3},
-	{"mock", routeMock, locales.RailMock, locales.RailMockDesc, icons.Get("server"), ui.Key4},
-	{"network", routeNetwork, locales.RailNetwork, locales.RailNetworkDesc, icons.Get("network"), ui.Key5},
-	{"environments", routeEnvironments, locales.RailEnvironments, locales.RailEnvironmentsDesc, icons.Get("globe"), ui.Key6},
-	{"demo", routeDemo, locales.RailDemo, locales.RailDemoDesc, icons.Get("bug"), 0},
-}
-
-// railBottom 是图标栏底部的设置与帮助。
-var railBottom = []railEntry{
-	{"settings", routeSettings, locales.RailSettings, locales.RailSettingsDesc, icons.Get("settings"), 0},
-	{"help", "", locales.RailHelp, locales.RailHelpDesc, icons.Get("circle-help"), 0},
-}
-
 // titleBar 画自绘标题栏，高度与系统窗口按钮所在区域一致，内容垂直居中。
 // c.TitleBar() 给出窗口按钮占用的空间：Height 是它们所在的带子，
 // Left/Right 是从左右边缘算起的宽度，Bottom 是它们结束的位置
 // （全屏时全为 0）。
-func (a *App) titleBar(c *ui.Context, bar ui.TitleBar) {
-	m := theme.Metrics
-	tk := theme.Of(c)
-	// 按钮的垂直中线就是这条带子的中线，所以直接用 Height 居中。
+func (a *App) titleBar(c *ui.Context) {
+	m, tk, bar := thV2.Metrics, thV2.Of(c), c.TitleBar()
+	// 标题栏高度：实测与 Postman 对齐为 36（内容 35 + 底部 1px 分割线），
+	// 设计稿当初的 36 测量也是对的；只有全屏或没有系统按钮时才用兜底值。
 	h := bar.Height
 	if h <= 0 {
-		h = m.TitleBarHeight // 全屏或没有窗口按钮时自绘的兜底高度
+		h = m.TitleBarHeight
 	}
+
 	ui.Row(c).
 		Height(h).
 		Padding(0, bar.Right, 0, bar.Left).
@@ -63,57 +37,117 @@ func (a *App) titleBar(c *ui.Context, bar ui.TitleBar) {
 		BorderWidth(0, 0, m.Border, 0).BorderColor(tk.Border).
 		DragWindow().
 		Children(func() {
-			ui.Row(c).Gap(m.Space2).Padding(0, m.Space3).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(m.SizeXS, m.SizeXS).Radius(m.RadiusSM).
-					Background(tk.Accent).Center().Children(func() {
-					ui.Text(c, "R").FontSize(m.FontXS).Bold().TextColor(tk.OnAccent)
-				})
-				a.workspaceSelector(c)
-			})
+			a.menuButton(c)
+			a.workspaceSelector(c)
 			ui.Spacer(c)
-			ui.Row(c).Width(440).Height(m.SizeMD).Gap(m.Space1).
-				PaddingX(m.Space2).AlignItems(ui.Center).
-				Radius(m.RadiusMD).Background(tk.BgBase).Border(m.Border, tk.Border).
-				Children(func() {
-					ui.Icon(c, icons.Get("search")).FontSize(m.IconXS).TextColor(tk.TextMuted)
-					ui.Text(c, locales.SearchPlaceholder()).FontSize(m.FontXS).
-						TextColor(tk.TextMuted).SingleLine()
-				})
+			a.searchInput(c)
 			ui.Spacer(c)
 			// 用户头像
-			ui.Row(c).Gap(m.Space2).Padding(0, m.Space3).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(m.SizeSM, m.SizeSM).Radius(m.RadiusFull).
-					Background(tk.AccentSoft).Center().Children(func() {
-					ui.Text(c, "R").FontSize(m.FontXS).Bold().TextColor(tk.Accent)
-				})
+			ui.Row(c).Gap(m.Space15).Padding(0, m.Space3).AlignItems(ui.Center).FillHeight().Children(func() {
+				a.bellButton(c)
+				a.settingButton(c)
+				a.userAvatar(c)
 			})
 		})
+}
+
+// 如果是windows则显示一个菜单箭头按钮
+func (a *App) menuButton(c *ui.Context) {
+	m, tk := thV2.Metrics, thV2.Of(c)
+	fakeBtn := ui.Box(c).FillHeight().Center().PaddingX(m.Space2).TextColor(tk.TextSecondary)
+	if fakeBtn.Hovered() {
+		fakeBtn.Background(tk.BgHover).TextColor(tk.TextPrimary)
+	}
+	fakeBtn.Children(func() {
+		ui.Icon(c, icons.ChevronDown).FontSize(m.IconLG)
+	})
+}
+
+// searchInput 是标题栏中间的全局搜索入口：默认灰底 + TextMuted，
+// hover 白底 + 文字转深，并淡入 Ctrl+K 角标（默认全透明，布局不跳动）；
+// 点击与快捷键共用一个入口打开全局搜索。
+func (a *App) searchInput(c *ui.Context) {
+	m, tk := thV2.Metrics, thV2.Of(c)
+	box := ui.ButtonBase(c.Key(keyTitlebarSearch)).MinWidth(160).Height(m.SizeMD+2).
+		Border(m.Border, tk.Border).
+		PaddingX(m.Space2).Gap(m.Space1).AlignItems(ui.Center).
+		JustifyItems(ui.Center).
+		Radius(m.RadiusMD).Background(tk.BgSubtle).
+		Cursor(ui.CursorPointer).Label(locales.SearchPlaceholder()).Role(ui.RoleButton).
+		Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Base})
+	fg := tk.TextMuted
+	hoxHovered := false
+	if box.Hovered() {
+		box.Background(tk.BgBase)
+		fg = tk.TextPrimary
+		hoxHovered = true
+	}
+	box.Children(func() {
+		ui.Icon(c, icons.Search).FontSize(m.IconXS).TextColor(fg)
+		ui.Text(c, locales.SearchPlaceholder()).FontSize(m.FontSM).
+			TextColor(fg).SingleLine()
+		// 快捷键角标：默认透明，hover 才显示
+		cap := ui.Box(c).Children(func() {
+			ui.Text(c, shortcutLabel(ui.KeyK)).FontSize(m.FontSM).MarginStart(m.Space05).
+				TextColor(tk.TextSecondary).SingleLine()
+		})
+		if !hoxHovered {
+			cap.Opacity(0)
+		}
+	})
+	if box.Clicked() {
+		// TODO: 打开全局搜索；同时注册 Ctrl/Cmd+K 快捷键走同一入口
+	}
+}
+
+// 提醒消息
+func (a *App) bellButton(c *ui.Context) {
+	if v2.IconButton(c, v2.IconButtonOpts{
+		Key: keyTitlebarBell, Label: "通知", Icon: icons.Bell, Tooltip: "通知",
+	}).Clicked() {
+		// TODO: 打开通知中心 Popover
+	}
+}
+
+// 设置
+func (a *App) settingButton(c *ui.Context) {
+	if v2.IconButton(c, v2.IconButtonOpts{
+		Key: keyTitlebarSettings, Label: "设置", Icon: icons.Settings, Tooltip: "设置",
+	}).Clicked() {
+		// TODO: 打开设置 Dialog
+	}
+}
+
+// 用户头像按钮
+func (a *App) userAvatar(c *ui.Context) {
+	if v2.IconButton(c, v2.IconButtonOpts{
+		Key: keyTitlebarAvatar, Label: "账号", Icon: icons.UserRound,
+		Tooltip: "账号", Radius: thV2.Metrics.RadiusFull,
+	}).Clicked() {
+		// TODO: 打开账号菜单
+	}
 }
 
 // workspaceSelector 是标题栏里的工作区切换器：Dropdown 里切换工作区，
 // 底部可以新建或管理。
 func (a *App) workspaceSelector(c *ui.Context) {
-	m := theme.Metrics
-	tk := theme.Of(c)
+	m, tk := thV2.Metrics, thV2.Of(c)
 	if a.store == nil {
 		return
 	}
 	snap := a.store.Snapshot()
 	cur := snap.ActiveWorkspace()
-	var currentID domain.ID
-	if cur != nil {
-		currentID = cur.ID
-	}
 
-	button := ui.ButtonBase(c.Key("workspace-selector")).Height(m.SizeMD).
+	button := ui.ButtonBase(c.Key(keyWorkspaceSelector)).Height(m.SizeMD + 2).
 		PaddingX(m.Space2).Gap(m.Space1).AlignItems(ui.Center).
-		Radius(m.RadiusMD).Label(locales.SwitchWorkspace()).Role(ui.RoleButton)
+		Radius(m.RadiusMD).Label(locales.SwitchWorkspace()).Role(ui.RoleButton).
+		Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Base})
 	if button.Hovered() {
-		button.Background(tk.BgBase)
+		button.Background(tk.BgHover)
 	}
 
 	button.Children(func() {
-		ui.Icon(c, icons.Get("layers")).FontSize(m.IconSM).TextColor(tk.TextSecondary)
+		ui.Icon(c, icons.Layers).FontSize(m.IconSM).TextColor(tk.TextSecondary)
 		name := locales.WorkspaceTitle()
 		if cur != nil {
 			name = cur.Name
@@ -122,90 +156,20 @@ func (a *App) workspaceSelector(c *ui.Context) {
 		if cur != nil && cur.Default {
 			defaultBadge(c)
 		}
-		ui.Icon(c, icons.Get("chevron-down")).FontSize(m.IconXS).TextColor(tk.TextMuted)
+		ui.Icon(c, icons.ChevronDown).FontSize(m.IconXS).TextColor(tk.TextMuted)
 	})
 
 	open := ui.Local(button, "open", func() bool { return false })
-	creating := ui.Local(button, "creating", func() bool { return false })
-	newName := ui.Local(button, "new-name", func() string { return "" })
-	newErr := ui.Local(button, "new-error", func() string { return "" })
 
 	if button.Clicked() {
 		*open = !*open
 	}
+	v2.Popover(c, button, open, v2.PopoverOpts{Width: 330}, func(panel ui.Element) {
+		// 内容：搜索行、工作区列表、v2.PopoverDivider(c)、底部操作行
 
-	ui.PopoverBase(c, button, open, func(panel ui.Element) {
-		// 设计稿 42.工作区切换下拉：320 宽，面板外观由 theme.PopoverPanel 统一。
-		panel.Width(320).MaxHeight(360).Padding(m.Space2)
-		theme.PopoverPanel(c, panel)
-		panel.Children(func() {
-			ui.Text(c, locales.SwitchWorkspace()).FontSize(m.FontSM).
-				TextColor(tk.TextMuted).Padding(m.Space1, m.Space2)
-
-			ui.Column(c).Gap(m.Space1).Children(func() {
-				for _, ws := range snap.Workspaces {
-					active := ws.ID == currentID
-					row := ui.ButtonBase(c.Key("ws-" + string(ws.ID))).FillWidth().
-						Height(44).PaddingX(m.Space2).Gap(m.Space2).
-						AlignItems(ui.Center).Radius(m.RadiusMD)
-					if active || row.Hovered() {
-						row.Background(tk.PopoverItemHover)
-					}
-					if row.Clicked() {
-						_ = a.store.SetActiveWorkspace(ws.ID)
-						*open = false
-					}
-					row.Children(func() {
-						ui.Box(c).Size(28, 28).Radius(m.RadiusFull).
-							Background(tk.Accent).Center().Children(func() {
-							ui.Text(c, workspaceInitials(ws.Name)).FontSize(m.FontXS).
-								TextColor(tk.OnAccent)
-						})
-						ui.Column(c).Grow(1).Gap(1).Children(func() {
-							ui.Text(c, ws.Name).FontSize(m.FontSM).
-								TextColor(tk.TextPrimary).SingleLine()
-							ui.Text(c, locales.WorkspaceCollectionCount(len(ws.Collections))).
-								FontSize(m.FontXS).TextColor(tk.TextMuted).SingleLine()
-						})
-						if active {
-							ui.Text(c, "✓").FontSize(m.FontMD).TextColor(tk.Accent)
-						}
-					})
-				}
-			})
-
-			ui.Divider(c).Margin(m.Space2, 0)
-
-			ui.Column(c).Gap(m.Space1).Children(func() {
-				action := func(key, label string, fn func()) {
-					row := ui.ButtonBase(c.Key(key)).FillWidth().Height(28).
-						PaddingX(m.Space2).AlignItems(ui.Center).Radius(m.RadiusSM)
-					if row.Hovered() {
-						row.Background(tk.PopoverItemHover)
-					}
-					if row.Clicked() {
-						fn()
-					}
-					row.Children(func() {
-						ui.Text(c, label).FontSize(m.FontSM).
-							TextColor(tk.TextSecondary).Grow(1)
-					})
-				}
-				action("ws-create", "+ "+locales.CreateWorkspaceAction(), func() {
-					*open = false
-					*creating = true
-					*newName = ""
-					*newErr = ""
-				})
-				action("ws-manage", locales.ManageWorkspacesAction(), func() {
-					*open = false
-					a.router.Push(routeSettings)
-				})
-			})
-		})
+		ui.Text(c, "测试")
+		//
 	})
-
-	a.newWorkspaceDialog(c, creating, newName, newErr)
 }
 
 // newWorkspaceDialog 在 Dialog 里输入名字创建工作空间。
@@ -298,122 +262,6 @@ const (
 	tipBottom
 )
 
-// iconRail 是窗口最左侧的模块栏：railEntries 是五个模块，railBottom 在底部。
-func (a *App) iconRail(c *ui.Context) {
-	m := theme.Metrics
-	tk := theme.Of(c)
-	ui.Column(c).Width(m.IconRailWidth).Background(tk.BgBase).
-		BorderWidth(0, m.Border, 0, 0).BorderColor(tk.Border).
-		AlignItems(ui.Center).Padding(m.Space1, 0).Gap(m.Space1).
-		Children(func() {
-			for i, e := range railEntries {
-				align := tipCenter
-				if i == 0 {
-					align = tipTop
-				}
-				a.railItem(c, e, align)
-			}
-			ui.Spacer(c)
-			for i, e := range railBottom {
-				align := tipCenter
-				if i == len(railBottom)-1 {
-					align = tipBottom
-				}
-				a.railItem(c, e, align)
-			}
-		})
-}
-
-func (a *App) railItem(c *ui.Context, e railEntry, align railTipAlign) {
-	m := theme.Metrics
-	tk := theme.Of(c)
-	label, desc := e.label(), e.desc()
-	active := e.route != "" && a.active(e.route)
-
-	// 外层占满整条图标栏（52），整列都能响应 hover；
-	// 视觉上的 34×34 底色和指示条在内部单独画。
-	item := ui.ButtonBase(c.Key(e.id)).Width(m.IconRailWidth).Height(m.SizeXL).
-		Justify(ui.Center).AlignItems(ui.Center).
-		Label(label).Description(desc).Role(ui.RoleButton)
-
-	hovered := item.Hovered()
-	pressed := item.Pressed()
-	switch {
-	case active:
-		item.TextColor(tk.Accent)
-	case pressed, hovered:
-		item.TextColor(tk.TextPrimary)
-	default:
-		item.TextColor(tk.TextSecondary)
-	}
-
-	item.Children(func() {
-		// 居中在图标栏里的 34×34 底色。
-		var bg ui.Color
-		switch {
-		case active && pressed:
-			// 选中项按下：强调色底再深一点。
-			bg = tk.AccentSoft.Mix(tk.Accent, 0.12)
-		case active:
-			bg = tk.AccentSoft
-		case pressed:
-			// 未选中项按下：比 hover 再深一档，和 SurfacePressed 的推导一致。
-			bg = tk.HoverSurface.Mix(tk.TextPrimary, 0.08)
-		case hovered:
-			bg = tk.HoverSurface
-		}
-		if bg.A > 0 {
-			ui.Box(c).Size(m.SizeXL, m.SizeXL).Radius(m.RadiusLG).
-				Absolute().
-				Left((m.IconRailWidth - m.SizeXL) / 2).
-				Top(0).
-				ZIndex(-1).
-				Background(bg)
-		}
-		if hovered || pressed {
-			// 外层是 52px，Left(0) 就是窗口左缘，不再需要负数偏移。
-			ui.Box(c).Width(3).Height(m.Space4).Radius(m.RadiusSM).Background(tk.Accent).
-				Absolute().
-				Left(0).
-				Top((m.SizeXL - m.Space4) / 2)
-		}
-		ui.Icon(c, e.icon).FontSize(m.IconLG)
-	})
-
-	// 菜单按钮 tooltip 提示
-	ui.TooltipBase(c, item, func(tip ui.Element) {
-		at, self := ui.AnchorRight, ui.AnchorLeft
-		switch align {
-		case tipTop:
-			at, self = ui.AnchorTopRight, ui.AnchorTopLeft
-		case tipBottom:
-			at, self = ui.AnchorBottomRight, ui.AnchorBottomLeft
-		}
-		tip.AttachTo(item, at, self).Margin(0, 0, 0, m.Space1).
-			Width(240).Gap(m.Space1).Padding(m.Space2, m.Space3).
-			Radius(m.RadiusMD).Background(tk.BgElevated).Border(m.Border, tk.Border)
-		tip.Children(func() {
-			ui.Text(c, label).FontSize(m.FontSM).Bold().TextColor(tk.TextPrimary)
-			ui.Text(c, desc).FontSize(m.FontXS).TextColor(tk.TextMuted)
-			if e.key != 0 {
-				ui.Row(c).Gap(m.Space2).AlignItems(ui.Center).Children(func() {
-					ui.Box(c).Height(18).Padding(0, m.Space1).Radius(m.RadiusSM).
-						Background(tk.BgSurface).Border(m.Border, tk.Border).Center().Children(func() {
-						ui.Text(c, shortcutLabel(e.key)).FontSize(m.FontXS).TextColor(tk.TextSecondary)
-					})
-					ui.Text(c, locales.OpenItem(label)).FontSize(m.FontXS).TextColor(tk.TextMuted)
-				})
-			}
-		})
-	})
-	if e.route == "" {
-		return
-	}
-	if item.Clicked() || e.key != 0 && item.Shortcut(ui.Cmd, e.key) {
-		a.router.Push(e.route)
-	}
-}
-
 // shortcutLabel 按平台写出快捷键，如 macOS 的 ⌘1 与其它平台的 Ctrl 1。
 func shortcutLabel(k ui.Key) string {
 	n := strconv.Itoa(int(k-ui.Key1) + 1)
@@ -443,38 +291,38 @@ func (a *App) statusBar(c *ui.Context) {
 	errCount := logger.ErrorCount()
 
 	row.Children(func() {
-			ui.Text(c, locales.StatusWorkspace(workspace)).FontSize(m.FontXS).TextColor(tk.TextMuted)
-			ui.Text(c, "·").FontSize(m.FontXS).TextColor(tk.TextMuted)
-			ui.Text(c, locales.NotSignedIn()).FontSize(m.FontXS).TextColor(tk.TextMuted)
-			ui.Spacer(c)
+		ui.Text(c, locales.StatusWorkspace(workspace)).FontSize(m.FontXS).TextColor(tk.TextMuted)
+		ui.Text(c, "·").FontSize(m.FontXS).TextColor(tk.TextMuted)
+		ui.Text(c, locales.NotSignedIn()).FontSize(m.FontXS).TextColor(tk.TextMuted)
+		ui.Spacer(c)
 
-			// 错误日志按钮（在版本号左侧）
-			logBtn := ui.ButtonBase(c.Key("status-bar-log-btn")).
-				Height(20).
-				PaddingX(m.Space2).
-				Gap(m.Space1).
-				AlignItems(ui.Center).
-				Radius(m.RadiusSM).
-				Role(ui.RoleButton)
-			if logBtn.Hovered() {
-				logBtn.Background(tk.BgElevated)
+		// 错误日志按钮（在版本号左侧）
+		logBtn := ui.ButtonBase(c.Key(keyStatusBarLogBtn)).
+			Height(20).
+			PaddingX(m.Space2).
+			Gap(m.Space1).
+			AlignItems(ui.Center).
+			Radius(m.RadiusSM).
+			Role(ui.RoleButton)
+		if logBtn.Hovered() {
+			logBtn.Background(tk.BgElevated)
+		}
+		if logBtn.Clicked() {
+			*logOpen = true
+		}
+		logBtn.Children(func() {
+			if errCount > 0 {
+				ui.Icon(c, icons.Get("triangle-alert")).FontSize(m.IconXS).TextColor(tk.Danger)
+				ui.Text(c, fmt.Sprintf("%d 错误", errCount)).FontSize(m.FontXS).TextColor(tk.Danger)
+			} else {
+				ui.Icon(c, icons.Get("square-terminal")).FontSize(m.IconXS).TextColor(tk.TextMuted)
+				ui.Text(c, "日志").FontSize(m.FontXS).TextColor(tk.TextMuted)
 			}
-			if logBtn.Clicked() {
-				*logOpen = true
-			}
-			logBtn.Children(func() {
-				if errCount > 0 {
-					ui.Icon(c, icons.Get("triangle-alert")).FontSize(m.IconXS).TextColor(tk.Danger)
-					ui.Text(c, fmt.Sprintf("%d 错误", errCount)).FontSize(m.FontXS).TextColor(tk.Danger)
-				} else {
-					ui.Icon(c, icons.Get("square-terminal")).FontSize(m.IconXS).TextColor(tk.TextMuted)
-					ui.Text(c, "日志").FontSize(m.FontXS).TextColor(tk.TextMuted)
-				}
-			})
-
-			ui.Text(c, "·").FontSize(m.FontXS).TextColor(tk.TextMuted)
-			ui.Text(c, fmt.Sprintf("v%s", config.Version)).FontSize(m.FontXS).TextColor(tk.TextMuted)
 		})
+
+		ui.Text(c, "·").FontSize(m.FontXS).TextColor(tk.TextMuted)
+		ui.Text(c, fmt.Sprintf("v%s", config.Version)).FontSize(m.FontXS).TextColor(tk.TextMuted)
+	})
 
 	a.errorLogDialog(c, logOpen)
 }
@@ -505,7 +353,7 @@ func (a *App) errorLogDialog(c *ui.Context, open *bool) {
 				ui.Spacer(c)
 
 				// 复制全部按钮
-				copyBtn := ui.ButtonBase(c.Key("log-copy-all")).
+				copyBtn := ui.ButtonBase(c.Key(keyLogCopyAll)).
 					Height(26).PaddingX(m.Space2).Gap(m.Space1).
 					Radius(m.RadiusSM).AlignItems(ui.Center).Role(ui.RoleButton)
 				if copyBtn.Hovered() {
@@ -525,7 +373,7 @@ func (a *App) errorLogDialog(c *ui.Context, open *bool) {
 				})
 
 				// 清空日志按钮
-				clearBtn := ui.ButtonBase(c.Key("log-clear-all")).
+				clearBtn := ui.ButtonBase(c.Key(keyLogClearAll)).
 					Height(26).PaddingX(m.Space2).Gap(m.Space1).
 					Radius(m.RadiusSM).AlignItems(ui.Center).Role(ui.RoleButton)
 				if clearBtn.Hovered() {
@@ -541,7 +389,7 @@ func (a *App) errorLogDialog(c *ui.Context, open *bool) {
 				})
 
 				// 关闭按钮
-				closeBtn := ui.ButtonBase(c.Key("log-close-btn")).
+				closeBtn := ui.ButtonBase(c.Key(keyLogCloseBtn)).
 					Size(26, 26).Radius(m.RadiusSM).Center().Role(ui.RoleButton)
 				if closeBtn.Hovered() {
 					closeBtn.Background(tk.BgElevated)
@@ -570,7 +418,7 @@ func (a *App) errorLogDialog(c *ui.Context, open *bool) {
 				ui.Scroll(c).Grow(1).Children(func() {
 					ui.Column(c).Gap(m.Space1).Children(func() {
 						for i, entry := range logs {
-							ui.Row(c).Key(fmt.Sprintf("log-row-%d", i)).
+							ui.Row(c.Key(fmt.Sprintf("log-row-%d", i))).
 								Gap(m.Space2).PaddingY(2).AlignItems(ui.Start).Children(func() {
 								// 时间
 								ui.Text(c, entry.Time.Format("15:04:05.000")).

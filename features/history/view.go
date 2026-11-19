@@ -83,7 +83,7 @@ func historyRow(c *ui.Context, it domain.HistoryEntry) {
 	m := theme.Metrics
 	tk := theme.Of(c)
 
-	row := ui.Row(c.Key("hist-" + string(it.ID))).
+	row := ui.Row(c.Key("hist-"+string(it.ID))).
 		Gap(m.Space3).Padding(m.Space2, m.Space2).
 		AlignItems(ui.Center).Radius(m.RadiusSM)
 
@@ -127,7 +127,7 @@ func historyRow(c *ui.Context, it domain.HistoryEntry) {
 		}
 		ui.Text(c, timeStr).FontSize(m.FontXS).TextColor(tk.TextMuted).Width(120).SingleLine()
 
-		copyBtn := ui.ButtonBase(c.Key("copy-" + string(it.ID))).
+		copyBtn := ui.ButtonBase(c.Key("copy-"+string(it.ID))).
 			Padding(m.Space1, m.Space2).Radius(m.RadiusSM).Label("复制 URL")
 		if copyBtn.Hovered() {
 			copyBtn.Background(tk.BgElevated)

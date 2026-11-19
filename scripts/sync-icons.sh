@@ -48,3 +48,6 @@ fi
 
 printf '%s\n' "$VERSION" > "$STAMP"
 echo "完成，图标目录与 ${LIST} 一致（Lucide ${VERSION}）。"
+
+# 4. 生成类型化图标变量（components/v1/icons/icons_gen.go，勿手改）
+go run ./scripts/gen-icons

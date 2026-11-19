@@ -66,12 +66,10 @@ func (a *App) Close() {
 func (a *App) View(c *ui.Context) {
 	c.SetTheme(theme.Apply(c.Theme(), c.Preferences()))
 
-	bar := c.TitleBar()
 	root := ui.Column(c).Fill()
 	root.Children(func() {
-		a.titleBar(c, bar)
+		a.titleBar(c)
 		ui.Row(c).Grow(1).AlignItems(ui.Stretch).Children(func() {
-			a.iconRail(c)
 			a.content(c)
 		})
 		a.statusBar(c)

@@ -173,6 +173,8 @@ func View(c *ui.Context, db *store.Store, n nav.Navigator) {
 		},
 		sendRequest: func(collID, nodeID domain.ID, req domain.Request, auth domain.Auth, onDone func(*transport.Response)) func() {
 			ctx, cancel := context.WithCancel(context.Background())
+			// Context 是构建期的值，不能带进 goroutine；Services 可以。
+			services := c.Services()
 			go func() {
 				// 1. 变量插值与认证继承解析
 				prepReq, prepAuth, _, err := db.PrepareRequestWith(workspaceID, collID, nodeID, req, auth)
@@ -184,7 +186,7 @@ func View(c *ui.Context, db *store.Store, n nav.Navigator) {
 						Timestamp:  time.Now(),
 					}
 					onDone(resp)
-					c.Invalidate()
+					services.Invalidate()
 					return
 				}
 
@@ -215,7 +217,7 @@ func View(c *ui.Context, db *store.Store, n nav.Navigator) {
 
 				// 4. 回调响应并触发重绘
 				onDone(resp)
-				c.Invalidate()
+				services.Invalidate()
 			}()
 			return cancel
 		},
