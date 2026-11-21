@@ -1,13 +1,16 @@
 package collection
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"rddpostman/components/theme"
+	thV2 "rddpostman/components/theme/v2"
 	"rddpostman/components/v1/icons"
+	v2 "rddpostman/components/v2"
 	"rddpostman/internal/curl"
 	"rddpostman/internal/domain"
 	"rddpostman/internal/transport"
@@ -157,8 +160,11 @@ func defaultSessionState(id string, req *domain.Request, auth *domain.Auth) reqS
 	if len(query) == 0 {
 		query = parseQueryFromURL(url)
 	}
-	if len(headers) == 0 {
-		headers = []domain.KV{{ID: domain.NewID(), Enabled: true}}
+	if len(headers) == 0 && (req == nil || req.Headers == nil) {
+		headers = domain.DefaultRequestHeaders()
+	}
+	if len(headers) == 0 || strings.TrimSpace(headers[len(headers)-1].Key) != "" || strings.TrimSpace(headers[len(headers)-1].Value) != "" {
+		headers = append(headers, domain.KV{ID: domain.NewID(), Enabled: true})
 	}
 	if len(bodyFields) == 0 {
 		bodyFields = []domain.KV{{ID: domain.NewID(), Enabled: true}}
@@ -188,7 +194,7 @@ func defaultSessionState(id string, req *domain.Request, auth *domain.Auth) reqS
 
 	return reqSessionState{
 		id:                    id,
-		reqTab:                0,
+		reqTab:                1,
 		respTab:               0,
 		urlDraft:              url,
 		bodyRawDraft:          rawBody,
@@ -255,55 +261,85 @@ func requestTab(c *ui.Context, props pageProps, coll *domain.Collection, n *doma
 		title.draft = n.Name
 	}
 
+	// 触发手动持久化保存
+	triggerSave := func() {
+		state.queryDraft = parseQueryFromURL(state.urlDraft)
+		state.pathVarsDraft = extractPathVariables(state.urlDraft, state.pathVarsDraft)
+		currReq := *req.Clone()
+		currReq.URL = strings.TrimSpace(state.urlDraft)
+		currReq.PathVariables = cleanKVList(state.pathVarsDraft)
+		currReq.Query = cleanKVList(state.queryDraft)
+		currReq.Headers = cleanKVList(state.headersDraft)
+		currReq.Body.Raw = state.bodyRawDraft
+		currReq.Body.Fields = cleanKVList(state.bodyFieldsDraft)
+		currReq.PreRequestScript = state.preScriptDraft
+		currReq.TestsScript = state.testsScriptDraft
+		currReq.Options.ProxyURL = state.proxyDraft
+		currReq.Options.DisableProxy = state.disableProxyDraft
+
+		reqName := strings.TrimSpace(title.draft)
+		if reqName == "" {
+			reqName = n.Name
+		}
+		if props.actions.saveRequest != nil {
+			props.actions.saveRequest(activeID, currReq, n.Auth, reqName)
+		}
+	}
+
+	if root.Shortcut(ui.Cmd, ui.KeyS) {
+		triggerSave()
+	}
+
 	root.Children(func() {
-		// 5. 请求体和响应体做成可调整大小（SplitVertical）
+		// 请求区与响应区纵向可拖拽分栏（对齐 Pixso 8-请求-Body 内边距 [10,12,0,12]）
 		ui.SplitVertical(c, &state.splitHeight, func() {
 			// 上半部：请求编辑区
-			ui.Column(c).Fill().Padding(m.Space2, m.Space4, 0, m.Space4).Children(func() {
-				// 1. 顶部面包屑导航（最后一项可点击进入编辑模式）
-				reqBreadcrumb(c, props, n, activeID, title, tk, m)
+			ui.Column(c).Fill().Background(thV2.Of(c).BgBase).Padding(10, 12, 0, 12).Children(func() {
+				// 1. 顶部面包屑导航（Folder + collection > bold name | Save / Share / ...）
+				reqBreadcrumb(c, props, n, activeID, title, triggerSave, tk, m)
 
-				ui.Box(c).Height(m.Space2)
+				ui.Box(c).Height(6)
 
-				// 2. 请求类型（下拉 Dropdown）+ URL 地址输入栏 + 发送按钮
+				// 2. 统一边框 URL 栏（内嵌 Method 下拉）+ 科技蓝分裂 Send | v 按钮
 				reqLine(c, props, coll, n, activeID, state, tk, m)
 
-				ui.Box(c).Height(m.Space2)
+				ui.Box(c).Height(8)
 
-				// 3. 请求配置 Tab 切换（Params, Auth, Headers, Body, Settings）
+				// 3. 胶囊分段式请求配置 Tab（Params / Authorization / Headers / Body / Scripts / Settings | Cookies）
 				reqConfigTabs(c, props, coll, n, activeID, state, tk, m)
 			})
 		}, func() {
-			// 下半部：响应区（支持 Body, Headers, Cookies Tab 切换）
+			// 下半部：响应区（胶囊分段 Tab + 状态指标同行展示）
 			responsePane(c, props, n, state, tk, m)
 		}).Fill().SplitReset(340)
 	})
 }
 
-// 1. 面包屑导航与可编辑请求名称
+// 1. 面包屑导航与可编辑请求名称（对齐 Pixso inst / row / breadcrumb）
 func reqBreadcrumb(c *ui.Context, props pageProps, n *domain.Node, activeID string,
-	title *reqTitleState, tk theme.Tokens, m theme.Metric,
+	title *reqTitleState, onSave func(), tk theme.Tokens, m theme.Metric,
 ) {
-	crumbs := nodeTrail(props.collections, activeID)
+	tk2 := thV2.Of(c)
+	crumbs := nodeTrailInWorkspace(props.collections, props.state, activeID)
 
-	ui.Row(c).Height(26).Gap(m.Space1).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).FillWidth().Height(22).Gap(4).AlignItems(ui.Center).Children(func() {
+		ui.Icon(c, icons.Folder).FontSize(13).TextColor(tk2.TextSecondary)
+
 		for i, cr := range crumbs {
 			i, cr := i, cr
 			isLast := i == len(crumbs)-1
 
 			if i > 0 {
-				ui.Text(c, "/").FontSize(m.FontSM).
-					TextColor(tk.TextMuted).Margin(0, 2)
+				ui.Text(c, "›").FontSize(12).TextColor(tk2.TextMuted).Margin(0, 2)
 			}
 
 			if isLast {
-				// 最后一项：进入行内编辑或展示可点击态
 				if title.editing {
 					in := ui.TextInputBase(c.Key("req-title-input"), &title.draft).
 						Height(22).Padding(0, 6).
-						Radius(m.RadiusSM).Border(m.Border, tk.FocusRing).
-						Background(tk.BgElevated).
-						FontSize(m.FontSM).TextColor(tk.TextPrimary)
+						Radius(4).Border(1, tk2.Focus).
+						Background(tk2.BgSurface).
+						FontSize(12).TextColor(tk2.TextPrimary)
 					if title.fresh {
 						in.Focus()
 						title.fresh = false
@@ -313,7 +349,11 @@ func reqBreadcrumb(c *ui.Context, props pageProps, n *domain.Node, activeID stri
 						trimmed := strings.TrimSpace(title.draft)
 						if trimmed != "" && trimmed != n.Name {
 							n.Name = trimmed
-							props.actions.rename(activeID, trimmed)
+							if props.state.isDraft(activeID) {
+								props.state.setUnsaved(activeID, true)
+							} else {
+								props.actions.rename(activeID, trimmed)
+							}
 						} else {
 							title.draft = n.Name
 						}
@@ -324,10 +364,13 @@ func reqBreadcrumb(c *ui.Context, props pageProps, n *domain.Node, activeID stri
 					}
 				} else {
 					btn := ui.ButtonBase(c.Key("req-title-btn-" + activeID)).
-						Height(22).PaddingX(6).Radius(m.RadiusSM).
-						AlignItems(ui.Center).Gap(4)
-					if btn.Hovered() {
-						btn.Background(tk.HoverSurface)
+						Height(22).PaddingX(4).Radius(4).
+						AlignItems(ui.Center).Gap(4).Cursor(ui.CursorPointer)
+					switch {
+					case btn.Pressed():
+						btn.Background(tk2.BgSelected)
+					case btn.Hovered():
+						btn.Background(tk2.BgHover)
 					}
 					if btn.Clicked() {
 						title.editing = true
@@ -335,204 +378,332 @@ func reqBreadcrumb(c *ui.Context, props pageProps, n *domain.Node, activeID stri
 						title.draft = n.Name
 					}
 					btn.Children(func() {
-						ui.Text(c, n.Name).FontSize(m.FontSM).FontWeight(600).
-							TextColor(tk.TextPrimary).SingleLine()
-						ui.Icon(c, icons.Get("file-pen")).Size(11, 11).TextColor(tk.TextMuted)
+						ui.Text(c, n.Name).FontSize(12).FontWeight(600).
+							TextColor(tk2.TextPrimary).SingleLine()
 					})
 				}
 			} else {
 				btn := ui.ButtonBase(c.Key("req-crumb-" + cr.ID)).
-					Height(22).PaddingX(4).Radius(m.RadiusSM).AlignItems(ui.Center)
-				if btn.Hovered() {
-					btn.Background(tk.HoverSurface)
+					Height(22).PaddingX(4).Radius(4).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+				switch {
+				case btn.Pressed():
+					btn.Background(tk2.BgSelected)
+				case btn.Hovered():
+					btn.Background(tk2.BgHover)
 				}
 				if btn.Clicked() {
 					props.actions.openTab(cr.ID)
 				}
 				btn.Children(func() {
-					textColor := tk.TextMuted
+					textColor := tk2.TextSecondary
 					if btn.Hovered() {
-						textColor = tk.TextPrimary
+						textColor = tk2.TextPrimary
 					}
-					ui.Text(c, cr.Name).FontSize(m.FontSM).
-						TextColor(textColor).SingleLine()
+					ui.Text(c, cr.Name).FontSize(12).TextColor(textColor).SingleLine()
 				})
 			}
 		}
 
 		ui.Spacer(c)
-		ui.Text(c, "已保存").FontSize(m.FontSM).TextColor(tk.TextMuted)
+
+		// 右侧：Save / Share / ...（对齐 Pixso 8-请求-Body 右上角，支持交互式保存）
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+			isUnsaved := props.state.isUnsaved(activeID)
+			saveBtn := ui.ButtonBase(c.Key("req-save-btn-" + activeID)).
+				Height(24).Padding(0, 8).Gap(4).Radius(4).
+				AlignItems(ui.Center).Cursor(ui.CursorPointer).
+				Role(ui.RoleButton).Label("Save").
+				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+			switch {
+			case saveBtn.Pressed():
+				saveBtn.Background(tk2.BgSelected)
+			case saveBtn.Hovered():
+				saveBtn.Background(tk2.BgHover)
+			default:
+				if isUnsaved {
+					saveBtn.Background(tk2.Accent.Alpha(0.1)).Border(1, tk2.Accent.Alpha(0.4))
+				} else {
+					saveBtn.Background(ui.Transparent)
+				}
+			}
+			if saveBtn.Clicked() && onSave != nil {
+				onSave()
+			}
+			saveBtn.Children(func() {
+				iconColor := tk2.TextSecondary
+				textColor := tk2.TextSecondary
+				if isUnsaved {
+					iconColor = tk2.Accent
+					textColor = tk2.Accent
+				}
+				ui.Icon(c, icons.Copy).FontSize(12).TextColor(iconColor)
+				ui.Text(c, "Save").FontSize(12).FontWeight(500).TextColor(textColor).SingleLine()
+				ui.Icon(c, icons.ChevronDown).FontSize(10).TextColor(tk2.TextMuted)
+			})
+
+			ui.Text(c, "Share").FontSize(12).TextColor(tk2.TextMuted).SingleLine()
+			ui.Icon(c, icons.Ellipsis).FontSize(13).TextColor(tk2.TextSecondary)
+		})
 	})
 }
 
-// 2. 请求行：Method 下拉 + URL 输入框 + 发送/取消按钮
+// 2. 请求行：一体化边框 URL 栏（内嵌 Method 下拉）+ 科技蓝分裂 Send | v 按钮（对齐 Pixso inst / row / url bar）
 func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.Node,
 	activeID string, state *reqSessionState, tk theme.Tokens, m theme.Metric,
 ) {
+	tk2 := thV2.Of(c)
 	req := n.Request
 
-	ui.Row(c).Height(36).Gap(m.Space2).AlignItems(ui.Center).Children(func() {
-		// 请求类型选择器（点击弹出 Dropdown）
-		methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
-		methodBtn := ui.ButtonBase(c.Key("req-method-btn-"+activeID)).
-			Height(34).PaddingX(10).Gap(6).AlignItems(ui.Center).
-			Radius(m.RadiusMD).Background(tk.BgElevated).Border(m.Border, tk.Border)
-		if methodBtn.Hovered() {
-			methodBtn.Background(tk.HoverSurface)
-		}
-		if methodBtn.Clicked() {
-			state.methodOpen = !state.methodOpen
-		}
-		methodBtn.Children(func() {
-			ui.Text(c, req.Method).FontSize(m.FontSM).Bold().
-				TextColor(methodColor(tk, req.Method))
-			ui.Icon(c, icons.Get("chevron-down")).FontSize(11).TextColor(tk.TextMuted)
-		})
+	copyAsCurl := func() {
+		state.queryDraft = parseQueryFromURL(state.urlDraft)
+		state.pathVarsDraft = extractPathVariables(state.urlDraft, state.pathVarsDraft)
+		currReq := *req.Clone()
+		currReq.URL = strings.TrimSpace(state.urlDraft)
+		currReq.PathVariables = cleanKVList(state.pathVarsDraft)
+		currReq.Query = cleanKVList(state.queryDraft)
+		currReq.Headers = cleanKVList(state.headersDraft)
+		currReq.Body.Raw = state.bodyRawDraft
+		currReq.Body.Fields = cleanKVList(state.bodyFieldsDraft)
+		cmd := curl.ToCurl(currReq, n.Auth)
+		c.Services().WriteClipboard(cmd)
+	}
 
-		ui.PopoverBase(c, methodBtn, &state.methodOpen, func(panel ui.Element) {
-			panel.Margin(4, 0, 0, 0).Padding(4).Width(110).Gap(2)
-			theme.PopoverPanel(c, panel)
-			for _, mth := range methods {
-				mth := mth
-				row := ui.ButtonBase(c.Key("method-opt-" + mth)).FillWidth().Height(26).
-					PaddingX(8).Radius(m.RadiusSM).AlignItems(ui.Center)
-				if row.Hovered() {
-					row.Background(tk.PopoverItemHover)
-				}
-				if row.Clicked() {
-					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
-						if node.Request != nil {
-							node.Request.Method = mth
-						}
-					})
-					state.methodOpen = false
-				}
-				row.Children(func() {
-					ui.Text(c, mth).FontSize(m.FontXS).Bold().
-						TextColor(methodColor(tk, mth))
-				})
+	triggerSend := func() {
+		state.queryDraft = parseQueryFromURL(state.urlDraft)
+		state.pathVarsDraft = extractPathVariables(state.urlDraft, state.pathVarsDraft)
+		currReq := *req.Clone()
+		currReq.URL = strings.TrimSpace(state.urlDraft)
+		currReq.PathVariables = cleanKVList(state.pathVarsDraft)
+		currReq.Query = cleanKVList(state.queryDraft)
+		currReq.Headers = cleanKVList(state.headersDraft)
+		currReq.Body.Raw = state.bodyRawDraft
+		currReq.Body.Fields = cleanKVList(state.bodyFieldsDraft)
+		currReq.PreRequestScript = state.preScriptDraft
+		currReq.TestsScript = state.testsScriptDraft
+		currReq.Options.ProxyURL = state.proxyDraft
+		currReq.Options.DisableProxy = state.disableProxyDraft
+		currReq.Options.DisableCookieJar = state.disableCookieJarDraft
+
+		if props.state.isDraft(string(n.ID)) {
+			if n.Request != nil {
+				*n.Request = *currReq.Clone()
 			}
-		})
+		} else if props.actions.updateNode != nil {
+			props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+				if node.Request != nil {
+					*node.Request = *currReq.Clone()
+				}
+			})
+		}
 
-		// URL 输入栏（支持双向同步与回车自动更新）
-		urlBox := ui.Row(c).Grow(1).Height(34).PaddingX(10).AlignItems(ui.Center).
-			Radius(m.RadiusMD).Background(tk.BgSurface).Border(m.Border, tk.Border)
+		state.sending = true
+		if props.actions.sendRequest != nil {
+			cancel := props.actions.sendRequest(coll.ID, n.ID, currReq, n.Auth, func(resp *transport.Response) {
+				state.sending = false
+				if resp == nil {
+					return
+				}
+				state.hasResponse = true
+				state.respStatus = resp.StatusCode
+				state.respDuration = transport.FormatDuration(resp.Duration)
+				state.respSize = transport.FormatSize(resp.Size)
+				state.respBody = resp.FormattedBody
+				state.respHeaders = resp.Headers
+				state.respCookies = resp.Cookies
+				state.respTestResults = resp.TestResults
+				state.respError = resp.Error
+			})
+			state.cancelFn = cancel
+		} else {
+			state.sending = false
+			state.hasResponse = true
+			state.respStatus = 200
+			state.respDuration = "89 ms"
+			state.respSize = "1.42 KB"
+			state.respBody = "{\n  \"message\": \"Simulated local response\"\n}"
+		}
+	}
+
+	ui.Row(c).FillWidth().Height(28).Gap(6).AlignItems(ui.Center).Children(func() {
+		// 一体化 URL 容器（高 28、圆角 4、1px 描边，左侧内嵌 Method 下拉）
+		urlBox := ui.Row(c.Key("req-url-box-" + activeID)).Grow(1).Height(28).AlignItems(ui.Center).
+			Radius(4).Background(tk2.BgSurface).Border(1, tk2.Border)
+		var urlFocused bool
+
 		urlBox.Children(func() {
-			in := ui.TextInputBase(c.Key("req-url-input"), &state.urlDraft).FillWidth().
-				FontSize(m.FontSM).TextColor(tk.TextPrimary).
-				Placeholder("输入请求 URL 地址，例如 https://api.example.com/v1/users 或 {{baseUrl}}/users")
+			methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+			methodBtn := ui.ButtonBase(c.Key("req-method-btn-"+activeID)).
+				Height(26).Padding(0, 8, 0, 10).Gap(4).AlignItems(ui.Center).
+				Radius(3).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(req.Method)
+			switch {
+			case methodBtn.Pressed():
+				methodBtn.Background(tk2.BgSelected)
+			case methodBtn.Hovered():
+				methodBtn.Background(tk2.BgHover)
+			}
+			if methodBtn.Clicked() {
+				state.methodOpen = !state.methodOpen
+			}
+			methodBtn.Children(func() {
+				ui.Text(c, req.Method).FontSize(12).Bold().
+					TextColor(methodColor(tk, req.Method)).SingleLine()
+				ui.Icon(c, icons.ChevronDown).FontSize(10).TextColor(tk2.TextMuted)
+			})
+
+			v2.Popover(c, methodBtn, &state.methodOpen, v2.PopoverOpts{Width: 112}, func(panel ui.Element) {
+				ui.Column(c).Padding(4).Gap(2).Children(func() {
+					for _, mth := range methods {
+						mth := mth
+						row := ui.ButtonBase(c.Key("method-opt-" + mth)).FillWidth().Height(26).
+							PaddingX(8).Radius(4).AlignItems(ui.Center).Justify(ui.Start).
+							Cursor(ui.CursorPointer).Label(mth)
+						switch {
+						case row.Pressed():
+							row.Background(tk2.BgSelected)
+						case row.Hovered():
+							row.Background(tk2.BgHover)
+						}
+						if row.Clicked() {
+							if req.Method != mth {
+								req.Method = mth
+								props.state.setUnsaved(activeID, true)
+							}
+							state.methodOpen = false
+						}
+						row.Children(func() {
+							ui.Text(c, mth).FontSize(11).Bold().TextColor(methodColor(tk, mth))
+						})
+					}
+				})
+			})
+
+			// 细竖分隔线
+			ui.Box(c).Width(1).Height(16).Background(tk2.Border)
+
+			// URL 输入框
+			in := ui.TextInputBase(c.Key("req-url-input"), &state.urlDraft).Grow(1).FillHeight().
+				Padding(0, 10).FontSize(12).TextColor(tk2.TextPrimary).
+				Placeholder("Enter URL or paste text").PlaceholderColor(tk2.TextMuted).
+				Label("Request URL")
+			urlFocused = in.Focused()
 			if in.Submitted() || in.FocusLeft() {
-				// 同步 URL 到 Query Params 与 Path Variables
 				state.queryDraft = parseQueryFromURL(state.urlDraft)
 				state.pathVarsDraft = extractPathVariables(state.urlDraft, state.pathVarsDraft)
-				if state.urlDraft != req.URL {
-					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
-						if node.Request != nil {
-							node.Request.URL = strings.TrimSpace(state.urlDraft)
-							node.Request.Query = cleanKVList(state.queryDraft)
-							node.Request.PathVariables = cleanKVList(state.pathVarsDraft)
-						}
-					})
+				trimmedURL := strings.TrimSpace(state.urlDraft)
+				if trimmedURL != req.URL {
+					props.state.setUnsaved(activeID, true)
 				}
 			}
 		})
+		if urlFocused {
+			urlBox.Border(1, tk2.Focus).Shadow(0, 0, 0, 2, tk2.FocusRing)
+		}
 
-		// 发送 / 取消 按钮
+		// 发送分裂主按钮（高 28、圆角 4、#336FFF 主色 + 30% 白叠主色分裂线 + 下拉箭头）
 		if state.sending {
-			cancelBtn := ui.Button(c, "取消").Height(34).PaddingX(16).FontSize(m.FontSM).
-				Background(tk.Danger.Alpha(0.15)).TextColor(tk.Danger).Border(m.Border, tk.Danger)
+			cancelBtn := ui.ButtonBase(c.Key("req-cancel-btn")).
+				Height(28).PaddingX(14).Radius(4).Center().
+				Background(tk2.DangerSoft).Border(1, tk2.Danger).
+				Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Cancel")
 			if cancelBtn.Clicked() {
 				if state.cancelFn != nil {
 					state.cancelFn()
 				}
 				state.sending = false
 			}
+			cancelBtn.Children(func() {
+				ui.Text(c, "Cancel").FontSize(12).FontWeight(500).TextColor(tk2.Danger).SingleLine()
+			})
 		} else {
-			sendBtn := ui.PrimaryButton(c, "发送").Height(34).PaddingX(16).FontSize(m.FontSM)
-			if sendBtn.Clicked() {
-				// 1. 同步保存当前 UI 草稿到 node.Request
-				state.queryDraft = parseQueryFromURL(state.urlDraft)
-				state.pathVarsDraft = extractPathVariables(state.urlDraft, state.pathVarsDraft)
-				currReq := *req.Clone()
-				currReq.URL = strings.TrimSpace(state.urlDraft)
-				currReq.PathVariables = cleanKVList(state.pathVarsDraft)
-				currReq.Query = cleanKVList(state.queryDraft)
-				currReq.Headers = cleanKVList(state.headersDraft)
-				currReq.Body.Raw = state.bodyRawDraft
-				currReq.Body.Fields = cleanKVList(state.bodyFieldsDraft)
-				currReq.PreRequestScript = state.preScriptDraft
-				currReq.TestsScript = state.testsScriptDraft
-				currReq.Options.ProxyURL = state.proxyDraft
-				currReq.Options.DisableProxy = state.disableProxyDraft
-				currReq.Options.DisableCookieJar = state.disableCookieJarDraft
+			splitWrap := ui.Row(c.Key("req-send-split")).Height(28).Radius(4).Clip().
+				Background(tk2.Accent).AlignItems(ui.Center)
+			menuOpen := ui.Local(splitWrap, "send-menu-open", func() bool { return false })
 
-				props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
-					if node.Request != nil {
-						*node.Request = *currReq.Clone()
-					}
+			splitWrap.Children(func() {
+				sendBtn := ui.ButtonBase(c.Key("req-send-btn")).
+					Height(28).PaddingX(16).Center().
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Send").
+					Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+				switch {
+				case sendBtn.Pressed():
+					sendBtn.Background(tk2.AccentPressed)
+				case sendBtn.Hovered():
+					sendBtn.Background(tk2.AccentHover)
+				default:
+					sendBtn.Background(tk2.Accent)
+				}
+				if sendBtn.Clicked() {
+					triggerSend()
+				}
+				sendBtn.Children(func() {
+					ui.Text(c, "Send").FontSize(12).FontWeight(500).TextColor(tk2.OnAccent).SingleLine()
 				})
 
-				// 2. 标记发送中
-				state.sending = true
+				// 30% 白叠主色分裂线（对齐 Pixso 组件库 · Button 06）
+				ui.Box(c).Width(1).Height(28).Background(tk2.OnAccent.Alpha(0.3))
 
-				// 3. 发送请求（包含环境变量插值、认证继承与异步网络请求）
-				if props.actions.sendRequest != nil {
-					cancel := props.actions.sendRequest(coll.ID, n.ID, currReq, n.Auth, func(resp *transport.Response) {
-						state.sending = false
-						if resp == nil {
-							return
-						}
-						state.hasResponse = true
-						state.respStatus = resp.StatusCode
-						state.respDuration = transport.FormatDuration(resp.Duration)
-						state.respSize = transport.FormatSize(resp.Size)
-						state.respBody = resp.FormattedBody
-						state.respHeaders = resp.Headers
-						state.respCookies = resp.Cookies
-						state.respTestResults = resp.TestResults
-						state.respError = resp.Error
-					})
-					state.cancelFn = cancel
-				} else {
-					// 无网络回调时的兜底本地模拟
-					state.sending = false
-					state.hasResponse = true
-					state.respStatus = 200
-					state.respDuration = "89 ms"
-					state.respSize = "1.42 KB"
-					state.respBody = "{\n  \"message\": \"Simulated local response\"\n}"
+				dropBtn := ui.ButtonBase(c.Key("req-send-more")).
+					Width(24).Height(28).Center().
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Send options").
+					Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+				switch {
+				case dropBtn.Pressed():
+					dropBtn.Background(tk2.AccentPressed)
+				case dropBtn.Hovered():
+					dropBtn.Background(tk2.AccentHover)
+				default:
+					dropBtn.Background(tk2.Accent)
 				}
-			}
+				if dropBtn.Clicked() {
+					*menuOpen = !*menuOpen
+				}
+				dropBtn.Children(func() {
+					ui.Icon(c, icons.ChevronDown).FontSize(11).TextColor(tk2.OnAccent)
+				})
 
-			curlBtn := ui.Button(c, "cURL").Height(34).PaddingX(12).FontSize(m.FontSM)
-			if curlBtn.Clicked() {
-				state.queryDraft = parseQueryFromURL(state.urlDraft)
-				state.pathVarsDraft = extractPathVariables(state.urlDraft, state.pathVarsDraft)
-				currReq := *req.Clone()
-				currReq.URL = strings.TrimSpace(state.urlDraft)
-				currReq.PathVariables = cleanKVList(state.pathVarsDraft)
-				currReq.Query = cleanKVList(state.queryDraft)
-				currReq.Headers = cleanKVList(state.headersDraft)
-				currReq.Body.Raw = state.bodyRawDraft
-				currReq.Body.Fields = cleanKVList(state.bodyFieldsDraft)
-				cmd := curl.ToCurl(currReq, n.Auth)
-				c.WriteClipboard(cmd)
-			}
+				v2.Popover(c, dropBtn, menuOpen, v2.PopoverOpts{Width: 164}, func(panel ui.Element) {
+					ui.Column(c).Padding(4).Gap(2).Children(func() {
+						if v2.MenuButton(c, v2.MenuButtonProps{
+							Icon: icons.Send, Key: "send-opt-run", Label: "Send Request",
+						}).Clicked() {
+							*menuOpen = false
+							triggerSend()
+						}
+						if v2.MenuButton(c, v2.MenuButtonProps{
+							Icon: icons.Code, Key: "send-opt-curl", Label: "Copy as cURL",
+						}).Clicked() {
+							*menuOpen = false
+							copyAsCurl()
+						}
+					})
+				})
+			})
 		}
 	})
 }
 
-// 3. 请求配置 Tab 切换区
+// 3. 请求配置 Tab 切换区（胶囊分段式，对齐 Pixso row / request tabs）
 func reqConfigTabs(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.Node,
 	activeID string, state *reqSessionState, tk theme.Tokens, m theme.Metric,
 ) {
+	tk2 := thV2.Of(c)
 	paramCount := countActiveKV(state.queryDraft) + countActiveKV(state.pathVarsDraft)
 	headerCount := countActiveKV(state.headersDraft)
 
+	paramsLabel := "Params"
+	if paramCount > 0 {
+		paramsLabel = fmt.Sprintf("Params %d", paramCount)
+	}
+	headersLabel := "Headers"
+	if headerCount > 0 {
+		headersLabel = fmt.Sprintf("Headers %d", headerCount)
+	}
+
 	tabLabels := []string{
-		fmt.Sprintf("Params (%d)", paramCount),
+		"Docs",
+		paramsLabel,
 		"Authorization",
-		fmt.Sprintf("Headers (%d)", headerCount),
+		headersLabel,
 		"Body",
 		"Scripts",
 		"Settings",
@@ -540,18 +711,21 @@ func reqConfigTabs(c *ui.Context, props pageProps, coll *domain.Collection, n *d
 
 	tabsRowWithAction(c, tabLabels, state.reqTab, func(idx int) {
 		state.reqTab = idx
-	}, nil)
-
-	ui.Divider(c).BorderColor(tk.Border)
+	}, func() {
+		ui.Text(c, "Cookies").FontSize(12).TextColor(tk2.TextMuted).SingleLine()
+	})
 
 	// 根据当前选中的配置 Tab 渲染可编辑面板
-	ui.Column(c).Grow(1).Padding(m.Space2, 0).Children(func() {
+	ui.Column(c).Grow(1).Padding(8, 0, 0, 0).Children(func() {
 		switch state.reqTab {
 		case 0:
+			// Docs 文档编辑（严格对齐 Pixso 4-请求-Docs：左侧 Markdown 编辑，右侧元信息面板）
+			renderDocsEditor(c, props, coll, n, state, tk2, m)
+		case 1:
 			// Params 参数编辑（包含 Query 与 Path 变量，与 URL 保持双向联动）
-			ui.Column(c).Grow(1).Gap(10).Children(func() {
+			ui.Column(c).Grow(1).Gap(6).Children(func() {
 				ui.Row(c).Height(20).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "Query Parameters").FontSize(11).Bold().TextColor(tk.TextSecondary)
+					ui.Text(c, "Query Params").FontSize(12).FontWeight(500).TextColor(tk2.TextSecondary)
 				})
 				renderKVEditor(c, tk, m, "query", &state.queryDraft, func(items []domain.KV) {
 					state.urlDraft = syncQueryToURL(state.urlDraft, items)
@@ -566,7 +740,7 @@ func reqConfigTabs(c *ui.Context, props pageProps, coll *domain.Collection, n *d
 				if len(state.pathVarsDraft) > 0 {
 					ui.Box(c).Height(8)
 					ui.Row(c).Height(20).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, "Path Variables").FontSize(11).Bold().TextColor(tk.TextSecondary)
+						ui.Text(c, "Path Variables").FontSize(12).FontWeight(500).TextColor(tk2.TextSecondary)
 					})
 					renderKVEditor(c, tk, m, "pathvars", &state.pathVarsDraft, func(items []domain.KV) {
 						props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
@@ -577,10 +751,10 @@ func reqConfigTabs(c *ui.Context, props pageProps, coll *domain.Collection, n *d
 					})
 				}
 			})
-		case 1:
+		case 2:
 			// Authorization 认证配置（带继承链生效计算展示）
 			renderAuthEditor(c, props, coll, n, state, tk, m)
-		case 2:
+		case 3:
 			// Headers 请求头编辑
 			renderKVEditor(c, tk, m, "headers", &state.headersDraft, func(items []domain.KV) {
 				props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
@@ -589,23 +763,158 @@ func reqConfigTabs(c *ui.Context, props pageProps, coll *domain.Collection, n *d
 					}
 				})
 			})
-		case 3:
+		case 4:
 			// Body 请求体配置
 			renderBodyEditor(c, props, coll, n, state, tk, m)
-		case 4:
+		case 5:
 			// Scripts 脚本与测试断言
 			renderScriptsEditor(c, props, coll, n, state, tk, m)
-		case 5:
+		case 6:
 			// Settings 传输设置
 			renderSettingsEditor(c, props, coll, n, state, tk, m)
 		}
 	})
 }
 
-// 通用键值对表格编辑器（用于 Params、Headers、Body Fields）
+// kvListToBulk 把键值列表转换为纯文本（对齐 Pixso 15-请求体-BulkEdit）
+func kvListToBulk(items []domain.KV) string {
+	var sb strings.Builder
+	for _, kv := range items {
+		if strings.TrimSpace(kv.Key) == "" && strings.TrimSpace(kv.Value) == "" {
+			continue
+		}
+		if kv.Enabled {
+			sb.WriteString(kv.Key + ": " + kv.Value + "\n")
+		} else {
+			sb.WriteString("// " + kv.Key + ": " + kv.Value + "\n")
+		}
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+// bulkToKVList 把纯文本反解析回键值列表
+func bulkToKVList(text string) []domain.KV {
+	lines := strings.Split(text, "\n")
+	var res []domain.KV
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		enabled := true
+		if strings.HasPrefix(trimmed, "//") {
+			enabled = false
+			trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, "//"))
+		}
+		idx := strings.Index(trimmed, ":")
+		if idx < 0 {
+			res = append(res, domain.KV{ID: domain.NewID(), Key: trimmed, Value: "", Enabled: enabled})
+		} else {
+			key := strings.TrimSpace(trimmed[:idx])
+			val := strings.TrimSpace(trimmed[idx+1:])
+			res = append(res, domain.KV{ID: domain.NewID(), Key: key, Value: val, Enabled: enabled})
+		}
+	}
+	if len(res) == 0 {
+		res = append(res, domain.KV{ID: domain.NewID(), Enabled: true})
+	}
+	return res
+}
+
+// renderDocsEditor 严格对齐 Pixso 4-请求-Docs（32:76288）：左侧 Markdown 编辑与工具栏，右侧 Documentation 属性面板
+func renderDocsEditor(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.Node,
+	state *reqSessionState, tk thV2.Tokens, m theme.Metric,
+) {
+	ui.Row(c).FillWidth().Gap(24).Children(func() {
+		// 左侧编辑器列
+		ui.Column(c).Grow(1).Gap(8).Children(func() {
+			ui.Row(c).Height(26).Gap(4).AlignItems(ui.Center).Children(func() {
+				for _, tb := range []struct {
+					key, label string
+					icon       *ui.SVG
+					insert     string
+				}{
+					{"bold", "Bold", icons.Bold, "**bold text**"},
+					{"italic", "Italic", icons.Italic, "*italic text*"},
+					{"code", "Code", icons.Code, "`code`"},
+					{"list", "List", icons.ListOrdered, "1. Item\n2. Item"},
+				} {
+					tb := tb
+					btn := ui.ButtonBase(c.Key("docs-tb-" + tb.key + "-" + string(n.ID))).
+						Height(24).PaddingX(8).Radius(4).Border(1, tk.Border).
+						Background(tk.BgSurface).Center().Cursor(ui.CursorPointer).
+						Role(ui.RoleButton).Label(tb.label)
+					switch {
+					case btn.Pressed():
+						btn.Background(tk.BgSelected)
+					case btn.Hovered():
+						btn.Background(tk.BgHover)
+					}
+					if btn.Clicked() {
+						if n.Description == "" {
+							n.Description = tb.insert
+						} else {
+							n.Description += "\n" + tb.insert
+						}
+						props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+							node.Description = n.Description
+						})
+					}
+					btn.Children(func() {
+						if tb.icon != nil {
+							ui.Icon(c, tb.icon).FontSize(11).TextColor(tk.TextSecondary)
+						} else {
+							ui.Text(c, tb.label).FontSize(11).FontWeight(500).TextColor(tk.TextSecondary)
+						}
+					})
+				}
+			})
+
+			descIn := ui.TextAreaBase(c, &n.Description).FillWidth().MinHeight(160).
+				MaxHeight(320).Padding(12, 14).Radius(4).
+				Border(1, tk.Border).Background(tk.BgSubtle).
+				FontSize(12).FixedLineHeight(20).TextColor(tk.TextPrimary)
+			if descIn.FocusLeft() {
+				props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+					node.Description = n.Description
+				})
+			}
+			ui.Text(c, "Markdown is supported. Use the toolbar above to format your documentation.").
+				FontSize(11).TextColor(tk.TextMuted)
+		})
+
+		// 右侧 Documentation 信息面板（对齐 Pixso 32:76796 col / docs info，宽 260）
+		ui.Column(c).Width(260).Gap(10).Children(func() {
+			ui.Text(c, "Documentation").FontSize(13).FontWeight(600).TextColor(tk.TextPrimary)
+			ui.Text(c, "Add documentation for this request so that everyone on your team knows how to use it.").
+				FontSize(12).TextColor(tk.TextSecondary)
+
+			ui.Box(c).FillWidth().Height(1).Background(tk.Border)
+
+			ui.Column(c).Gap(4).Children(func() {
+				ui.Text(c, "METHOD").FontSize(11).TextColor(tk.TextMuted)
+				mth := "GET"
+				if n.Request != nil && n.Request.Method != "" {
+					mth = n.Request.Method
+				}
+				ui.Text(c, mth).FontSize(12).Bold().TextColor(methodColor(theme.Tokens{}, mth))
+			})
+
+			ui.Column(c).Gap(4).Children(func() {
+				ui.Text(c, "LAST UPDATED").FontSize(11).TextColor(tk.TextMuted)
+				ui.Text(c, n.UpdatedAt.Format("2006-01-02 15:04")).FontSize(12).TextColor(tk.TextPrimary)
+			})
+
+			ui.Text(c, "Learn about documenting APIs").FontSize(12).TextColor(tk.Accent).Cursor(ui.CursorPointer)
+		})
+	})
+}
+
+// 通用网格型键值对表格编辑器（对齐 Pixso 5-请求-Params & 15-请求体-BulkEdit：支持 Key-Value 表格与 Bulk Edit 纯文本双向切换）
 func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 	keyPrefix string, items *[]domain.KV, onPersist func([]domain.KV),
 ) {
+	tk2 := thV2.Of(c)
 	if items == nil {
 		return
 	}
@@ -613,58 +922,141 @@ func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 		*items = []domain.KV{{ID: domain.NewID(), Enabled: true}}
 	}
 
-	ui.Column(c).Grow(1).Children(func() {
-		// 表头
-		ui.Row(c).Height(26).PaddingX(8).AlignItems(ui.Center).
-			Background(tk.HoverSurface.Alpha(0.5)).Radius(m.RadiusSM).
+	col := ui.Column(c.Key("kv-editor-" + keyPrefix)).FillWidth().Radius(4).
+		Border(1, tk2.Border).Background(tk2.BgBase).Clip()
+	bulkMode := ui.Local(col, "bulk-mode", func() bool { return false })
+	bulkText := ui.Local(col, "bulk-text", func() string { return kvListToBulk(*items) })
+
+	col.Children(func() {
+		// 表头（对齐 Pixso：Key | Value | Description + 右侧 Bulk Edit 切换）
+		ui.Row(c).FillWidth().Height(28).AlignItems(ui.Center).
+			BorderWidth(0, 0, 1, 0).BorderColor(tk2.Border).
 			Children(func() {
-				ui.Box(c).Width(24) // Checkbox 占位
-				ui.Text(c, "KEY").FontSize(10).FontWeight(600).
-					TextColor(tk.TextMuted).Width(160)
-				ui.Text(c, "VALUE").FontSize(10).FontWeight(600).
-					TextColor(tk.TextMuted).Grow(1)
-				ui.Text(c, "DESCRIPTION").FontSize(10).FontWeight(600).
-					TextColor(tk.TextMuted).Width(140)
-				ui.Box(c).Width(28) // 操作占位
+				if *bulkMode {
+					ui.Row(c).FillWidth().FillHeight().Padding(0, 8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+						ui.Text(c, "Rows (Key: Value)").FontSize(11).FontWeight(500).TextColor(tk2.TextSecondary)
+						toggleBtn := ui.ButtonBase(c.Key(keyPrefix + "-toggle-kv")).
+							Height(22).PaddingX(6).Radius(4).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+							Role(ui.RoleButton).Label("Key-Value Edit")
+						if toggleBtn.Clicked() {
+							*items = bulkToKVList(*bulkText)
+							*bulkMode = false
+							onPersist(*items)
+						}
+						toggleBtn.Children(func() {
+							ui.Text(c, "Key-Value Edit").FontSize(11).FontWeight(500).TextColor(tk2.Accent)
+						})
+					})
+				} else {
+					ui.Box(c).Width(32)
+					ui.Row(c).Width(200).FillHeight().Padding(0, 8).AlignItems(ui.Center).
+						BorderWidth(0, 1, 0, 0).BorderColor(tk2.Border).Children(func() {
+						ui.Text(c, "Key").FontSize(11).FontWeight(500).TextColor(tk2.TextSecondary)
+					})
+					ui.Row(c).Grow(1).FillHeight().Padding(0, 8).AlignItems(ui.Center).
+						BorderWidth(0, 1, 0, 0).BorderColor(tk2.Border).Children(func() {
+						ui.Text(c, "Value").FontSize(11).FontWeight(500).TextColor(tk2.TextSecondary)
+					})
+					ui.Row(c).Width(250).FillHeight().Padding(0, 8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+						ui.Text(c, "Description").FontSize(11).FontWeight(500).TextColor(tk2.TextSecondary)
+						ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
+							if keyPrefix == "headers" {
+								resetBtn := ui.ButtonBase(c.Key(keyPrefix + "-reset-defaults")).
+									Height(22).PaddingX(6).Radius(4).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+									Role(ui.RoleButton).Label("Reset Defaults")
+								if resetBtn.Clicked() {
+									*items = append(domain.DefaultRequestHeaders(), domain.KV{ID: domain.NewID(), Enabled: true})
+									onPersist(*items)
+								}
+								resetBtn.Children(func() {
+									ui.Text(c, "Reset Defaults").FontSize(11).FontWeight(500).TextColor(tk2.TextMuted)
+								})
+							}
+							toggleBtn := ui.ButtonBase(c.Key(keyPrefix + "-toggle-bulk")).
+								Height(22).PaddingX(6).Radius(4).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+								Role(ui.RoleButton).Label("Bulk Edit")
+							if toggleBtn.Clicked() {
+								*bulkText = kvListToBulk(*items)
+								*bulkMode = true
+							}
+							toggleBtn.Children(func() {
+								ui.Text(c, "Bulk Edit").FontSize(11).FontWeight(500).TextColor(tk2.Accent)
+							})
+						})
+					})
+					ui.Box(c).Width(28)
+				}
 			})
 
-		// 列表行
+		if *bulkMode {
+			// Bulk 纯文本模式（对齐 Pixso 34:9849 div / bulk editor）
+			ui.Column(c).FillWidth().Padding(8, 12).Gap(6).Children(func() {
+				in := ui.TextAreaBase(c, bulkText).FillWidth().MinHeight(120).MaxHeight(240).
+					FontSize(12).FixedLineHeight(20).TextColor(tk2.TextPrimary).
+					Padding(6, 8).Radius(4).Border(1, tk2.Border).Background(tk2.BgSubtle)
+				if in.FocusLeft() {
+					*items = bulkToKVList(*bulkText)
+					onPersist(*items)
+				}
+				ui.Text(c, "Enter one key-value pair per line (key: value, prefix with // to disable)").
+					FontSize(11).TextColor(tk2.TextMuted)
+			})
+			return
+		}
+
+		// 表格模式行渲染
 		list := *items
 		for i := 0; i < len(list); i++ {
 			i := i
 			kv := &(*items)[i]
+			isEmptyTail := i == len(list)-1 && strings.TrimSpace(kv.Key) == "" && strings.TrimSpace(kv.Value) == ""
 
-			ui.Row(c).Height(34).PaddingX(8).AlignItems(ui.Center).Gap(6).
-				BorderWidth(0, 0, m.Border, 0).BorderColor(tk.Border.Alpha(0.4)).
-				Children(func() {
-					// 1. 复选框（启用/停用）
+			row := ui.Row(c.Key(fmt.Sprintf("%s-row-%d", keyPrefix, i))).
+				FillWidth().Height(30).AlignItems(ui.Center)
+			if i < len(list)-1 {
+				row.BorderWidth(0, 0, 1, 0).BorderColor(tk2.Border)
+			}
+			row.Children(func() {
+				// 1. 复选框（启用/停用）
+				ui.Row(c).Width(32).FillHeight().Center().Children(func() {
 					chk := ui.ButtonBase(c.Key(fmt.Sprintf("%s-chk-%d", keyPrefix, i))).
-						Size(16, 16).Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center)
-					if kv.Enabled {
-						chk.Background(tk.Accent)
+						Size(15, 15).Radius(3).Center().Cursor(ui.CursorPointer).
+						Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+					if kv.Enabled && !isEmptyTail {
+						switch {
+						case chk.Pressed():
+							chk.Background(tk2.AccentPressed)
+						case chk.Hovered():
+							chk.Background(tk2.AccentHover)
+						default:
+							chk.Background(tk2.Accent)
+						}
 						chk.Children(func() {
-							ui.Icon(c, icons.Get("check")).Size(11, 11).TextColor(tk.BgSurface)
+							ui.Icon(c, icons.Check).Size(10, 10).TextColor(tk2.OnAccent)
 						})
 					} else {
-						chk.Border(m.Border, tk.Border)
+						switch {
+						case chk.Pressed():
+							chk.Background(tk2.BgSubtle).Border(1, tk2.Accent)
+						case chk.Hovered():
+							chk.Border(1, tk2.Accent)
+						default:
+							chk.Border(1, tk2.BorderStrong).Background(tk2.BgSurface)
+						}
 					}
 					if chk.Clicked() {
 						kv.Enabled = !kv.Enabled
 						onPersist(*items)
 					}
+				})
 
-					// 2. Key 输入框
+				// 2. Key 单元格
+				ui.Row(c).Width(200).FillHeight().AlignItems(ui.Center).
+					BorderWidth(0, 1, 0, 0).BorderColor(tk2.Border).Children(func() {
 					keyIn := ui.TextInputBase(c.Key(fmt.Sprintf("%s-key-%d", keyPrefix, i)), &kv.Key).
-						Width(160).Height(26).Padding(2, 6).Radius(m.RadiusSM).
-						Border(m.Border, tk.Border.Alpha(0.6)).Background(tk.BgElevated.Alpha(0.3)).
-						FontSize(m.FontSM).TextColor(tk.TextPrimary).Placeholder("Key")
-					if keyIn.Focused() {
-						keyIn.Border(m.Border, tk.FocusRing).Background(tk.BgSurface)
-					} else if keyIn.Hovered() {
-						keyIn.Border(m.Border, tk.Border)
-					}
+						Fill().Padding(0, 8).FontSize(12).TextColor(tk2.TextPrimary).
+						Placeholder("Key").PlaceholderColor(tk2.TextMuted)
 					if keyIn.Changed() {
-						// 若在最后一行输入，自动追加新的一行空白项方便连续输入
 						if i == len(*items)-1 && (kv.Key != "" || kv.Value != "") {
 							*items = append(*items, domain.KV{ID: domain.NewID(), Enabled: true})
 						}
@@ -672,17 +1064,14 @@ func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 					if keyIn.FocusLeft() || keyIn.Submitted() {
 						onPersist(*items)
 					}
+				})
 
-					// 3. Value 输入框
+				// 3. Value 单元格
+				ui.Row(c).Grow(1).FillHeight().AlignItems(ui.Center).
+					BorderWidth(0, 1, 0, 0).BorderColor(tk2.Border).Children(func() {
 					valIn := ui.TextInputBase(c.Key(fmt.Sprintf("%s-val-%d", keyPrefix, i)), &kv.Value).
-						Grow(1).Height(26).Padding(2, 6).Radius(m.RadiusSM).
-						Border(m.Border, tk.Border.Alpha(0.6)).Background(tk.BgElevated.Alpha(0.3)).
-						FontSize(m.FontSM).TextColor(tk.Info).Placeholder("Value")
-					if valIn.Focused() {
-						valIn.Border(m.Border, tk.FocusRing).Background(tk.BgSurface)
-					} else if valIn.Hovered() {
-						valIn.Border(m.Border, tk.Border)
-					}
+						Fill().Padding(0, 8).FontSize(12).TextColor(tk2.TextPrimary).
+						Placeholder("Value").PlaceholderColor(tk2.TextMuted)
 					if valIn.Changed() {
 						if i == len(*items)-1 && (kv.Key != "" || kv.Value != "") {
 							*items = append(*items, domain.KV{ID: domain.NewID(), Enabled: true})
@@ -691,61 +1080,50 @@ func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 					if valIn.FocusLeft() || valIn.Submitted() {
 						onPersist(*items)
 					}
+				})
 
-					// 4. Description 输入框
+				// 4. Description 单元格
+				ui.Row(c).Width(250).FillHeight().AlignItems(ui.Center).Children(func() {
 					descIn := ui.TextInputBase(c.Key(fmt.Sprintf("%s-desc-%d", keyPrefix, i)), &kv.Desc).
-						Width(140).Height(26).Padding(2, 6).Radius(m.RadiusSM).
-						Border(m.Border, tk.Border.Alpha(0.6)).Background(tk.BgElevated.Alpha(0.3)).
-						FontSize(m.FontSM).TextColor(tk.TextMuted).Placeholder("Description")
-					if descIn.Focused() {
-						descIn.Border(m.Border, tk.FocusRing).Background(tk.BgSurface)
-					} else if descIn.Hovered() {
-						descIn.Border(m.Border, tk.Border)
-					}
+						Fill().Padding(0, 8).FontSize(12).TextColor(tk2.TextSecondary).
+						Placeholder("Description").PlaceholderColor(tk2.TextMuted)
 					if descIn.FocusLeft() || descIn.Submitted() {
 						onPersist(*items)
 					}
-
-					// 5. 删除行按钮
-					delBtn := ui.ButtonBase(c.Key(fmt.Sprintf("%s-del-%d", keyPrefix, i))).
-						Size(22, 22).Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center)
-					if delBtn.Hovered() {
-						delBtn.Background(tk.HoverSurface)
-					}
-					if delBtn.Clicked() {
-						cp := append([]domain.KV(nil), (*items)[:i]...)
-						cp = append(cp, (*items)[i+1:]...)
-						if len(cp) == 0 {
-							cp = append(cp, domain.KV{ID: domain.NewID(), Enabled: true})
-						}
-						*items = cp
-						onPersist(*items)
-					}
-					delBtn.Children(func() {
-						ui.Icon(c, icons.Get("trash")).Size(12, 12).TextColor(tk.TextMuted)
-					})
 				})
-		}
 
-		// 底部添加按钮
-		ui.Box(c).Height(6)
-		addBtn := ui.ButtonBase(c.Key("add-row-" + keyPrefix)).Height(24).PaddingX(8).
-			Radius(m.RadiusSM).AlignItems(ui.Center).Gap(4)
-		if addBtn.Hovered() {
-			addBtn.Background(tk.HoverSurface)
+				// 5. 删除行按钮
+				ui.Row(c).Width(28).FillHeight().Center().Children(func() {
+					if !isEmptyTail {
+						delBtn := ui.ButtonBase(c.Key(fmt.Sprintf("%s-del-%d", keyPrefix, i))).
+							Size(20, 20).Radius(4).Center().Cursor(ui.CursorPointer).
+							Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+						switch {
+						case delBtn.Pressed():
+							delBtn.Background(tk2.BgSelected)
+						case delBtn.Hovered():
+							delBtn.Background(tk2.BgHover)
+						}
+						if delBtn.Clicked() {
+							cp := append([]domain.KV(nil), (*items)[:i]...)
+							cp = append(cp, (*items)[i+1:]...)
+							if len(cp) == 0 {
+								cp = append(cp, domain.KV{ID: domain.NewID(), Enabled: true})
+							}
+							*items = cp
+							onPersist(*items)
+						}
+						delBtn.Children(func() {
+							ui.Icon(c, icons.X).Size(11, 11).TextColor(tk2.TextMuted)
+						})
+					}
+				})
+			})
 		}
-		if addBtn.Clicked() {
-			*items = append(*items, domain.KV{ID: domain.NewID(), Enabled: true})
-			onPersist(*items)
-		}
-		addBtn.Children(func() {
-			ui.Icon(c, icons.Get("plus")).Size(12, 12).TextColor(tk.Accent)
-			ui.Text(c, "添加一行").FontSize(m.FontXS).TextColor(tk.Accent)
-		})
 	})
 }
 
-// 认证配置面板
+// 认证配置面板（对齐 Pixso 6-请求-Authorization，采用标准 v2.Select 组件）
 func renderAuthEditor(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.Node,
 	state *reqSessionState, tk theme.Tokens, m theme.Metric,
 ) {
@@ -754,38 +1132,30 @@ func renderAuthEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 		currType = "inherit"
 	}
 
-	ui.Column(c).Grow(1).Gap(10).Children(func() {
-		ui.Row(c).Height(30).AlignItems(ui.Center).Gap(8).Children(func() {
-			ui.Text(c, "认证类型 (Type):").FontSize(m.FontSM).TextColor(tk.TextSecondary)
+	ui.Column(c).Grow(1).Gap(12).Children(func() {
+		ui.Row(c).Height(32).AlignItems(ui.Center).Gap(12).Children(func() {
+			ui.Text(c, "Type:").FontSize(12).FontWeight(500).TextColor(tk.TextSecondary)
 
-			for _, t := range []struct{ key, label string }{
-				{"inherit", "继承父级"},
-				{"bearer", "Bearer Token"},
-				{"basic", "Basic Auth"},
-				{"apikey", "API Key"},
-				{"none", "无认证"},
-			} {
-				t := t
-				btn := ui.ButtonBase(c.Key("auth-type-" + t.key)).Height(24).PaddingX(8).
-					Radius(m.RadiusSM).AlignItems(ui.Center)
-				if currType == t.key {
-					btn.Background(tk.FocusRing).TextColor(tk.BgSurface)
-				} else if btn.Hovered() {
-					btn.Background(tk.HoverSurface)
-				}
-				if btn.Clicked() {
+			v2.Select(c, v2.SelectOpts{
+				Key:       "req-auth-select-" + string(n.ID),
+				Label:     "Auth Type",
+				Width:     240,
+				Height:    30,
+				MenuWidth: 260,
+				Value:     currType,
+				Options: []v2.SelectOption{
+					{Value: "inherit", Label: "Inherit auth from parent"},
+					{Value: "bearer", Label: "Bearer Token"},
+					{Value: "basic", Label: "Basic Auth"},
+					{Value: "apikey", Label: "API Key"},
+					{Value: "none", Label: "No Auth"},
+				},
+				OnSelect: func(val string) {
 					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
-						node.Auth.Type = domain.AuthType(t.key)
+						node.Auth.Type = domain.AuthType(val)
 					})
-				}
-				btn.Children(func() {
-					color := tk.TextSecondary
-					if currType == t.key {
-						color = tk.BgSurface
-					}
-					ui.Text(c, t.label).FontSize(m.FontXS).TextColor(color)
-				})
-			}
+				},
+			})
 		})
 
 		ui.Box(c).Height(1).Background(tk.Border.Alpha(0.6))
@@ -928,22 +1298,29 @@ func renderBodyEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 		mode = "none"
 	}
 
+	tk2 := thV2.Of(c)
 	ui.Column(c).Grow(1).Gap(8).Children(func() {
-		// 模式切换行
-		ui.Row(c).Height(28).AlignItems(ui.Center).Gap(6).Children(func() {
+		// 1. Body 模式单选组（严格对齐 Pixso 34:444240 row / body options：gap 16）
+		ui.Row(c).Height(24).AlignItems(ui.Center).Gap(16).Children(func() {
 			for _, item := range []struct{ key, label string }{
 				{"none", "none"},
-				{"raw", "raw (JSON)"},
 				{"form-data", "form-data"},
 				{"urlencoded", "x-www-form-urlencoded"},
+				{"raw", "raw"},
+				{"binary", "binary"},
 			} {
 				item := item
-				btn := ui.ButtonBase(c.Key("body-mode-" + item.key)).Height(22).PaddingX(8).
-					Radius(m.RadiusSM).AlignItems(ui.Center)
-				if mode == item.key {
-					btn.Background(tk.FocusRing).TextColor(tk.BgSurface)
-				} else if btn.Hovered() {
-					btn.Background(tk.HoverSurface)
+				isSelected := mode == item.key
+				btn := ui.ButtonBase(c.Key("body-mode-" + item.key)).
+					Height(24).Padding(0, 4).Gap(6).
+					Radius(4).AlignItems(ui.Center).Justify(ui.Start).
+					Cursor(ui.CursorPointer).Role(ui.RoleRadio).Label(item.label).
+					Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+				switch {
+				case btn.Pressed():
+					btn.Background(tk2.BgSelected)
+				case btn.Hovered():
+					btn.Background(tk2.BgHover)
 				}
 				if btn.Clicked() {
 					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
@@ -953,28 +1330,101 @@ func renderBodyEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 					})
 				}
 				btn.Children(func() {
-					color := tk.TextSecondary
-					if mode == item.key {
-						color = tk.BgSurface
+					ring := ui.Box(c).Size(12, 12).Radius(6).Center()
+					if isSelected {
+						ring.Border(1.5, tk2.Accent).Children(func() {
+							ui.Box(c).Size(6, 6).Radius(3).Background(tk2.Accent)
+						})
+					} else {
+						ring.Border(1, tk2.BorderStrong)
 					}
-					ui.Text(c, item.label).FontSize(m.FontXS).TextColor(color)
+					weight := 400
+					textColor := tk2.TextSecondary
+					if isSelected {
+						weight = 500
+						textColor = tk2.TextPrimary
+					}
+					ui.Text(c, item.label).FontSize(12).FontWeight(weight).TextColor(textColor).SingleLine()
 				})
 			}
 		})
 
-		ui.Box(c).Height(1).Background(tk.Border.Alpha(0.6))
+		// 2. 当为 raw 模式时，呈现独立的格式选择条与 Beautify 按钮（对齐 Pixso 34:444260 row / body format）
+		if mode == "raw" {
+			ui.Row(c).Height(26).AlignItems(ui.Center).Gap(12).Children(func() {
+				rawLang := req.Body.Language
+				if rawLang == "" {
+					rawLang = "json"
+				}
+				v2.Select(c, v2.SelectOpts{
+					Key:       "req-raw-format-" + string(n.ID),
+					Label:     "Format",
+					Width:     100,
+					Height:    24,
+					MenuWidth: 130,
+					Value:     rawLang,
+					Options: []v2.SelectOption{
+						{Value: "json", Label: "JSON"},
+						{Value: "text", Label: "Text"},
+						{Value: "javascript", Label: "JavaScript"},
+						{Value: "html", Label: "HTML"},
+						{Value: "xml", Label: "XML"},
+					},
+					OnSelect: func(val string) {
+						props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+							if node.Request != nil {
+								node.Request.Body.Language = val
+							}
+						})
+					},
+				})
 
-		// 模式内容展示
+				ui.Spacer(c)
+
+				beautifyBtn := ui.ButtonBase(c.Key("raw-beautify-" + string(n.ID))).
+					Height(22).PaddingX(6).Radius(4).AlignItems(ui.Center).
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Beautify")
+				switch {
+				case beautifyBtn.Pressed():
+					beautifyBtn.Background(tk2.BgSelected)
+				case beautifyBtn.Hovered():
+					beautifyBtn.Background(tk2.BgHover)
+				}
+				if beautifyBtn.Clicked() {
+					trimmed := strings.TrimSpace(state.bodyRawDraft)
+					if trimmed != "" {
+						var parsed any
+						if json.Unmarshal([]byte(trimmed), &parsed) == nil {
+							if indented, err := json.MarshalIndent(parsed, "", "  "); err == nil {
+								state.bodyRawDraft = string(indented)
+								props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+									if node.Request != nil {
+										node.Request.Body.Raw = state.bodyRawDraft
+									}
+								})
+							}
+						}
+					}
+				}
+				beautifyBtn.Children(func() {
+					ui.Text(c, "Beautify").FontSize(12).TextColor(tk2.Accent).SingleLine()
+				})
+			})
+		}
+
+		ui.Box(c).Height(1).Background(tk2.Border.Alpha(0.6))
+
+		// 3. 模式内容展示（对齐 Pixso 各子画板）
 		switch mode {
 		case "none":
-			ui.Row(c).Height(60).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-				ui.Text(c, "该请求不携带请求体内容").FontSize(m.FontSM).
-					TextColor(tk.TextMuted)
+			ui.Row(c).Height(80).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+				ui.Text(c, "This request does not have a body").FontSize(12).
+					TextColor(tk2.TextMuted)
 			})
 		case "raw":
-			in := ui.TextAreaBase(c, &state.bodyRawDraft).FillWidth().MinHeight(120).
-				MaxHeight(260).Padding(8, 10).FontSize(m.FontSM).
-				FixedLineHeight(20).TextColor(tk.TextPrimary)
+			in := ui.TextAreaBase(c, &state.bodyRawDraft).FillWidth().MinHeight(140).
+				MaxHeight(280).Padding(8, 10).FontSize(m.FontSM).
+				FixedLineHeight(20).TextColor(tk2.TextPrimary)
 			if in.FocusLeft() {
 				if state.bodyRawDraft != req.Body.Raw {
 					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
@@ -990,6 +1440,26 @@ func renderBodyEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 					if node.Request != nil {
 						node.Request.Body.Fields = cleanKVList(items)
 					}
+				})
+			})
+		case "binary":
+			// 二进制文件上传投放区（对齐 Pixso 14-请求体-Binary：节点 32:96001）
+			dropZone := ui.Column(c.Key("binary-dropzone")).FillWidth().Height(140).Radius(4).
+				Border(1, tk2.Border).Background(tk2.BgSurface).Center().Gap(8)
+			dropZone.Children(func() {
+				ui.Text(c, "Drag and drop a file here, or click to browse").FontSize(12).
+					TextColor(tk2.TextMuted)
+				selFileBtn := ui.ButtonBase(c.Key("binary-select-file")).Height(28).PaddingX(12).
+					Radius(4).Border(1, tk2.Border).Background(tk2.BgSurface).Center().
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Select File")
+				switch {
+				case selFileBtn.Pressed():
+					selFileBtn.Background(tk2.BgSelected)
+				case selFileBtn.Hovered():
+					selFileBtn.Background(tk2.BgHover)
+				}
+				selFileBtn.Children(func() {
+					ui.Text(c, "Select File").FontSize(12).FontWeight(500).TextColor(tk2.TextPrimary).SingleLine()
 				})
 			})
 		}
@@ -1105,6 +1575,7 @@ func renderScriptsEditor(c *ui.Context, props pageProps, coll *domain.Collection
 func renderSettingsEditor(c *ui.Context, props pageProps, coll *domain.Collection,
 	n *domain.Node, state *reqSessionState, tk theme.Tokens, m theme.Metric,
 ) {
+	tk2 := thV2.Of(c)
 	req := n.Request
 
 	followRedirects := true
@@ -1143,14 +1614,29 @@ func renderSettingsEditor(c *ui.Context, props pageProps, coll *domain.Collectio
 
 		ui.Row(c).Height(28).AlignItems(ui.Center).Gap(8).Children(func() {
 			chk := ui.ButtonBase(c.Key("settings-follow-redirects")).
-				Size(16, 16).Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center)
+				Size(16, 16).Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center).
+				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 			if followRedirects {
-				chk.Background(tk.Accent)
+				switch {
+				case chk.Pressed():
+					chk.Background(tk2.AccentPressed)
+				case chk.Hovered():
+					chk.Background(tk2.AccentHover)
+				default:
+					chk.Background(tk.Accent)
+				}
 				chk.Children(func() {
 					ui.Icon(c, icons.Get("check")).Size(11, 11).TextColor(tk.BgSurface)
 				})
 			} else {
-				chk.Border(m.Border, tk.Border)
+				switch {
+				case chk.Pressed():
+					chk.Background(tk2.BgSubtle).Border(m.Border, tk2.Accent)
+				case chk.Hovered():
+					chk.Border(m.Border, tk2.Accent)
+				default:
+					chk.Border(m.Border, tk.Border)
+				}
 			}
 			if chk.Clicked() {
 				val := !followRedirects
@@ -1166,14 +1652,29 @@ func renderSettingsEditor(c *ui.Context, props pageProps, coll *domain.Collectio
 
 		ui.Row(c).Height(28).AlignItems(ui.Center).Gap(8).Children(func() {
 			chk := ui.ButtonBase(c.Key("settings-verify-ssl")).
-				Size(16, 16).Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center)
+				Size(16, 16).Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center).
+				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 			if verifySSL {
-				chk.Background(tk.Accent)
+				switch {
+				case chk.Pressed():
+					chk.Background(tk2.AccentPressed)
+				case chk.Hovered():
+					chk.Background(tk2.AccentHover)
+				default:
+					chk.Background(tk.Accent)
+				}
 				chk.Children(func() {
 					ui.Icon(c, icons.Get("check")).Size(11, 11).TextColor(tk.BgSurface)
 				})
 			} else {
-				chk.Border(m.Border, tk.Border)
+				switch {
+				case chk.Pressed():
+					chk.Background(tk2.BgSubtle).Border(m.Border, tk2.Accent)
+				case chk.Hovered():
+					chk.Border(m.Border, tk2.Accent)
+				default:
+					chk.Border(m.Border, tk.Border)
+				}
 			}
 			if chk.Clicked() {
 				val := !verifySSL
@@ -1190,14 +1691,29 @@ func renderSettingsEditor(c *ui.Context, props pageProps, coll *domain.Collectio
 		useCookieJar := !state.disableCookieJarDraft
 		ui.Row(c).Height(28).AlignItems(ui.Center).Gap(8).Children(func() {
 			chk := ui.ButtonBase(c.Key("settings-cookie-jar")).
-				Size(16, 16).Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center)
+				Size(16, 16).Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center).
+				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 			if useCookieJar {
-				chk.Background(tk.Accent)
+				switch {
+				case chk.Pressed():
+					chk.Background(tk2.AccentPressed)
+				case chk.Hovered():
+					chk.Background(tk2.AccentHover)
+				default:
+					chk.Background(tk.Accent)
+				}
 				chk.Children(func() {
 					ui.Icon(c, icons.Get("check")).Size(11, 11).TextColor(tk.BgSurface)
 				})
 			} else {
-				chk.Border(m.Border, tk.Border)
+				switch {
+				case chk.Pressed():
+					chk.Background(tk2.BgSubtle).Border(m.Border, tk2.Accent)
+				case chk.Hovered():
+					chk.Border(m.Border, tk2.Accent)
+				default:
+					chk.Border(m.Border, tk.Border)
+				}
 			}
 			if chk.Clicked() {
 				state.disableCookieJarDraft = !state.disableCookieJarDraft
@@ -1235,14 +1751,29 @@ func renderSettingsEditor(c *ui.Context, props pageProps, coll *domain.Collectio
 
 		ui.Row(c).Height(28).AlignItems(ui.Center).Gap(8).Children(func() {
 			chk := ui.ButtonBase(c.Key("settings-disable-proxy")).
-				Size(16, 16).Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center)
+				Size(16, 16).Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center).
+				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 			if state.disableProxyDraft {
-				chk.Background(tk.Accent)
+				switch {
+				case chk.Pressed():
+					chk.Background(tk2.AccentPressed)
+				case chk.Hovered():
+					chk.Background(tk2.AccentHover)
+				default:
+					chk.Background(tk.Accent)
+				}
 				chk.Children(func() {
 					ui.Icon(c, icons.Get("check")).Size(11, 11).TextColor(tk.BgSurface)
 				})
 			} else {
-				chk.Border(m.Border, tk.Border)
+				switch {
+				case chk.Pressed():
+					chk.Background(tk2.BgSubtle).Border(m.Border, tk2.Accent)
+				case chk.Hovered():
+					chk.Border(m.Border, tk2.Accent)
+				default:
+					chk.Border(m.Border, tk.Border)
+				}
 			}
 			if chk.Clicked() {
 				state.disableProxyDraft = !state.disableProxyDraft
@@ -1259,72 +1790,13 @@ func renderSettingsEditor(c *ui.Context, props pageProps, coll *domain.Collectio
 	})
 }
 
-// 4. 底部响应区：支持 Body, Headers, Cookies 的 Tab 切换
+// 4. 底部响应区：单行胶囊分段 Tab + 状态码/耗时/体积同行展示（对齐 Pixso section / response）
 func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 	state *reqSessionState, tk theme.Tokens, m theme.Metric,
 ) {
-	ui.Column(c).Fill().Background(tk.BgSurface).Children(func() {
-		// 响应头状态行
-		ui.Row(c).Height(38).PaddingX(m.Space4).Gap(m.Space2).
-			AlignItems(ui.Center).BorderWidth(m.Border, 0, m.Border, 0).
-			BorderColor(tk.Border).Background(tk.BgElevated.Alpha(0.3)).
-			Children(func() {
-				if state.sending {
-					ui.Box(c).Padding(2, 8).Radius(m.RadiusSM).
-						Background(tk.Warning.Alpha(0.15)).Children(func() {
-						ui.Text(c, "发送中...").FontSize(m.FontXS).Bold().TextColor(tk.Warning)
-					})
-					ui.Text(c, "正在等待服务器响应").FontSize(m.FontXS).TextColor(tk.TextMuted)
-				} else if state.hasResponse {
-					// 状态码 Badge
-					statusBg := tk.Success.Alpha(0.15)
-					statusColor := tk.Success
-					if state.respStatus >= 400 || state.respStatus == 0 {
-						statusBg = tk.Danger.Alpha(0.15)
-						statusColor = tk.Danger
-					} else if state.respStatus >= 300 {
-						statusBg = tk.Info.Alpha(0.15)
-						statusColor = tk.Info
-					}
-					statusLabel := fmt.Sprintf("%d OK", state.respStatus)
-					if state.respStatus == 0 {
-						statusLabel = "ERROR"
-					} else if state.respStatus != 200 {
-						statusLabel = fmt.Sprintf("%d", state.respStatus)
-					}
-
-					ui.Box(c).Padding(2, 8).Radius(m.RadiusSM).
-						Background(statusBg).Children(func() {
-						ui.Text(c, statusLabel).FontSize(m.FontXS).Bold().TextColor(statusColor)
-					})
-
-					// 耗时与响应大小
-					ui.Text(c, state.respDuration).FontSize(m.FontXS).TextColor(tk.TextMuted)
-					ui.Box(c).Size(3, 3).Radius(m.RadiusFull).Background(tk.TextMuted)
-					ui.Text(c, state.respSize).FontSize(m.FontXS).TextColor(tk.TextMuted)
-				} else {
-					ui.Text(c, "尚未发送请求").FontSize(m.FontXS).TextColor(tk.TextMuted)
-				}
-
-				ui.Spacer(c)
-
-				// 复制响应内容
-				if state.hasResponse && len(state.respBody) > 0 {
-					copyBtn := ui.ButtonBase(c.Key("resp-copy-btn")).Height(24).PaddingX(8).
-						Radius(m.RadiusSM).AlignItems(ui.Center).Gap(4)
-					if copyBtn.Hovered() {
-						copyBtn.Background(tk.HoverSurface)
-					}
-					if copyBtn.Clicked() {
-						c.Services().WriteClipboard(state.respBody)
-					}
-					copyBtn.Children(func() {
-						ui.Icon(c, icons.Get("copy")).Size(11, 11).TextColor(tk.TextMuted)
-						ui.Text(c, "复制").FontSize(m.FontXS).TextColor(tk.TextMuted)
-					})
-				}
-			})
-
+	tk2 := thV2.Of(c)
+	ui.Column(c).Fill().Background(tk2.BgBase).
+		BorderWidth(1, 0, 0, 0).BorderColor(tk2.Border).Children(func() {
 		headerCount := len(state.respHeaders)
 		cookieCount := len(state.respCookies)
 		totalTests := len(state.respTestResults)
@@ -1334,41 +1806,84 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 				passedTests++
 			}
 		}
+
+		headersTabLabel := "Headers"
+		if headerCount > 0 {
+			headersTabLabel = fmt.Sprintf("Headers %d", headerCount)
+		}
+		cookiesTabLabel := "Cookies"
+		if cookieCount > 0 {
+			cookiesTabLabel = fmt.Sprintf("Cookies %d", cookieCount)
+		}
 		testTabLabel := "Test Results"
 		if totalTests > 0 {
 			testTabLabel = fmt.Sprintf("Test Results (%d/%d)", passedTests, totalTests)
 		}
 
-		// 响应 Tab 栏（Body, Headers, Cookies, Test Results）
-		ui.Row(c).PaddingX(m.Space4).Children(func() {
+		// 响应头行：左侧胶囊 Tab + 右侧状态码 / 耗时 / 体积 / 复制（对齐 Pixso row / response header）
+		ui.Row(c).FillWidth().Padding(8, 12, 6, 12).AlignItems(ui.Center).Children(func() {
 			respTabs := []string{
 				"Body",
-				fmt.Sprintf("Headers (%d)", headerCount),
-				fmt.Sprintf("Cookies (%d)", cookieCount),
+				headersTabLabel,
+				cookiesTabLabel,
 				testTabLabel,
 			}
 			tabsRowWithAction(c, respTabs, state.respTab, func(idx int) {
 				state.respTab = idx
-			}, nil)
+			}, func() {
+				ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
+					if state.sending {
+						ui.Text(c, "Sending...").FontSize(11).FontWeight(600).TextColor(tk2.Warning)
+					} else if state.hasResponse {
+						statusColor := tk2.Success
+						if state.respStatus >= 400 || state.respStatus == 0 {
+							statusColor = tk2.Danger
+						} else if state.respStatus >= 300 {
+							statusColor = tk2.Info
+						}
+						statusLabel := fmt.Sprintf("%d OK", state.respStatus)
+						if state.respStatus == 0 {
+							statusLabel = "ERROR"
+						} else if state.respStatus != 200 {
+							statusLabel = fmt.Sprintf("%d", state.respStatus)
+						}
+						ui.Text(c, statusLabel).FontSize(11).FontWeight(600).TextColor(statusColor).SingleLine()
+						ui.Text(c, state.respDuration).FontSize(11).TextColor(tk2.TextMuted).SingleLine()
+						ui.Text(c, state.respSize).FontSize(11).TextColor(tk2.TextMuted).SingleLine()
+
+						if len(state.respBody) > 0 {
+							copyBtn := ui.ButtonBase(c.Key("resp-copy-btn")).Height(22).PaddingX(6).
+								Radius(4).AlignItems(ui.Center).Gap(4).Cursor(ui.CursorPointer)
+							if copyBtn.Hovered() {
+								copyBtn.Background(tk2.BgHover)
+							}
+							if copyBtn.Clicked() {
+								c.Services().WriteClipboard(state.respBody)
+							}
+							copyBtn.Children(func() {
+								ui.Icon(c, icons.Copy).Size(11, 11).TextColor(tk2.TextSecondary)
+								ui.Text(c, "Copy").FontSize(11).TextColor(tk2.TextSecondary)
+							})
+						}
+					}
+				})
+			})
 		})
 
-		ui.Divider(c).BorderColor(tk.Border)
-
 		// 响应面板内容
-		ui.Column(c).Grow(1).Padding(m.Space2, m.Space4).Children(func() {
+		ui.Column(c).Grow(1).Padding(4, 12, 8, 12).Children(func() {
 			if state.sending {
-				ui.Row(c).Height(80).AlignItems(ui.Center).Justify(ui.Center).Gap(8).Children(func() {
-					ui.Icon(c, icons.Get("clock")).Size(16, 16).TextColor(tk.FocusRing)
-					ui.Text(c, "正在向服务器发送请求，请稍候...").FontSize(m.FontSM).
-						TextColor(tk.TextSecondary)
+				ui.Row(c).Grow(1).AlignItems(ui.Center).Justify(ui.Center).Gap(8).Children(func() {
+					ui.Icon(c, icons.Clock).Size(15, 15).TextColor(tk2.Accent)
+					ui.Text(c, "Sending request...").FontSize(12).TextColor(tk2.TextSecondary)
 				})
 				return
 			}
 
 			if !state.hasResponse {
-				ui.Row(c).Height(80).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-					ui.Text(c, "点击上方「发送」按钮发起网络请求，在此查看真实响应。").
-						FontSize(m.FontSM).TextColor(tk.TextMuted)
+				ui.Row(c).Grow(1).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+					ui.Text(c, "Click Send to get a response").
+						FontSize(12).TextColor(tk2.TextMuted)
 				})
 				return
 			}
@@ -1533,37 +2048,46 @@ func renderResponseCookies(c *ui.Context, cookies []transport.ResponseCookie, tk
 	})
 }
 
-// tabsRowWithAction 是支持点击切换的下划线 Tab 行
+// tabsRowWithAction 是对齐 Pixso 的胶囊分段式 Tab 行（灰底轨道 + 选中白底卡片 + 右侧可选动作）
 func tabsRowWithAction(c *ui.Context, labels []string, active int,
 	onSelect func(int), trailing func(),
 ) {
-	m := theme.Metrics
-	tk := theme.Of(c)
-	ui.Row(c).Height(32).Gap(m.Space5).
-		AlignItems(ui.Center).BorderWidth(0, 0, m.Border, 0).
-		BorderColor(tk.Border).Children(func() {
-		for i, label := range labels {
-			i := i
-			isActive := i == active
-			tab := ui.ButtonBase(c.Key(fmt.Sprintf("tab-btn-%s-%d", label, i))).
-				Height(32).PaddingX(m.Space1).Justify(ui.Center).AlignItems(ui.Center)
-			if isActive {
-				tab.BorderWidth(0, 0, 2, 0).BorderColor(tk.FocusRing)
-			}
-			if tab.Clicked() && onSelect != nil {
-				onSelect(i)
-			}
-			tab.Children(func() {
-				color := tk.TextSecondary
-				if isActive {
-					color = tk.TextPrimary
+	tk2 := thV2.Of(c)
+	ui.Row(c).FillWidth().Height(28).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Height(28).Padding(2).Gap(2).Radius(6).
+			Background(tk2.BgSubtle).AlignItems(ui.Center).Children(func() {
+			for i, label := range labels {
+				i := i
+				isActive := i == active
+				tab := ui.ButtonBase(c.Key(fmt.Sprintf("tab-btn-%s-%d", label, i))).
+					Height(24).MinWidth(50).PaddingX(10).Radius(4).
+					Justify(ui.Center).AlignItems(ui.Center).
+					Cursor(ui.CursorPointer).Role(ui.RoleTab).Label(label).
+					Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+				switch {
+				case isActive:
+					tab.Background(tk2.BgSurface).
+						Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.08))
+				case tab.Pressed():
+					tab.Background(tk2.BgSelected)
+				case tab.Hovered():
+					tab.Background(tk2.BgHover)
+				default:
+					tab.Background(ui.Transparent)
 				}
-				text := ui.Text(c, label).FontSize(m.FontSM).TextColor(color)
-				if isActive {
-					text.FontWeight(600)
+				if tab.Clicked() && onSelect != nil {
+					onSelect(i)
 				}
-			})
-		}
+				tab.Children(func() {
+					color := tk2.TextSecondary
+					if isActive {
+						color = tk2.TextPrimary
+					}
+					// 统一使用 Medium (500) 字重，避免在选中与未选切换时因字形加粗导致文字宽度变化引起排版跳动（Layout Shift）
+					ui.Text(c, label).FontSize(12).FontWeight(500).TextColor(color).SingleLine()
+				})
+			}
+		})
 		if trailing != nil {
 			ui.Spacer(c)
 			trailing()

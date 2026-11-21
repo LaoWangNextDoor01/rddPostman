@@ -3,6 +3,8 @@ package collection
 import (
 	"strings"
 
+	thV2 "rddpostman/components/theme/v2"
+
 	"rddpostman/components/theme"
 	"rddpostman/components/v1/icons"
 	"rddpostman/internal/domain"
@@ -167,8 +169,12 @@ func collectionTree(c *ui.Context, state *workspace, rows []*treeNode, actions t
 			})
 			if expandable {
 				item.Group(func() {
-					for _, ch := range n.children {
-						add(ch, depth+1)
+					if len(n.children) == 0 {
+						renderTreeEmptyNode(c, n, depth+1, actions)
+					} else {
+						for _, ch := range n.children {
+							add(ch, depth+1)
+						}
 					}
 				})
 			}
@@ -277,4 +283,56 @@ func filterTree(nodes []*treeNode, keyword string, state *workspace) []*treeNode
 		}
 	}
 	return out
+}
+
+// renderTreeEmptyNode 严格对齐 Pixso 画板 1-侧栏-集合无请求（32:73920）与 3-侧栏-目录无请求（32:75050）：
+// 当集合或目录展开且无子项时，在缩进位置呈现空态引导与快速添加按钮。
+func renderTreeEmptyNode(c *ui.Context, n *treeNode, depth int, actions treeActions) {
+	tk := thV2.Of(c)
+	title := "Collection is empty"
+	desc := "Add a request or folder to structure your API workflow."
+	if n.kind == treeFolder {
+		title = "Folder is empty"
+		desc = "Add a request, a folder, or drag items here to group them together."
+	}
+	ui.Column(c.Key("tree-empty-" + n.id)).FillWidth().
+		Padding(8, 8, 12, 8+14*float32(depth)).Gap(6).Children(func() {
+		ui.Text(c, title).FontSize(13).FontWeight(600).TextColor(tk.TextPrimary)
+		ui.Text(c, desc).FontSize(11).TextColor(tk.TextMuted)
+		ui.Row(c).Gap(6).Children(func() {
+			reqBtn := ui.ButtonBase(c.Key("tree-empty-add-req-" + n.id)).
+				Height(24).PaddingX(8).Radius(4).Border(1, tk.Border).
+				Background(tk.BgSurface).Center().Cursor(ui.CursorPointer).
+				Role(ui.RoleButton).Label("Add request")
+			switch {
+			case reqBtn.Pressed():
+				reqBtn.Background(tk.BgSelected)
+			case reqBtn.Hovered():
+				reqBtn.Background(tk.BgHover)
+			}
+			if reqBtn.Clicked() && actions.create != nil {
+				actions.create(n, treeRequest)
+			}
+			reqBtn.Children(func() {
+				ui.Text(c, "Add request").FontSize(11).FontWeight(500).TextColor(tk.TextPrimary)
+			})
+
+			fldBtn := ui.ButtonBase(c.Key("tree-empty-add-folder-" + n.id)).
+				Height(24).PaddingX(8).Radius(4).Border(1, tk.Border).
+				Background(tk.BgSurface).Center().Cursor(ui.CursorPointer).
+				Role(ui.RoleButton).Label("Add folder")
+			switch {
+			case fldBtn.Pressed():
+				fldBtn.Background(tk.BgSelected)
+			case fldBtn.Hovered():
+				fldBtn.Background(tk.BgHover)
+			}
+			if fldBtn.Clicked() && actions.create != nil {
+				actions.create(n, treeFolder)
+			}
+			fldBtn.Children(func() {
+				ui.Text(c, "Add folder").FontSize(11).FontWeight(500).TextColor(tk.TextPrimary)
+			})
+		})
+	})
 }

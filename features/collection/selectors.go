@@ -47,6 +47,27 @@ func findNode(collections []*domain.Collection, id string) (*domain.Collection, 
 	return nil, nil
 }
 
+// findNodeInWorkspace 优先从已持久化的集合树中查找，未找到时查找未保存的会话草稿节点。
+func findNodeInWorkspace(collections []*domain.Collection, state *workspace, id string) (*domain.Collection, *domain.Node) {
+	if coll, node := findNode(collections, id); coll != nil {
+		return coll, node
+	}
+	if state != nil && state.drafts != nil {
+		if draft, ok := state.drafts[id]; ok {
+			for _, c := range collections {
+				if c.ID == draft.collID {
+					return c, draft.node
+				}
+			}
+			if len(collections) > 0 {
+				return collections[0], draft.node
+			}
+			return &domain.Collection{ID: draft.collID, Name: "Default Collection"}, draft.node
+		}
+	}
+	return nil, nil
+}
+
 // CrumbItem 表示面包屑中的一级。
 type CrumbItem struct {
 	ID   string
@@ -56,7 +77,12 @@ type CrumbItem struct {
 
 // nodeTrail 返回从集合根到指定节点的所有层级项（包含集合自身和当前节点）。
 func nodeTrail(collections []*domain.Collection, id string) []CrumbItem {
-	coll, node := findNode(collections, id)
+	return nodeTrailInWorkspace(collections, nil, id)
+}
+
+// nodeTrailInWorkspace 支持对未持久化草稿请求的面包屑解析。
+func nodeTrailInWorkspace(collections []*domain.Collection, state *workspace, id string) []CrumbItem {
+	coll, node := findNodeInWorkspace(collections, state, id)
 	if coll == nil {
 		return nil
 	}
@@ -67,7 +93,14 @@ func nodeTrail(collections []*domain.Collection, id string) []CrumbItem {
 		return crumbs
 	}
 	trail := findNodeTrail(coll.Items, node.ID, nil)
-	return append(crumbs, trail...)
+	if len(trail) > 0 {
+		return append(crumbs, trail...)
+	}
+	return append(crumbs, CrumbItem{
+		ID:   string(node.ID),
+		Name: node.Name,
+		Kind: node.Kind,
+	})
 }
 
 func findNodeTrail(items []*domain.Node, id domain.ID, acc []CrumbItem) []CrumbItem {

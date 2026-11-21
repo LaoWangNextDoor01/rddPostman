@@ -53,6 +53,40 @@ func (s *Store) RenameWorkspace(id domain.ID, name string) error {
 	})
 }
 
+// SetWorkspaceStarred 设置工作区收藏状态。
+func (s *Store) SetWorkspaceStarred(id domain.ID, starred bool) error {
+	return s.UpdateWorkspace(id, func(ws *domain.Workspace) {
+		ws.Starred = starred
+	})
+}
+
+// SetWorkspaceIcon 将 srcPath 指向的本地图片复制到工作区目录（.rddpostman.icon.<ext>），
+// 并在 workspace.json 中保存相对文件名；srcPath 为空时清除已有图标。
+func (s *Store) SetWorkspaceIcon(id domain.ID, srcPath string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.states[id]
+	if st == nil {
+		return ErrNotFound
+	}
+	if st.readOnly {
+		return ErrReadOnly
+	}
+	relPath, err := s.backend.SaveWorkspaceIcon(context.Background(), st.ref, srcPath)
+	if err != nil {
+		return err
+	}
+	next := st.ws.Clone()
+	next.Icon = relPath
+	next.UpdatedAt = time.Now()
+	if err := s.backend.UpdateWorkspace(context.Background(), st.ref, next); err != nil {
+		return err
+	}
+	st.ws = next
+	s.publishLocked()
+	return nil
+}
+
 // UpdateWorkspace 修改工作区元数据（名称、描述、工作区级变量等）。
 func (s *Store) UpdateWorkspace(id domain.ID, fn func(*domain.Workspace)) error {
 	s.mu.Lock()

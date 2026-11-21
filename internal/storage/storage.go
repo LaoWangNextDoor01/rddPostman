@@ -72,6 +72,11 @@ type Backend interface {
 	// CreateWorkspace 新建工作区；dir 为空时由后端在数据根目录下分配。
 	CreateWorkspace(ctx context.Context, name, dir string) (*Bundle, error)
 	UpdateWorkspace(ctx context.Context, ref Ref, ws *domain.Workspace) error
+	// SaveWorkspaceIcon 将源图片复制到工作区目录（使用专属前缀避免与业务/项目文件冲突），
+	// 返回存进 workspace.json 的相对文件名；srcPath 为空时清理工作区已有图标。
+	SaveWorkspaceIcon(ctx context.Context, ref Ref, srcPath string) (string, error)
+	// WorkspaceDir 返回工作区目录在磁盘上的绝对路径，用于解析工作区内相对资源路径。
+	WorkspaceDir(ref Ref) string
 	// RemoveWorkspace 只取消注册，磁盘上的目录保持原样，方便以后重新打开。
 	RemoveWorkspace(ctx context.Context, ref Ref) error
 

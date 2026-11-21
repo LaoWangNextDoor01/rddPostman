@@ -1092,3 +1092,60 @@ func TestCollectionMarkdownDescriptionUpdateAndReload(t *testing.T) {
 		t.Fatalf("重新打开后 Folder.Description 不匹配: got %q, want %q", ws2.Collections[0].Items[0].Description, folder.Description)
 	}
 }
+
+func TestWorkspaceIconCopyAndReplace(t *testing.T) {
+	s, dir := newStoreAt(t)
+	ws := defaultWS(t, s)
+
+	// 准备外部源 PNG 与 SVG 文件
+	srcDir := t.TempDir()
+	pngSrc := filepath.Join(srcDir, "logo.png")
+	svgSrc := filepath.Join(srcDir, "logo.svg")
+	if err := os.WriteFile(pngSrc, []byte("fake-png-bytes"), 0o644); err != nil {
+		t.Fatalf("write pngSrc: %v", err)
+	}
+	if err := os.WriteFile(svgSrc, []byte("<svg/>"), 0o644); err != nil {
+		t.Fatalf("write svgSrc: %v", err)
+	}
+
+	// 1. 设置 PNG 图标：应复制到工作区目录 .rddpostman.icon.png，workspace.json 只存相对文件名
+	if err := s.SetWorkspaceIcon(ws.ID, pngSrc); err != nil {
+		t.Fatalf("SetWorkspaceIcon png: %v", err)
+	}
+	_ = os.Remove(pngSrc) // 模拟源文件被用户删除
+
+	wsDir := filepath.Join(dir, "workspaces", "default")
+	copiedPNG := filepath.Join(wsDir, ".rddpostman.icon.png")
+	gotBytes, err := os.ReadFile(copiedPNG)
+	if err != nil || string(gotBytes) != "fake-png-bytes" {
+		t.Fatalf("copied png mismatch: err=%v, data=%q", err, string(gotBytes))
+	}
+
+	raw, err := os.ReadFile(workspaceFile(dir))
+	if err != nil {
+		t.Fatalf("read workspace.json: %v", err)
+	}
+	var doc domain.Workspace
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("unmarshal workspace.json: %v", err)
+	}
+	if doc.Icon != ".rddpostman.icon.png" {
+		t.Fatalf("workspace.json icon = %q, want .rddpostman.icon.png", doc.Icon)
+	}
+	if snapWS := s.Snapshot().Workspace(ws.ID); snapWS == nil || snapWS.Icon != copiedPNG {
+		t.Fatalf("snapshot icon = %q, want %q", snapWS.Icon, copiedPNG)
+	}
+
+	// 2. 替换为 SVG 图标：旧的 .rddpostman.icon.png 应被清理，且重开 Store 后仍正确解析
+	if err := s.SetWorkspaceIcon(ws.ID, svgSrc); err != nil {
+		t.Fatalf("SetWorkspaceIcon svg: %v", err)
+	}
+	if _, err := os.Stat(copiedPNG); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("stale png icon should be removed, stat err=%v", err)
+	}
+	copiedSVG := filepath.Join(wsDir, ".rddpostman.icon.svg")
+	s2 := reopen(t, dir)
+	if got := s2.Snapshot().Workspace(ws.ID); got == nil || got.Icon != copiedSVG {
+		t.Fatalf("reopened icon = %v, want %q", got, copiedSVG)
+	}
+}

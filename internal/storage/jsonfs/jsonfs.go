@@ -32,9 +32,10 @@ import (
 )
 
 const (
-	globalsFile       = "globals.json"
-	workspaceFile     = "workspace.json"
-	localFile         = "local.json"
+	globalsFile         = "globals.json"
+	workspaceFile       = "workspace.json"
+	workspaceIconPrefix = ".rddpostman.icon"
+	localFile           = "local.json"
 	secretsFile       = "secrets.json"
 	collectionsDir    = "collections"
 	environmentsDir   = "environments"

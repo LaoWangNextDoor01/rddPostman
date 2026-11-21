@@ -29,15 +29,23 @@ func createNodeIn(db *store.Store, state *workspace, collections []*domain.Colle
 	n := &domain.Node{ID: store.NewID(), Kind: kind}
 	if kind == domain.KindFolder {
 		n.Name = locales.NewFolder()
-	} else {
-		n.Name = locales.NewRequest()
-		n.Request = &domain.Request{Method: "GET", URL: "https://api.example.com"}
-	}
-	if err := db.AddNode(coll.ID, parent, n); err != nil {
+		if err := db.AddNode(coll.ID, parent, n); err != nil {
+			return
+		}
+		state.selected = string(n.ID)
+		state.openTab(string(n.ID))
 		return
 	}
-	state.selected = string(n.ID)
-	state.openTab(string(n.ID))
+
+	// 新建请求：默认不要保存，以未保存草稿状态打开 Tab，Tab 显示未保存小圆点
+	// 默认设置 Postman 规范的标准默认请求头（用户可自由修改、禁用、删除或追加）
+	n.Name = locales.NewRequest()
+	n.Request = &domain.Request{
+		Method:  "GET",
+		URL:     "",
+		Headers: domain.DefaultRequestHeaders(),
+	}
+	state.addDraft(coll.ID, parent, n)
 }
 
 // removeTreeRow 删除树行：集合删整个集合，目录/请求删对应节点，

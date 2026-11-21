@@ -4,8 +4,9 @@ import (
 	"strings"
 
 	"rddpostman/components/theme"
-	v1 "rddpostman/components/v1"
+	thV2 "rddpostman/components/theme/v2"
 	"rddpostman/components/v1/icons"
+	v2 "rddpostman/components/v2"
 	"rddpostman/internal/domain"
 	"rddpostman/locales"
 
@@ -13,48 +14,116 @@ import (
 )
 
 func sidebar(c *ui.Context, props pageProps) {
-	m := theme.Metrics
-	tk := theme.Of(c)
-	col := ui.Column(c).Grow(1).Background(tk.BgSurface)
+	m, tk := thV2.Metrics, thV2.Of(c)
+	col := ui.Column(c).Fill().Background(tk.BgApp)
 	search := ui.Local(col, "search", func() string { return "" })
+	filterOpen := ui.Local(col, "sb-filter-open", func() bool { return false })
+	moreOpen := ui.Local(col, "sb-more-open", func() bool { return false })
+
 	col.Children(func() {
-		// 顶部工具行：搜索、新建、环境、更多。
-		ui.Row(c).Padding(m.Space1, m.Space2).Gap(6).
+		// 1. 搜索（内嵌左侧筛选按钮下拉，对齐 Pixso 22-侧栏-搜索筛选）+ 新建「+」+ 更多「...」
+		ui.Row(c).FillWidth().Height(34).Padding(0, m.Space3).Gap(6).
 			AlignItems(ui.Center).Children(func() {
-			ui.Row(c).Fill().Height(28).PaddingX(m.Space2).Gap(m.Space1).
-				AlignItems(ui.Center).Radius(m.RadiusMD).
-				Background(tk.BgElevated).Children(func() {
-				ui.Icon(c, icons.Get("search")).FontSize(m.IconXS).
-					TextColor(tk.TextMuted)
-				ui.TextInputBase(c, search).Grow(1).FontSize(m.FontXS).
-					Placeholder(locales.SearchRequests()).OnChange(func() {
-					// TODO: 搜索当前workspace中的结合、文件夹、请求等
+			searchBox := ui.Row(c.Key("sb-search-box")).Grow(1).Height(26).Padding(0, 10, 0, 6).Gap(6).
+				AlignItems(ui.Center).Radius(6).Background(tk.BgSubtle)
+			searchBox.Children(func() {
+				// 左侧筛选图标按钮（对齐 Pixso 22-侧栏-搜索筛选：89:9987 / 89:9988，三层阶梯漏斗 ListFilter）
+				filterActive := *filterOpen || !props.state.allFiltersEnabled()
+				filterBtn := v2.IconButton(c, v2.IconButtonOpts{
+					Key:          "sb-filter-btn",
+					Label:        "Filter sidebar",
+					Tooltip:      "Filter",
+					Icon:         icons.ListFilter,
+					Size:         18,
+					IconSize:     14,
+					Radius:       4,
+					Color:        tk.TextMuted,
+					ActiveAccent: filterActive,
 				})
+				if filterBtn.Clicked() {
+					*filterOpen = !*filterOpen
+				}
+
+				v2.Popover(c, filterBtn, filterOpen, v2.PopoverOpts{Width: 156}, func(panel ui.Element) {
+					ui.Column(c).Padding(4, 0).Gap(0).Children(func() {
+						allOn := props.state.allFiltersEnabled()
+						sidebarFilterCheckboxRow(c, "sb-flt-all", "Select all", allOn, true, func() {
+							props.state.setAllFilters(!allOn)
+						})
+						for _, cat := range sidebarFilterCategories {
+							catName := cat
+							checked := props.state.filterEnabled(catName)
+							sidebarFilterCheckboxRow(c, "sb-flt-"+catName, catName, checked, false, func() {
+								if props.state.sidebarFilter == nil {
+									props.state.setAllFilters(true)
+								}
+								props.state.sidebarFilter[catName] = !checked
+							})
+						}
+					})
+				})
+
+				ui.TextInputBase(c.Key("sb-search-input"), search).Grow(1).
+					FontSize(12).TextColor(tk.TextPrimary).
+					Placeholder("Search").PlaceholderColor(tk.TextMuted)
 			})
 
 			addMenuButton(c, props)
-			environmentMenuButton(c, props)
 
-			// TODO：待添加其他功能
-			v1.MiniButton(c, v1.RdButtonOptions{
-				Key:      "more",
+			moreBtn := v2.IconButton(c, v2.IconButtonOpts{
+				Key:      "sb-more",
 				Label:    "more",
-				Icon:     icons.Get("ellipsis"),
-				Size:     m.SizeLG,
-				IconSize: m.IconMD,
-				Radius:   m.RadiusMD,
+				Tooltip:  "More actions",
+				Icon:     icons.Ellipsis,
+				Size:     26,
+				IconSize: 14,
+				Radius:   4,
+			})
+			if moreBtn.Clicked() {
+				*moreOpen = !*moreOpen
+			}
+			v2.Popover(c, moreBtn, moreOpen, v2.PopoverOpts{Width: 184}, func(panel ui.Element) {
+				ui.Column(c).Padding(4).Gap(2).Children(func() {
+					if v2.MenuButton(c, v2.MenuButtonProps{
+						Icon: icons.Layers, Key: "sb-more-expand", Label: "Expand all",
+					}).Clicked() {
+						for _, coll := range props.collections {
+							*props.state.openFlag(string(coll.ID)) = true
+						}
+						*moreOpen = false
+					}
+					if v2.MenuButton(c, v2.MenuButtonProps{
+						Icon: icons.Folder, Key: "sb-more-collapse", Label: "Collapse all",
+					}).Clicked() {
+						for _, coll := range props.collections {
+							*props.state.openFlag(string(coll.ID)) = false
+						}
+						*moreOpen = false
+					}
+					v2.PopoverDivider(c)
+					if v2.MenuButton(c, v2.MenuButtonProps{
+						Icon: icons.Code, Key: "sb-more-curl", Label: "Import cURL",
+					}).Clicked() {
+						props.state.importCurlOpen = true
+						props.state.importCurlText = ""
+						props.state.importCurlErr = ""
+						*moreOpen = false
+					}
+					if v2.MenuButton(c, v2.MenuButtonProps{
+						Icon: icons.Upload, Key: "sb-more-postman", Label: "Import Postman JSON",
+					}).Clicked() {
+						props.state.importPostmanOpen = true
+						props.state.importPostmanText = ""
+						props.state.importPostmanErr = ""
+						*moreOpen = false
+					}
+				})
 			})
 		})
 
-		ui.Divider(c)
+		ui.Box(c).Height(8)
 
-		// 空提示
-		if len(props.collections) == 0 {
-			emptySidebar(c, props)
-			return
-		}
-
-		// 请求树形结构
+		// 2. 可滚动分区：按筛选开关动态显示 COLLECTIONS → ENVIRONMENTS → 工具区
 		actions := treeActions{
 			create: func(row *treeNode, kind treeKind) {
 				domainKind := domain.KindFolder
@@ -78,87 +147,97 @@ func sidebar(c *ui.Context, props pageProps) {
 				}
 			},
 		}
-		ui.Scroll(c).Grow(1).Padding(m.Space1).Children(func() {
-			nodes := filterTree(buildTree(props.collections), *search, props.state)
-			if len(nodes) == 0 && *search != "" {
-				ui.Box(c).Padding(m.Space3).Center().Children(func() {
-					ui.Text(c, "未搜索到匹配请求").FontSize(m.FontXS).TextColor(tk.TextMuted)
-				})
-			} else {
-				collectionTree(c, props.state, nodes, actions)
-			}
+
+		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
+			ui.Column(c).FillWidth().Padding(0, 8, 16, 8).Children(func() {
+				// 树形结构最顶层直接就是 Collection 级别
+				if len(props.collections) == 0 {
+					emptySidebar(c, props)
+				} else {
+					nodes := filterTree(buildTree(props.collections), *search, props.state)
+					if len(nodes) == 0 && *search != "" {
+						ui.Box(c).Padding(m.Space3).Center().Children(func() {
+							ui.Text(c, "No matching requests").FontSize(m.FontXS).TextColor(tk.TextMuted)
+						})
+					} else {
+						collectionTree(c, props.state, nodes, actions)
+					}
+
+					// 底部行内 + New Collection：直接新建集合并以 Tab 打开编辑（不弹框）
+					newCollRow := ui.ButtonBase(c.Key("sb-inline-new-coll")).
+						FillWidth().Height(26).Padding(0, 12, 0, 24).Gap(6).
+						Radius(m.RadiusSM).AlignItems(ui.Center).Justify(ui.Start).
+						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("New Collection")
+					switch {
+					case newCollRow.Pressed():
+						newCollRow.Background(tk.BgSelected)
+					case newCollRow.Hovered():
+						newCollRow.Background(tk.BgHover)
+					}
+					if newCollRow.Clicked() && props.actions.createCollectionTab != nil {
+						props.actions.createCollectionTab()
+					}
+					newCollRow.Children(func() {
+						ui.Icon(c, icons.Plus).FontSize(11).TextColor(tk.TextMuted)
+						ui.Text(c, "New Collection").FontSize(m.FontXS).TextColor(tk.TextSecondary).SingleLine()
+					})
+				}
+			})
 		})
 	})
-
-	newCollectionDialog(c, props)
-	importCurlDialog(c, props)
-	importPostmanDialog(c, props)
 }
 
-// newCollectionDialog 弹出新建集合对话框。
-func newCollectionDialog(c *ui.Context, props pageProps) {
-	m := theme.Metrics
-	tk := theme.Of(c)
-	state := props.state
-
-	ui.DialogBase(c, &state.newCollOpen, func(backdrop, panel ui.Element) {
-		backdrop.Background(tk.Overlay)
-		panel.Width(420).Padding(m.Space4).Gap(m.Space3)
-		theme.DialogPanel(c, panel)
-		panel.Children(func() {
-			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-				ui.Icon(c, icons.Get("library")).FontSize(m.IconMD).TextColor(tk.Accent)
-				ui.Text(c, locales.NewCollection()).FontSize(m.FontMD).Bold().
-					TextColor(tk.TextPrimary)
+func sidebarFilterCheckboxRow(c *ui.Context, key, label string, checked, isTitle bool, onToggle func()) {
+	tk := thV2.Of(c)
+	row := ui.ButtonBase(c.Key(key)).
+		FillWidth().Height(28).Padding(0, 10).Gap(6).
+		Radius(4).AlignItems(ui.Center).Justify(ui.Start).
+		Cursor(ui.CursorPointer).Role(ui.RoleCheckBox).Label(label)
+	switch {
+	case row.Pressed():
+		row.Background(tk.BgSelected)
+	case row.Hovered():
+		row.Background(tk.BgHover)
+	}
+	if row.Clicked() && onToggle != nil {
+		onToggle()
+	}
+	row.Children(func() {
+		box := ui.Box(c).Size(14, 14).Radius(3).Center()
+		if checked {
+			box.Background(tk.Accent).Children(func() {
+				ui.Icon(c, icons.Check).FontSize(11).TextColor(tk.OnAccent)
 			})
-			ui.Text(c, locales.NewCollectionDesc(props.workspaceName)).
-				FontSize(m.FontXS).TextColor(tk.TextMuted)
+		} else {
+			box.Background(tk.BgBase).Border(1, tk.BorderStrong)
+		}
+		weight := 400
+		if isTitle {
+			weight = 500
+		}
+		ui.Text(c, label).FontSize(12).FontWeight(weight).TextColor(tk.TextPrimary).SingleLine()
+	})
+}
 
-			ui.Text(c, locales.CollectionNameLabel()).FontSize(m.FontSM).
-				FontWeight(500).TextColor(tk.TextSecondary)
-			in := ui.TextInput(c, &state.newCollName).Height(m.SizeXL).
-				FillWidth().Padding(0, m.Space2).Radius(m.RadiusSM).
-				Placeholder(locales.CollectionNamePlaceholder())
-			if state.newCollErr != "" {
-				ui.Text(c, state.newCollErr).FontSize(m.FontXS).TextColor(tk.Danger)
-			}
-
-			ui.Text(c, locales.CollectionDescriptionLabel()).FontSize(m.FontSM).
-				FontWeight(500).TextColor(tk.TextSecondary)
-			ui.TextArea(c, &state.newCollDesc).FillWidth().MinHeight(80).
-				MaxHeight(180).Padding(m.Space2, m.Space2).Radius(m.RadiusSM).
-				FontSize(m.FontSM).FixedLineHeight(20).
-				Placeholder(locales.CollectionDescriptionPlaceholder())
-
-			submit := func() {
-				name := strings.TrimSpace(state.newCollName)
-				if name == "" {
-					state.newCollErr = locales.CollectionNameRequired()
-					return
-				}
-				coll, err := props.actions.createCollection(name, state.newCollDesc)
-				if err != nil {
-					state.newCollErr = err.Error()
-					return
-				}
-				state.newCollOpen = false
-				state.newCollErr = ""
-				state.openTab(string(coll.ID))
-			}
-
-			if in.Submitted() {
-				submit()
-			}
-
-			ui.Row(c).Gap(m.Space2).Justify(ui.End).Children(func() {
-				if ui.Button(c, locales.Cancel()).Clicked() {
-					state.newCollOpen = false
-				}
-				if ui.PrimaryButton(c, locales.CreateCollection()).Clicked() {
-					submit()
-				}
-			})
-		})
+func sidebarSectionHeader(c *ui.Context, key, title string, open bool, onClick func()) {
+	tk := thV2.Of(c)
+	btn := ui.ButtonBase(c.Key(key)).
+		FillWidth().Height(20).Padding(0, 4).Gap(4).
+		Radius(4).AlignItems(ui.Center).Justify(ui.Start).
+		Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(title)
+	if btn.Hovered() {
+		btn.Background(tk.BgHover)
+	}
+	if btn.Clicked() && onClick != nil {
+		onClick()
+	}
+	btn.Children(func() {
+		arrow := ui.Icon(c, icons.ChevronDown).Size(10, 10).TextColor(tk.TextMuted)
+		if !open {
+			arrow.Rotate(-90)
+		}
+		ui.Text(c, title).FontSize(10).FontWeight(600).LetterSpacing(0.4).
+			TextColor(tk.TextMuted).SingleLine()
 	})
 }
 
@@ -271,45 +350,35 @@ func importPostmanDialog(c *ui.Context, props pageProps) {
 	})
 }
 
-// emptySidebar 是设计稿里的空侧栏：图标、标题、说明与新建按钮，垂直居中。
+// emptySidebar 对齐 Pixso 2-侧栏-集合为空：圆形弱底图标 + 标题说明 + 科技蓝主按钮。
 func emptySidebar(c *ui.Context, props pageProps) {
-	m := theme.Metrics
-	tk := theme.Of(c)
-	ui.Column(c).Grow(1).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
-		ui.Column(c).Width(174).AlignItems(ui.Center).Gap(10).Children(func() {
-			ui.Box(c).Size(56, 56).Radius(m.RadiusLG).
-				Background(tk.BgElevated).Children(func() {
-				ui.Box(c).Width(14).Height(5).Absolute().Left(21).Top(5).
-					Background(tk.TextMuted)
-				ui.Box(c).Width(28).Height(20).Absolute().Left(14).Top(10).
-					Background(tk.TextMuted)
-				ui.Box(c).Width(28).Height(15).Absolute().Left(14).Top(15).
-					Background(tk.TextSecondary)
-			})
-			ui.Text(c, locales.EmptyCollectionsTitle()).FontSize(m.FontMD).
-				Bold().TextColor(tk.TextPrimary)
-			ui.Text(c, locales.EmptyCollectionsDesc()).Width(174).FontSize(m.FontXS).
-				TextColor(tk.TextSecondary).TextAlign(ui.Center)
+	m, tk := thV2.Metrics, thV2.Of(c)
+	ui.Column(c).FillWidth().Padding(24, 12, 16, 12).AlignItems(ui.Center).Gap(10).Children(func() {
+		ui.Box(c).Size(44, 44).Radius(22).Background(tk.BgSubtle).Center().Children(func() {
+			ui.Icon(c, icons.Layers).FontSize(20).TextColor(tk.TextMuted)
+		})
+		ui.Text(c, "You don't have any collections").FontSize(m.FontSM).FontWeight(600).
+			TextColor(tk.TextPrimary).TextAlign(ui.Center)
+		ui.Text(c, "Collections let you group related requests, making them easier to access and run.").
+			FontSize(m.FontXS).TextColor(tk.TextMuted).TextAlign(ui.Center)
 
-			btn := ui.ButtonBase(c.Key("empty-new-collection")).Height(34).
-				PaddingX(m.Space3).Gap(m.Space1).AlignItems(ui.Center).
-				Radius(m.RadiusMD).Background(tk.Accent).TextColor(tk.OnAccent).
-				Label(locales.NewCollection())
-			if btn.Hovered() {
-				btn.Background(tk.Accent.Mix(tk.TextPrimary, 0.06))
-			}
-			if btn.Clicked() {
-				props.state.newCollOpen = true
-				props.state.newCollName = ""
-				props.state.newCollDesc = ""
-				props.state.newCollErr = ""
-			}
-			btn.Children(func() {
-				ui.Icon(c, icons.Get("plus")).FontSize(m.IconXS).
-					TextColor(tk.OnAccent)
-				ui.Text(c, locales.NewCollection()).FontSize(m.FontSM).
-					TextColor(tk.OnAccent)
-			})
+		btn := ui.ButtonBase(c.Key("empty-new-collection")).Height(28).
+			PaddingX(14).AlignItems(ui.Center).Justify(ui.Center).
+			Radius(m.RadiusSM).Background(tk.Accent).
+			Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Create a collection").
+			Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+		switch {
+		case btn.Pressed():
+			btn.Background(tk.AccentPressed)
+		case btn.Hovered():
+			btn.Background(tk.AccentHover)
+		}
+		if btn.Clicked() && props.actions.createCollectionTab != nil {
+			props.actions.createCollectionTab()
+		}
+		btn.Children(func() {
+			ui.Text(c, "Create a collection").FontSize(m.FontXS).FontWeight(500).
+				TextColor(tk.OnAccent).SingleLine()
 		})
 	})
 }

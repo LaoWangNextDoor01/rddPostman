@@ -35,19 +35,19 @@ func TestKeyValues(t *testing.T) {
 	}{
 		{"light BgBase", light.BgBase, ui.Hex("#FFFFFF")},
 		{"light BgApp", light.BgApp, ui.Hex("#F9F9F9")},
-		{"light Border", light.Border, ui.Hex("#E6E6E6")},
+		{"light Border", light.Border, ui.Hex("#EDEDED")},
 		{"light TextPrimary", light.TextPrimary, ui.Hex("#212121")},
-		{"light Accent", light.Accent, ui.Hex("#FF6C37")},
-		{"light AccentHover", light.AccentHover, ui.Hex("#ED5B2A")},
-		{"light Focus", light.Focus, ui.Hex("#097BED")},
-		{"light FocusRing", light.FocusRing, ui.Hex("#E7F0FF")},
+		{"light Accent", light.Accent, ui.Hex("#336FFF")},
+		{"light AccentHover", light.AccentHover, ui.Hex("#225BEB")},
+		{"light Focus", light.Focus, ui.Hex("#336FFF")},
+		{"light FocusRing", light.FocusRing, ui.Hex("#DCE7FF")},
 		{"light Danger", light.Danger, ui.Hex("#EB2013")},
 		{"dark BgBase", dark.BgBase, ui.Hex("#1E1E1E")},
 		{"dark BgApp", dark.BgApp, ui.Hex("#191919")},
 		{"dark BgTitleBar", dark.BgTitleBar, ui.Hex("#1E1E1E")},
 		{"dark Border", dark.Border, ui.Hex("#383838")},
 		{"dark TextPrimary", dark.TextPrimary, ui.Hex("#E4E4E4")},
-		{"dark Accent", dark.Accent, ui.Hex("#FF6C37")},
+		{"dark Accent", dark.Accent, ui.Hex("#336FFF")},
 	}
 	for _, c := range cases {
 		if c.got != c.want {

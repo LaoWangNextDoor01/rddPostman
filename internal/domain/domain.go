@@ -53,6 +53,9 @@ type Workspace struct {
 	ID                   ID        `json:"id"`
 	Name                 string    `json:"name"`
 	Description          string    `json:"description,omitempty"`
+	Type                 string    `json:"type,omitempty"` // Internal | Partner | Public，留空按 Internal 展示
+	Icon                 string    `json:"icon,omitempty"` // 本地自定义图标文件路径
+	Starred              bool      `json:"starred,omitempty"`
 	Variables            []KV      `json:"variables,omitempty"`
 	DefaultEnvironmentID ID        `json:"defaultEnvironmentID,omitempty"`
 	Default              bool      `json:"-"`
@@ -759,3 +762,14 @@ func ApplyPathVariables(rawURL string, pathVars []KV) string {
 
 	return rawURL
 }
+
+// DefaultRequestHeaders 返回模仿 Postman 默认配置的标准请求头列表（用户可自由启用/停用、修改、删除或新增）。
+func DefaultRequestHeaders() []KV {
+	return []KV{
+		{ID: NewID(), Key: "User-Agent", Value: "PostmanRuntime/7.39.0", Desc: "User-Agent", Enabled: true},
+		{ID: NewID(), Key: "Accept", Value: "*/*", Desc: "Accept", Enabled: true},
+		{ID: NewID(), Key: "Accept-Encoding", Value: "gzip, deflate, br", Desc: "Accept-Encoding", Enabled: true},
+		{ID: NewID(), Key: "Connection", Value: "keep-alive", Desc: "Connection", Enabled: true},
+	}
+}
+

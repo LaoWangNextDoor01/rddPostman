@@ -23,6 +23,18 @@ type IconButtonOpts struct {
 	Icon *ui.SVG
 	// Tooltip 留空则不显示；建议与 Label 一致或更详细。
 	Tooltip string
+	// Size 按钮边长；0 默认 Metrics.SizeMD (24)。支持 24 / 28 / 32（对齐组件库 · Icon Button）。
+	Size float32
+	// IconSize 图标尺寸；0 默认 Metrics.IconMD (14)。
+	IconSize float32
+	// Selected 选中态（常驻 BgHover + TextPrimary）。
+	Selected bool
+	// Solid 实心弱底变体（默认 BgSubtle，hover BgHover，pressed BgSelected）。
+	Solid bool
+	// ActiveAccent 高亮图标为主题色（如激活筛选态）。
+	ActiveAccent bool
+	// Color 默认态自定义颜色；未指定时默认 TextSecondary。
+	Color ui.Color
 	// Radius 默认 RadiusSM（方形图标钮）；圆形头像按钮传 RadiusFull。
 	Radius float32
 	// Cursor 指针悬停时的形状：零值默认 CursorPointer（手型）；
@@ -30,12 +42,8 @@ type IconButtonOpts struct {
 	Cursor ui.Cursor
 }
 
-// IconButton 画一个 24×24 的纯图标按钮（标题栏、工具条通用）：
-// 默认次要色，hover 浅底、按下再深一档；返回元素供调用方检查 Clicked：
-//
-//	if v2.IconButton(c, v2.IconButtonOpts{Label: "通知", Icon: icons.Bell}).Clicked() {
-//	    // 打开通知中心
-//	}
+// IconButton 画一个标准图标按钮（对齐 Pixso 组件库 · Icon Button：24/28/32 尺寸，
+// 默认/Hover/Pressed/Selected 四态完整过渡）。
 func IconButton(c *ui.Context, o IconButtonOpts) ui.Element {
 	m, tk := themv2.Metrics, themv2.Of(c)
 
@@ -43,6 +51,14 @@ func IconButton(c *ui.Context, o IconButtonOpts) ui.Element {
 	key := o.Key
 	if key == "" {
 		key = label
+	}
+	size := o.Size
+	if size == 0 {
+		size = m.SizeMD
+	}
+	iconSize := o.IconSize
+	if iconSize == 0 {
+		iconSize = m.IconMD
 	}
 	radius := o.Radius
 	if radius == 0 {
@@ -53,21 +69,42 @@ func IconButton(c *ui.Context, o IconButtonOpts) ui.Element {
 		cursor = ui.CursorPointer
 	}
 
-	b := ui.ButtonBase(c.Key(key)).Size(m.SizeMD, m.SizeMD).
+	b := ui.ButtonBase(c.Key(key)).Size(size, size).
 		Justify(ui.Center).AlignItems(ui.Center).
 		Radius(radius).Label(label).Role(ui.RoleButton).
 		Cursor(cursor).
-		Transition(ui.ElementTransition{Colors: true, Duration: themv2.Motion.Base}).
-		TextColor(tk.TextSecondary)
-	switch {
-	case b.Pressed():
-		b.Background(tk.BgSelected).TextColor(tk.TextPrimary)
-	case b.Hovered():
-		b.Background(tk.BgHover).TextColor(tk.TextPrimary)
+		Transition(ui.ElementTransition{Colors: true, Duration: themv2.Motion.Fast})
+
+	fg := tk.TextSecondary
+	if o.Color != (ui.Color{}) {
+		fg = o.Color
+	}
+	if o.ActiveAccent {
+		fg = tk.Accent
+	} else if o.Selected {
+		fg = tk.TextPrimary
 	}
 
+	switch {
+	case b.Pressed():
+		b.Background(tk.BgSelected)
+		if !o.ActiveAccent {
+			fg = tk.TextPrimary
+		}
+	case b.Hovered():
+		b.Background(tk.BgHover)
+		if !o.ActiveAccent {
+			fg = tk.TextPrimary
+		}
+	case o.Selected:
+		b.Background(tk.BgHover)
+	case o.Solid:
+		b.Background(tk.BgSubtle)
+	}
+	b.TextColor(fg)
+
 	b.Children(func() {
-		ui.Icon(c, o.Icon).FontSize(m.IconMD)
+		ui.Icon(c, o.Icon).FontSize(iconSize)
 	})
 
 	if o.Tooltip != "" {
@@ -104,9 +141,16 @@ type MenuButtonProps struct {
 	Cursor ui.Cursor
 
 	AlignItems ui.Align
+
+	// Shortcut 是右侧显示的快捷键文字（如 "Ctrl+N"、"Alt+F4"），无则留空。
+	Shortcut string
+	// Danger 标记是否为危险操作（如退出、删除）：淡红底 + 危险红字。
+	Danger bool
+	// Height 允许覆盖默认 30px 高度（如设计稿弹出菜单项为 32px）。
+	Height float32
 }
 
-// MenuButton 渲染侧栏一级导航项或下拉菜单项（高 30px，圆角 4px，图标 14px，文字 12px）。
+// MenuButton 渲染侧栏一级导航项或下拉菜单项（高 30px / 32px，圆角 4px，图标 14px，文字 12px）。
 func MenuButton(c *ui.Context, props MenuButtonProps) ui.Element {
 	m, tk := themv2.Metrics, themv2.Of(c)
 
@@ -123,8 +167,12 @@ func MenuButton(c *ui.Context, props MenuButtonProps) ui.Element {
 	if cursor == 0 {
 		cursor = ui.CursorPointer
 	}
+	h := props.Height
+	if h <= 0 {
+		h = 30
+	}
 
-	b := ui.ButtonBase(c.Key(key)).Height(30).AlignItems(ui.Center).Radius(radius).
+	b := ui.ButtonBase(c.Key(key)).Height(h).AlignItems(ui.Center).Radius(radius).
 		Justify(ui.Start).Label(label).Role(ui.RoleButton).Cursor(cursor).Gap(m.Space2).
 		PaddingX(8).
 		Transition(ui.ElementTransition{Colors: true, Duration: themv2.Motion.Base})
@@ -134,32 +182,60 @@ func MenuButton(c *ui.Context, props MenuButtonProps) ui.Element {
 	// - 未选中悬停态：浅灰 BgSubtle (#F2F2F2)
 	// - 选中激活态：更明确沉稳的 BgHover (#EDEDED) + 主文字色 (TextPrimary)
 	// - 选中项再悬停/按下：微调加深至 BgSelected (#E6E6E6)
+	// - 危险操作项 (Danger)：淡红底 #FFF1F0 + 危险红 #D92D20，hover #FEE4E2，pressed #FECDCA
 	bg := ui.Transparent
 	textColor := tk.TextSecondary
 
-	if props.Selected {
-		bg = tk.BgHover
-		textColor = tk.TextPrimary
-	}
-
-	switch {
-	case b.Pressed():
-		b.Background(tk.BgSelected).TextColor(tk.TextPrimary)
-	case b.Hovered():
-		if props.Selected {
-			b.Background(tk.BgSelected)
-		} else {
-			b.Background(tk.BgSubtle)
+	if props.Danger {
+		bg = ui.Hex("#FFF1F0")
+		textColor = ui.Hex("#D92D20")
+		switch {
+		case b.Pressed():
+			b.Background(ui.Hex("#FECDCA")).TextColor(textColor)
+		case b.Hovered():
+			b.Background(ui.Hex("#FEE4E2")).TextColor(textColor)
+		default:
+			b.Background(bg).TextColor(textColor)
 		}
-		b.TextColor(tk.TextPrimary)
-	default:
-		b.Background(bg).TextColor(textColor)
+	} else {
+		if props.Selected {
+			bg = tk.BgHover
+			textColor = tk.TextPrimary
+		}
+
+		switch {
+		case b.Pressed():
+			b.Background(tk.BgSelected).TextColor(tk.TextPrimary)
+		case b.Hovered():
+			if props.Selected {
+				b.Background(tk.BgSelected)
+			} else {
+				b.Background(tk.BgSubtle)
+			}
+			b.TextColor(tk.TextPrimary)
+		default:
+			b.Background(bg).TextColor(textColor)
+		}
 	}
 
 	b.Children(func() {
-		ui.Icon(c, props.Icon).FontSize(m.IconSM)
-		// 统一使用 Medium (500) 字重，避免在选中/未选切换时产生文字宽度变化与排版跳动（Layout Shift）
-		ui.Text(c, props.Label).FontSize(m.FontSM).FontWeight(500).SingleLine()
+		if props.Danger {
+			ui.Icon(c, props.Icon).FontSize(m.IconSM).TextColor(textColor)
+			ui.Text(c, props.Label).FontSize(m.FontSM).FontWeight(500).TextColor(textColor).SingleLine()
+		} else {
+			ui.Icon(c, props.Icon).FontSize(m.IconSM)
+			// 统一使用 Medium (500) 字重，避免在选中/未选切换时产生文字宽度变化与排版跳动（Layout Shift）
+			ui.Text(c, props.Label).FontSize(m.FontSM).FontWeight(500).SingleLine()
+		}
+
+		if props.Shortcut != "" {
+			ui.Spacer(c)
+			scColor := tk.TextMuted
+			if props.Danger {
+				scColor = ui.Hex("#F06258")
+			}
+			ui.Text(c, props.Shortcut).FontSize(m.FontXS).FontWeight(400).TextColor(scColor).SingleLine()
+		}
 	})
 
 	if props.Tooltip != "" {

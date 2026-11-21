@@ -13,7 +13,13 @@ package app
 //     也能传 v2.IconButtonOpts.Key（string），零转换摩擦；
 //   - 命名：key + PascalCase 区域前缀，如 keyTitlebarSearch。
 const (
+	// 分组 Layout 根节点
+	keyLayoutHub       = "layout-hub"
+	keyLayoutWorkbench = "layout-workbench"
+
 	// 标题栏
+	keyTitlebarBack      = "titlebar-back"
+	keyTitlebarForward   = "titlebar-forward"
 	keyTitlebarSearch    = "titlebar-search"
 	keyTitlebarBell      = "titlebar-bell"
 	keyTitlebarSettings  = "titlebar-settings"

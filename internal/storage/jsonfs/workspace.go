@@ -81,6 +81,77 @@ func (f *FS) UpdateWorkspace(ctx context.Context, ref storage.Ref, ws *domain.Wo
 	return writeJSON(filepath.Join(f.abs(ref.Path), workspaceFile), ws, 0o644)
 }
 
+// WorkspaceDir 返回工作区在磁盘上的绝对目录路径。
+func (f *FS) WorkspaceDir(ref storage.Ref) string {
+	return f.abs(ref.Path)
+}
+
+// SaveWorkspaceIcon 将本地图片复制到工作区目录内，命名固定为 .rddpostman.icon.<ext>
+// 以避免与工作区元数据或用户项目文件冲突，并自动清理旧后缀图标文件。
+// srcPath 为空时删除已有图标并返回空串。
+func (f *FS) SaveWorkspaceIcon(ctx context.Context, ref storage.Ref, srcPath string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	dir := f.abs(ref.Path)
+	srcPath = strings.TrimSpace(srcPath)
+	if srcPath == "" {
+		removeStaleWorkspaceIcons(dir, "")
+		return "", nil
+	}
+
+	ext := normalizeIconExt(filepath.Ext(srcPath))
+	relName := workspaceIconPrefix + ext
+	dst := filepath.Join(dir, relName)
+
+	// 源文件已是目标文件本身时直接返回，避免误删或多余拷贝。
+	if srcInfo, err := os.Stat(srcPath); err == nil {
+		if dstInfo, err := os.Stat(dst); err == nil && os.SameFile(srcInfo, dstInfo) {
+			removeStaleWorkspaceIcons(dir, relName)
+			return relName, nil
+		}
+	}
+
+	data, err := os.ReadFile(srcPath)
+	if err != nil {
+		return "", fmt.Errorf("读取工作区图标失败: %w", err)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	if err := writeAtomic(dst, data, 0o644); err != nil {
+		return "", fmt.Errorf("写入工作区图标失败: %w", err)
+	}
+	removeStaleWorkspaceIcons(dir, relName)
+	return relName, nil
+}
+
+func normalizeIconExt(ext string) string {
+	switch strings.ToLower(strings.TrimSpace(ext)) {
+	case ".png", ".jpg", ".jpeg", ".svg", ".webp", ".gif":
+		return strings.ToLower(strings.TrimSpace(ext))
+	default:
+		return ".png"
+	}
+}
+
+func removeStaleWorkspaceIcons(dir, keep string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	prefix := workspaceIconPrefix + "."
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if strings.HasPrefix(name, prefix) && name != keep {
+			_ = os.Remove(filepath.Join(dir, name))
+		}
+	}
+}
+
 // RemoveWorkspace 只取消注册，磁盘目录保持原样。
 func (f *FS) RemoveWorkspace(ctx context.Context, ref storage.Ref) error {
 	if ref.Default {

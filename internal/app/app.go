@@ -1,51 +1,28 @@
-// Package app 组装应用外壳：标题栏、图标栏、侧栏、主区域与状态栏。
+// Package app 组装应用外壳（RootLayout）与两套分组布局（HubLayout / WorkbenchLayout）。
 package app
 
 import (
-	"log"
-
 	"rddpostman/components/theme"
-	v1 "rddpostman/components/v1"
-	"rddpostman/features/collection"
 	"rddpostman/features/demo"
-	"rddpostman/features/environment"
-	"rddpostman/features/history"
-	"rddpostman/features/home"
-	"rddpostman/features/request"
 	"rddpostman/features/settings"
-	"rddpostman/features/workspace"
 	"rddpostman/internal/logger"
 	"rddpostman/internal/routes"
 	"rddpostman/internal/store"
 	"rddpostman/locales"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
-)
-
-// 路由别名，方便包内引用。
-const (
-	routerHome        = routes.Home
-	routeWorkspace    = routes.Workspace
-	routeCollections  = routes.Collections
-	routeCollection   = routes.Collection
-	routeEnvironments = routes.Environments
-	routeHistory      = routes.History
-	routeDocs         = routes.Docs
-	routeMock         = routes.Mock
-	routeNetwork      = routes.Network
-	routeDemo         = routes.Demo
-	routeSettings     = routes.Settings
 )
 
 // App 保存窗口级状态。
 type App struct {
 	router *ui.Router
 	store  *store.Store
+	quitFn func()
 }
 
-// New 创建应用状态，默认打开集合首页。
+// New 创建应用状态，默认进入 (hub) 工作空间列表页。
 func New() *App {
-	a := &App{router: ui.NewRouter(routeWorkspace)}
 	s, err := store.Open()
 	if err != nil {
 		logger.Error("打开本地数据失败: %v", err)
@@ -54,8 +31,25 @@ func New() *App {
 			logger.Warn("数据加载警告: %s", p)
 		}
 	}
-	a.store = s
-	return a
+	return NewWithStore(s)
+}
+
+// NewWithStore 使用指定的 Store 实例创建应用（便于测试隔离临时数据目录）。
+func NewWithStore(s *store.Store) *App {
+	return &App{
+		router: ui.NewRouter(routes.HubWorkspaces),
+		store:  s,
+	}
+}
+
+// Router 返回应用根路由（便于测试断言路径与历史栈）。
+func (a *App) Router() *ui.Router {
+	return a.router
+}
+
+// Store 返回应用数据存储。
+func (a *App) Store() *store.Store {
+	return a.store
 }
 
 // Close 在退出前把防抖中的编辑立即落盘。
@@ -65,74 +59,73 @@ func (a *App) Close() {
 	}
 }
 
-// View 绘制整个窗口。
+// SetQuitFunc 供测试拦截应用退出（避免在单元测试中直接退出进程）。
+func (a *App) SetQuitFunc(fn func()) {
+	a.quitFn = fn
+}
+
+func (a *App) quit() {
+	if a.quitFn != nil {
+		a.quitFn()
+		return
+	}
+	a.Close()
+	mygo.App.Quit()
+}
+
+// activeWorkbenchRoute 构造当前活跃工作空间下的工作台路由；无工作空间时退回 Hub 大厅。
+func (a *App) activeWorkbenchRoute(section string) string {
+	if a.store != nil {
+		if ws := a.store.Snapshot().ActiveWorkspace(); ws != nil {
+			return "/w/" + string(ws.ID) + section
+		}
+	}
+	return routes.HubWorkspaces
+}
+
+// View 绘制 RootLayout：常驻顶部 TitleBar + 分组 Layout 路由槽 + 常驻底部 StatusBar + 全局弹窗。
 func (a *App) View(c *ui.Context) {
 	c.SetTheme(theme.Apply(c.Theme(), c.Preferences()))
 
 	root := ui.Column(c).Fill()
+	settingsOpen := ui.Local(root, "global-settings-open", func() bool {
+		return false
+	})
+
 	root.Children(func() {
-		a.titleBar(c)
+		a.titleBar(c, settingsOpen)
 		ui.Row(c).Grow(1).AlignItems(ui.Stretch).Children(func() {
 			a.content(c)
 		})
 		a.statusBar(c)
 	})
+
+	// 全局设置弹窗挂载在 RootLayout 层，在 (hub) 与 (workbench) 任意位置均可无损唤起。
+	settings.Dialog(c, settingsOpen)
 }
 
-// content 是图标栏右侧的主区域。每个页面自己决定是否带侧栏、是否滚动。
+// content 按路由前缀将页面分发到 (hub) 与 (workbench) 两套独立分组 Layout。
 func (a *App) content(c *ui.Context) {
 	tk := theme.Of(c)
 	ui.Box(c).Grow(1).Background(tk.BgBase).Children(func() {
-		log.Println(">> r 1")
-
 		a.router.View(c, func(r *ui.Route) {
-			log.Println(">> r 2", r)
 			switch {
-			case r.Match(routerHome):
-				r.Title(locales.RailHome())
-				home.View(c)
-			case r.Match(routeWorkspace):
-				r.Title(locales.WorkspaceTitle())
-				workspace.View(c, a.store, a.router)
-			case r.Match(routeCollections):
-				r.Title(locales.CollectionsTitle())
-				collection.View(c, a.store, a.router)
-			case r.Match(routeCollection):
-				r.Title(locales.RequestPageTitle())
-				request.View(c, a.router)
-			case r.Match(routeEnvironments):
-				r.Title(locales.EnvironmentTitle())
-				environment.View(c, a.store, a.router)
-			case r.Match(routeHistory):
-				r.Title(locales.HistoryTitle())
-				history.View(c, a.store, a.router)
-			case r.Match(routeDocs):
-				r.Title(locales.DocsTitle())
-				placeholder(c, locales.DocsTitle(), locales.DocsDesc())
-			case r.Match(routeMock):
-				r.Title(locales.RailMock())
-				placeholder(c, locales.RailMock(), locales.RailMockDesc())
-			case r.Match(routeNetwork):
-				r.Title(locales.RailNetwork())
-				placeholder(c, locales.RailNetwork(), locales.RailNetworkDesc())
-			case r.Match(routeDemo):
+			// 分组 Layout 1：(hub) 全局组织与工作空间管理布局
+			case r.Match(routes.HubPattern):
+				a.hubLayout(c, r)
+
+			// 分组 Layout 2：(workbench) 工作台沉浸式布局（左侧切换面板，右侧多 Tab 保活）
+			case r.Match(routes.WorkbenchPattern):
+				a.workbenchLayout(c, r)
+
+			// 演示页
+			case r.Match(routes.Demo):
 				r.Title(locales.RailDemo())
 				demo.View(c)
-			case r.Match(routeSettings):
-				r.Title(locales.SettingsTitle())
-				settings.View(c)
+
 			default:
-				r.Title(locales.NotFound())
-				ui.Text(c, locales.NotFound()).FontSize(12).TextColor(tk.TextMuted).Padding(24)
+				a.router.Replace(routes.HubWorkspaces)
 			}
 		})
-	})
-}
-
-// placeholder 画尚未实现的模块页，保持外壳与路由可用。
-func placeholder(c *ui.Context, title, desc string) {
-	ui.Scroll(c).Grow(1).Children(func() {
-		v1.PageHeader(c, title, desc)
-		v1.EmptyState(c, locales.UnderConstruction())
 	})
 }

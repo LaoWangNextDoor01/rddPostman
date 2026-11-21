@@ -162,7 +162,7 @@ func TestRequestTabRender(t *testing.T) {
 				draft:   "修改后的请求名",
 			}
 		})
-		reqBreadcrumb(c, props, reqNode, string(reqNode.ID), title, theme.Of(c), theme.Metrics)
+		reqBreadcrumb(c, props, reqNode, string(reqNode.ID), title, func() {}, theme.Of(c), theme.Metrics)
 	}
 	ttBreadcrumb := ui.NewTester(bView, 960, 100)
 	ttBreadcrumb.Frame()
@@ -399,3 +399,429 @@ func TestImportCurlAndPostmanDialogsRender(t *testing.T) {
 		t.Fatal("importPostmanDialog render image is nil")
 	}
 }
+
+func TestSidebarFilterAndSearchRender(t *testing.T) {
+	ws := newWorkspace()
+	props := pageProps{
+		workspaceID: "ws-1",
+		state:       ws,
+	}
+
+	tt := ui.NewTester(func(c *ui.Context) {
+		sidebar(c, props)
+	}, 260, 700)
+	tt.Frame()
+	if tt.Image() == nil {
+		t.Fatal("sidebar render image is nil")
+	}
+
+	// 测试筛选 Popover 展开与复选框勾选
+	tt.Click("Filter sidebar")
+	tt.Frame()
+
+	// 再次点击关闭
+	tt.Click("Filter sidebar")
+	tt.Frame()
+}
+
+func TestBodyEditorModesAndBeautify(t *testing.T) {
+	ws := newWorkspace()
+	reqNode := &domain.Node{
+		ID:        "req-body-test",
+		Kind:      domain.KindRequest,
+		Name:      "Body Test",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request: &domain.Request{
+			Method: "POST",
+			URL:    "https://api.example.com/test",
+			Body: domain.Body{
+				Mode: domain.BodyRaw,
+				Raw:  `{"test":   123, "arr":[1,  2]}`,
+			},
+		},
+	}
+	coll := &domain.Collection{
+		ID:    "coll-1",
+		Name:  "Test Coll",
+		Items: []*domain.Node{reqNode},
+	}
+
+	props := pageProps{
+		workspaceID: "ws-1",
+		collections: []*domain.Collection{coll},
+		state:       ws,
+		actions: pageActions{
+			updateNode: func(collID, nodeID domain.ID, fn func(*domain.Node)) {
+				fn(reqNode)
+			},
+		},
+	}
+
+	tt := ui.NewTester(func(c *ui.Context) {
+		requestTab(c, props, coll, reqNode, string(reqNode.ID))
+	}, 960, 700)
+	tt.Frame()
+	if tt.Image() == nil {
+		t.Fatal("requestTab image is nil")
+	}
+
+	// 点击 Body Tab
+	tt.Click("Body")
+	tt.Frame()
+
+	// 点击 Beautify 格式化 JSON
+	tt.Click("Beautify")
+	tt.Frame()
+
+	// 点击 binary 单选框
+	tt.Click("binary")
+	tt.Frame()
+	if reqNode.Request.Body.Mode != domain.BodyMode("binary") {
+		t.Fatalf("expected binary mode, got %s", reqNode.Request.Body.Mode)
+	}
+}
+
+func TestDocsTabAndBulkEditSwitch(t *testing.T) {
+	ws := newWorkspace()
+	reqNode := &domain.Node{
+		ID:          "req-docs-test",
+		Kind:        domain.KindRequest,
+		Name:        "Docs Test",
+		Description: "Initial description",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+		Request: &domain.Request{
+			Method: "GET",
+			URL:    "https://api.example.com/docs",
+			Query: []domain.KV{
+				{Key: "userId", Value: "10086", Enabled: true},
+				{Key: "lang", Value: "zh-CN", Enabled: true},
+			},
+		},
+	}
+	coll := &domain.Collection{
+		ID:    "coll-1",
+		Name:  "Test Coll",
+		Items: []*domain.Node{reqNode},
+	}
+
+	props := pageProps{
+		workspaceID: "ws-1",
+		collections: []*domain.Collection{coll},
+		state:       ws,
+		actions: pageActions{
+			updateNode: func(collID, nodeID domain.ID, fn func(*domain.Node)) {
+				fn(reqNode)
+			},
+		},
+	}
+
+	tt := ui.NewTester(func(c *ui.Context) {
+		requestTab(c, props, coll, reqNode, string(reqNode.ID))
+	}, 960, 700)
+	tt.Frame()
+	if tt.Image() == nil {
+		t.Fatal("requestTab image is nil")
+	}
+
+	// 1. 测试 Docs Tab 切换与 Markdown 工具栏点击
+	tt.Click("Docs")
+	tt.Frame()
+	tt.Click("Bold")
+	tt.Frame()
+
+	// 2. 切回 Params 并测试 Bulk Edit 切换
+	tt.Click("Params")
+	tt.Frame()
+	tt.Click("Bulk Edit")
+	tt.Frame()
+
+	// 3. 点击切回 Key-Value Edit
+	tt.Click("Key-Value Edit")
+	tt.Frame()
+}
+
+func TestTabsBarDoesNotRenderOverview(t *testing.T) {
+	ws := newWorkspace()
+	reqNode := &domain.Node{
+		ID:   "req-1",
+		Kind: domain.KindRequest,
+		Name: "Test Request",
+		Request: &domain.Request{
+			Method: "GET",
+		},
+	}
+	coll := &domain.Collection{
+		ID:    "coll-1",
+		Name:  "Test Coll",
+		Items: []*domain.Node{reqNode},
+	}
+	ws.openTab("req-1")
+
+	props := pageProps{
+		workspaceID: "ws-1",
+		collections: []*domain.Collection{coll},
+		state:       ws,
+	}
+
+	tt := ui.NewTester(func(c *ui.Context) {
+		tabsBar(c, props)
+	}, 800, 40)
+	tt.Frame()
+
+	if tt.HasText("Overview") {
+		t.Fatalf("tabsBar should not contain Overview tab, but found it in texts: %q", tt.Texts())
+	}
+	if !tt.HasText("Test Request") {
+		t.Fatalf("tabsBar should contain open request tab 'Test Request', got: %q", tt.Texts())
+	}
+}
+
+func TestSidebarFlatHierarchy(t *testing.T) {
+	ws := newWorkspace()
+	reqNode := &domain.Node{
+		ID:   "req-1",
+		Kind: domain.KindRequest,
+		Name: "Get User Info",
+		Request: &domain.Request{
+			Method: "GET",
+		},
+	}
+	coll := &domain.Collection{
+		ID:    "coll-1",
+		Name:  "User Service API",
+		Items: []*domain.Node{reqNode},
+	}
+
+	props := pageProps{
+		workspaceID: "ws-1",
+		collections: []*domain.Collection{coll},
+		state:       ws,
+	}
+
+	tt := ui.NewTester(func(c *ui.Context) {
+		sidebar(c, props)
+	}, 260, 600)
+	tt.Frame()
+
+	// 1. 顶层直接展示 Collection 级别
+	if !tt.HasText("User Service API") {
+		t.Fatalf("sidebar must render collection name directly, got texts: %q", tt.Texts())
+	}
+
+	// 2. 验证不再有大写顶层层级标签
+	for _, unwanted := range []string{"COLLECTIONS", "ENVIRONMENTS", "SPECS", "MOCKS", "DATASETS"} {
+		if tt.HasText(unwanted) {
+			t.Fatalf("sidebar should not contain flat section header %q, found in texts: %q", unwanted, tt.Texts())
+		}
+	}
+}
+
+func TestTabsBarHorizontalScrollAndNoEnvSwitcher(t *testing.T) {
+	ws := newWorkspace()
+	reqNode := &domain.Node{
+		ID:   "req-1",
+		Kind: domain.KindRequest,
+		Name: "Sample API",
+		Request: &domain.Request{
+			Method: "POST",
+		},
+	}
+	coll := &domain.Collection{
+		ID:    "coll-1",
+		Name:  "Test Coll",
+		Items: []*domain.Node{reqNode},
+	}
+	ws.openTab("req-1")
+
+	props := pageProps{
+		workspaceID: "ws-1",
+		collections: []*domain.Collection{coll},
+		environments: []domain.Environment{
+			{ID: "env-1", Name: "Production"},
+		},
+		state: ws,
+	}
+
+	tt := ui.NewTester(func(c *ui.Context) {
+		tabsBar(c, props)
+	}, 800, 40)
+	tt.Frame()
+
+	// 1. 验证 Tab 正常渲染
+	if !tt.HasText("Sample API") {
+		t.Fatalf("tabsBar must render active tab, got: %q", tt.Texts())
+	}
+
+	// 2. 验证最右侧环境选择器已彻底去掉
+	if tt.HasText("No Environment") || tt.HasText("Production") {
+		t.Fatalf("tabsBar should NOT contain environment switcher, got texts: %q", tt.Texts())
+	}
+}
+
+func TestEmptyWorkspaceWhiteActionCards(t *testing.T) {
+	ws := newWorkspace()
+	coll := &domain.Collection{
+		ID:   "coll-1",
+		Name: "Test Coll",
+	}
+
+	props := pageProps{
+		workspaceID: "ws-1",
+		collections: []*domain.Collection{coll},
+		state:       ws,
+	}
+
+	tt := ui.NewTester(func(c *ui.Context) {
+		mainPane(c, props)
+	}, 900, 600)
+	tt.Frame()
+
+	// 未打开任何 Tab 时呈现欢迎空态
+	if !tt.HasText("API Workspace") {
+		t.Fatalf("mainPane should render empty workspace welcome title, got: %q", tt.Texts())
+	}
+	if !tt.HasText("New request") || !tt.HasText("New collection") || !tt.HasText("导入接口 (cURL)") {
+		t.Fatalf("mainPane should render four action cards, got: %q", tt.Texts())
+	}
+}
+
+func TestNewRequestDefaultUnsavedWithDotAndSaveAction(t *testing.T) {
+	ws := newWorkspace()
+	coll := &domain.Collection{
+		ID:    "coll-1",
+		Name:  "My APIs",
+		Items: []*domain.Node{},
+	}
+
+	// 1. 模拟新建请求操作：调用 createNodeIn
+	createNodeIn(nil, ws, []*domain.Collection{coll}, domain.KindRequest, string(coll.ID))
+
+	// 2. 验证默认未保存：coll.Items 依然为空（没有持久化写入）
+	if len(coll.Items) != 0 {
+		t.Fatalf("new request must NOT be saved by default, but found items: %d", len(coll.Items))
+	}
+
+	// 3. 验证 Tab 已打开，且处于未保存状态
+	if len(ws.tabs) != 1 {
+		t.Fatalf("expected 1 open tab, got: %d", len(ws.tabs))
+	}
+	draftID := ws.tabs[0]
+	if !ws.isUnsaved(draftID) {
+		t.Fatalf("new request tab %s must have isUnsaved=true", draftID)
+	}
+
+	// 4. 测试 tabsBar 渲染：Tab 名称显示 New request，且包含未保存状态
+	props := pageProps{
+		workspaceID: "ws-1",
+		collections: []*domain.Collection{coll},
+		state:       ws,
+	}
+
+	tt := ui.NewTester(func(c *ui.Context) {
+		tabsBar(c, props)
+	}, 800, 40)
+	tt.Frame()
+
+	if !tt.HasText("New request") {
+		t.Fatalf("tabsBar must render 'New request' tab, got: %q", tt.Texts())
+	}
+
+	// 5. 模拟手动保存
+	saved := false
+	props.actions.saveRequest = func(id string, req domain.Request, auth domain.Auth, name string) {
+		if draft, ok := ws.drafts[id]; ok {
+			coll.Items = append(coll.Items, draft.node)
+			delete(ws.drafts, id)
+			ws.setUnsaved(id, false)
+			saved = true
+		}
+	}
+
+	props.actions.saveRequest(draftID, domain.Request{Method: "GET", URL: "https://example.com/api"}, domain.Auth{}, "My Saved Request")
+
+	if !saved {
+		t.Fatal("saveRequest was not called")
+	}
+	if len(coll.Items) != 1 {
+		t.Fatalf("collection should have 1 saved item now, got: %d", len(coll.Items))
+	}
+	if ws.isUnsaved(draftID) {
+		t.Fatal("isUnsaved must be false after manual save")
+	}
+}
+
+func TestDefaultRequestHeadersAndUserCustomization(t *testing.T) {
+	ws := newWorkspace()
+	coll := &domain.Collection{
+		ID:    "coll-headers-test",
+		Name:  "Headers Test Collection",
+		Items: []*domain.Node{},
+	}
+
+	// 1. 新建请求，验证自动注入 Postman 默认规范请求头
+	createNodeIn(nil, ws, []*domain.Collection{coll}, domain.KindRequest, string(coll.ID))
+	draftID := ws.active
+	draft, ok := ws.drafts[draftID]
+	if !ok || draft == nil || draft.node == nil || draft.node.Request == nil {
+		t.Fatal("新建请求草稿未成功创建")
+	}
+
+	headers := draft.node.Request.Headers
+	if len(headers) < 4 {
+		t.Fatalf("新建请求默认 headers 应包含至少 4 个 Postman 默认头，实际得到: %d", len(headers))
+	}
+
+	expectedKeys := map[string]bool{
+		"User-Agent":      false,
+		"Accept":          false,
+		"Accept-Encoding": false,
+		"Connection":      false,
+	}
+	for _, h := range headers {
+		if _, exists := expectedKeys[h.Key]; exists {
+			expectedKeys[h.Key] = true
+		}
+	}
+	for k, found := range expectedKeys {
+		if !found {
+			t.Errorf("缺少默认请求头: %s", k)
+		}
+	}
+
+	// 2. 模拟用户自由修改与追加新头
+	headers = append(headers, domain.KV{
+		Key:     "X-Custom-Auth",
+		Value:   "token_test_12345",
+		Enabled: true,
+	})
+	cleaned := cleanKVList(headers)
+	if len(cleaned) != 5 {
+		t.Fatalf("追加自定义 Header 后总数应为 5，得到: %d", len(cleaned))
+	}
+
+	// 3. 模拟用户自由删除其中某项默认头（例如删除 User-Agent）
+	var withoutUA []domain.KV
+	for _, h := range cleaned {
+		if h.Key != "User-Agent" {
+			withoutUA = append(withoutUA, h)
+		}
+	}
+	cleanedWithoutUA := cleanKVList(withoutUA)
+	if len(cleanedWithoutUA) != 4 {
+		t.Fatalf("删除 User-Agent 后应剩余 4 个 Header，得到: %d", len(cleanedWithoutUA))
+	}
+	for _, h := range cleanedWithoutUA {
+		if h.Key == "User-Agent" {
+			t.Fatal("User-Agent 应已被成功删除")
+		}
+	}
+
+	// 4. 测试恢复默认请求头
+	reset := domain.DefaultRequestHeaders()
+	if len(reset) != 4 {
+		t.Fatalf("DefaultRequestHeaders 应返回 4 项，得到: %d", len(reset))
+	}
+}
+

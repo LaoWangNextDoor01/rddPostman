@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	thV2 "rddpostman/components/theme/v2"
 	"rddpostman/components/v1/icons"
@@ -14,12 +15,6 @@ import (
 	"rddpostman/internal/store"
 
 	"github.com/egoist/mygo/ui"
-)
-
-const (
-	minSidebarWidth float32 = 180 // 最小宽度
-	maxSidebarWidth float32 = 460 // 最大宽度
-	defaultWidth    float32 = 232 // 默认宽度
 )
 
 // wsTab 表示 Workspaces 列表页顶部的筛选标签。
@@ -47,19 +42,26 @@ type wsContentState struct {
 	typeFilter string // "" | "Internal" | "Partner" | "Public"
 	sortOrder  wsSortOrder
 
-	checked map[domain.ID]bool
-	starred map[domain.ID]bool
-	types   map[domain.ID]string // 本次会话创建的工作区类型映射，默认 "Internal"
+	checked   map[domain.ID]bool
+	iconCache map[string]cachedIcon
 
 	// Create workspace 子页面状态
-	creating         bool
 	createName       string
+	createNameAuto   bool // 标记 createName 是否由选中目录自动带入
 	createNameHandle ui.Handle
+	createFocused    bool // 首次进入创建页时自动聚焦名称输入框
+	createIcon       string
+	createIconErr    string
+	createIconPick   *imagePickResult
 	createType       string // "Internal" | "Partner" | "Public"
-	createAccess string
-	createSetup  string // "blank" | "local"
-	createAI     string
-	createErr    string
+	createSetup      string // "blank" | "local"
+	createLocalDir   string
+	createLocalErr   string
+	createFolderPick *imagePickResult
+	createFolderScan *folderScanResult
+	localFolders     []localFolderItem
+	createDesc       string
+	createErr        string
 
 	// 重命名弹窗状态
 	renameOpen bool
@@ -76,257 +78,126 @@ type wsContentState struct {
 
 func newContentState() wsContentState {
 	return wsContentState{
-		checked:      make(map[domain.ID]bool),
-		starred:      make(map[domain.ID]bool),
-		types:        make(map[domain.ID]string),
-		createType:   "Internal",
-		createAccess: "Everyone in wang's Team",
-		createSetup:  "blank",
+		checked:          make(map[domain.ID]bool),
+		iconCache:        make(map[string]cachedIcon),
+		createIconPick:   &imagePickResult{},
+		createFolderPick: &imagePickResult{},
+		createFolderScan: &folderScanResult{},
+		createType:       "Internal",
+		createSetup:      "blank",
 	}
-}
-
-func (s *wsContentState) typeOf(id domain.ID) string {
-	if t, ok := s.types[id]; ok && t != "" {
-		return t
-	}
-	return "Internal"
 }
 
 func (s *wsContentState) resetCreateForm() {
 	s.createName = ""
+	s.createNameAuto = false
+	s.createIcon = ""
+	s.createIconErr = ""
 	s.createType = "Internal"
-	s.createAccess = "Everyone in wang's Team"
 	s.createSetup = "blank"
-	s.createAI = ""
+	s.createLocalDir = ""
+	s.createLocalErr = ""
+	s.createDesc = ""
 	s.createErr = ""
+	if s.createFolderScan != nil {
+		s.createFolderScan.reset()
+	}
 }
 
-// wsRowItem 是工作区列表的展示模型，元数据字段在 domain 未扩展前遵循 03-page-inventory.md §5 约定。
+// wsRowItem 是离线首期精简后的工作区列表展示模型（对应设计稿 28/30/35–38）。
+// 仅保留 Name、Creator（暂写死）、Last activity 与收藏/更多操作。
 type wsRowItem struct {
 	ID           domain.ID
 	Name         string
 	Default      bool
 	Type         string
+	Icon         string
+	Starred      bool
 	Creator      string
-	Contributors int
 	LastActivity string
-	Access       string
-	Role         string
 }
 
-func accessLabelFor(wsType string) string {
-	switch wsType {
-	case "Partner":
-		return "Team and partners"
-	case "Public":
-		return "Anyone on Postman"
+func formatRelativeActivity(t time.Time) string {
+	if t.IsZero() {
+		return "Just now"
+	}
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "Just now"
+	case d < time.Hour:
+		mins := int(d.Minutes())
+		if mins == 1 {
+			return "1 minute ago"
+		}
+		return fmt.Sprintf("%d minutes ago", mins)
+	case d < 24*time.Hour:
+		hrs := int(d.Hours())
+		if hrs == 1 {
+			return "1 hour ago"
+		}
+		return fmt.Sprintf("%d hours ago", hrs)
+	case d < 48*time.Hour:
+		return "Yesterday"
+	case d < 7*24*time.Hour:
+		return fmt.Sprintf("%d days ago", int(d.Hours()/24))
 	default:
-		return "Everyone in your team"
+		return t.Format("2006-01-02")
 	}
 }
 
-func View(c *ui.Context, db *store.Store, r nav.Navigator) {
-	root := ui.Box(c).Grow(1)
-	width := ui.Local(root, "ws-sidebar-width", func() float32 {
-		return defaultWidth
+// ListView 绘制 Workspaces 列表页（挂载在 HubLayout 右侧子路由 /hub/workspaces）。
+func ListView(c *ui.Context, db *store.Store, r nav.Navigator) {
+	root := ui.Box(c).Fill()
+	st := ui.Local(root, "ws-list-state", newContentState)
+	root.Children(func() {
+		workspacesListView(c, db, r, st)
 	})
-	activeMenu := ui.Local(root, "ws-sidebar-active", func() string {
-		return "Workspaces"
-	})
-	st := ui.Local(root, "ws-content-state", newContentState)
+}
 
-	// 限制拖动范围
-	if *width < minSidebarWidth {
-		*width = minSidebarWidth
-	} else if *width > maxSidebarWidth {
-		*width = maxSidebarWidth
+// CreateView 绘制「Create your workspace」独立表单页（挂载在 HubLayout 右侧子路由 /hub/workspaces/new）。
+func CreateView(c *ui.Context, db *store.Store, r nav.Navigator) {
+	root := ui.Box(c).Fill()
+	st := ui.Local(root, "ws-create-state", newContentState)
+	if !st.createFocused {
+		st.createFocused = true
+		st.createNameHandle.Focus(c)
 	}
 	root.Children(func() {
-		ui.Split(c, width, func() {
-			siderBar(c, activeMenu, st)
-		}, func() {
-			content(c, db, r, *activeMenu, st)
-		}).Fill().SplitReset(defaultWidth)
-	})
-}
-
-func siderBar(c *ui.Context, activeMenu *string, st *wsContentState) {
-	m, tk := thV2.Metrics, thV2.Of(c)
-	ui.Column(c).Fill().MinWidth(minSidebarWidth).Background(tk.BgBase).Children(func() {
-		// 1. 团队信息栏 (48px)
-		ui.Row(c).FillWidth().Height(48).AlignItems(ui.Center).Padding(m.Space2, m.Space3).Gap(m.Space2).Children(func() {
-			// 头像：26x26，圆形，浅灰底，描边，字母 "W"
-			ui.Avatar(c, "W", nil).Size(26, 26).Border(1, tk.BorderPopover).
-				Background(tk.BgSubtle).TextColor(tk.TextSecondary)
-
-			ui.Column(c).Children(func() {
-				ui.Text(c, "wang's Team").FontSize(13).FontWeight(600).TextColor(tk.TextPrimary).SingleLine()
-				ui.Text(c, "1 member").FontSize(m.FontXS).TextColor(tk.TextMuted).SingleLine()
-			})
-
-			ui.Spacer(c)
-
-			// Invite 按钮：高度 22px，圆角 4px，边框 BorderPopover，字号 11px
-			inviteBtn := ui.ButtonBase(c.Key("team-invite")).
-				Height(22).PaddingX(8).Radius(m.RadiusSM).
-				Border(m.Border, tk.BorderPopover).
-				Cursor(ui.CursorPointer).
-				Role(ui.RoleButton).
-				Label("Invite").
-				AlignItems(ui.Center).
-				Justify(ui.Center).
-				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
-			if inviteBtn.Hovered() {
-				inviteBtn.Background(tk.BgHover).TextColor(tk.TextPrimary)
-			} else {
-				inviteBtn.TextColor(tk.TextSecondary)
-			}
-			inviteBtn.Children(func() {
-				ui.Text(c, "Invite").FontSize(m.FontXS).SingleLine()
-			})
-		})
-
-		// 分割线：左右留白 12px，下方留白 6px
-		ui.Divider(c).BorderColor(tk.BgSubtle).Margin(0, m.Space3, m.Space15, m.Space3)
-
-		// 2. 菜单项（每项高 30px，内部图标 14px，文字 12px）
-		ui.Column(c).PaddingX(m.Space2).Children(func() {
-			menuItem := func(key, label string, icon *ui.SVG) {
-				btn := v2.MenuButton(c, v2.MenuButtonProps{
-					Icon:     icon,
-					Key:      key,
-					Label:    label,
-					Selected: *activeMenu == key,
-				})
-				if btn.Clicked() {
-					*activeMenu = key
-					st.creating = false
-				}
-			}
-
-			// Group 1
-			menuItem("Home", "Home", icons.House)
-			menuItem("Workspaces", "Workspaces", icons.LayoutGrid)
-			menuItem("ApplicationInventory", "Application Inventory", icons.Boxes)
-			menuItem("APICatalog", "API Catalog", icons.BookOpen)
-
-			ui.Divider(c).BorderColor(tk.BgSubtle).MarginX(m.Space1).MarginY(m.Space15)
-
-			// Group 2
-			menuItem("PrivateAPINetwork", "Private API Network", icons.Lock)
-			menuItem("PublicAPINetwork", "Public API Network", icons.Globe)
-
-			ui.Divider(c).BorderColor(tk.BgSubtle).MarginX(m.Space1).MarginY(m.Space15)
-
-			// Group 3
-			menuItem("AgentContext", "Agent Context", icons.Sparkles)
-			menuItem("Integrations", "Integrations", icons.Plug)
-			menuItem("Reports", "Reports", icons.ChartColumn)
-		})
-
-		// 3. 弹性空白
-		ui.Spacer(c)
-
-		// 4. 底部帮助链接（字号 10px，灰色 TextMuted，底部 padding 14px）
-		bottomLinks(c)
-	})
-}
-
-func bottomLinks(c *ui.Context) {
-	m, tk := thV2.Metrics, thV2.Of(c)
-	links := []string{
-		"What is Postman",
-		"How to Publish",
-		"Learning Center",
-		"Support Center",
-		"Postman Enterprise",
-	}
-
-	ui.Column(c).Padding(0, m.Space4, 14, m.Space4).Gap(9).Children(func() {
-		for _, title := range links {
-			t := title
-			link := ui.ButtonBase(c.Key("link-" + t)).
-				Role(ui.RoleLink).
-				Cursor(ui.CursorPointer).
-				Label(t).
-				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast}).
-				Justify(ui.Start)
-
-			if link.Hovered() {
-				link.TextColor(tk.TextPrimary)
-			} else {
-				link.TextColor(tk.TextMuted)
-			}
-
-			link.Children(func() {
-				ui.Text(c, t).FontSize(m.FontMicro).SingleLine()
-			})
-		}
-	})
-}
-
-// content 根据侧栏选中项渲染右侧主内容区。
-func content(c *ui.Context, db *store.Store, r nav.Navigator, activeMenu string, st *wsContentState) {
-	if activeMenu != "Workspaces" {
-		hubPlaceholder(c, activeMenu)
-		return
-	}
-	if st.creating {
 		createWorkspaceView(c, db, r, st)
-		return
-	}
-	workspacesListView(c, db, r, st)
+	})
 }
 
-// 表格列宽约定（对齐设计稿 ws-manage.png，表头与行共用，保证像素级垂直对齐）。
+// 表格列宽约定（对齐 Pixso 设计稿 28/30/35–38：左右 12px padding，精简为 复选框 + Name + Creator + Last activity + 操作列）。
 const (
-	wsColCheckW   float32 = 35
-	wsColCreatorW float32 = 100
-	wsColContribW float32 = 98
-	wsColActiveW  float32 = 110
-	wsColAccessW  float32 = 165
-	wsColRoleW    float32 = 110
-	wsColActionW  float32 = 64
+	wsRowPadX     float32 = 12
+	wsColCheckW   float32 = 36
+	wsColCreatorW float32 = 180
+	wsColActiveW  float32 = 195
+	wsColActionW  float32 = 100
 )
 
-// workspacesListView 按设计稿 28 / 30（Dark）绘制 Workspaces 管理页。
+// workspacesListView 按审核通过的 Pixso 28 / 30 / 35–38 绘制 Workspaces 管理页。
 func workspacesListView(c *ui.Context, db *store.Store, r nav.Navigator, st *wsContentState) {
 	m, tk := thV2.Metrics, thV2.Of(c)
 
 	items := filteredWorkspaces(db, st)
 
 	ui.Column(c).Fill().Padding(22, m.Space6).Background(tk.BgBase).Children(func() {
-		// 1. 顶部标题栏：Workspaces + Create workspace 主按钮
+		// 1. 顶部标题栏：Workspaces + Create workspace 主按钮（科技蓝 #336FFF）
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 			ui.Text(c, "Workspaces").FontSize(m.FontXXL).Bold().TextColor(tk.TextPrimary).SingleLine()
 
-			createBtn := ui.ButtonBase(c.Key("ws-create-btn")).
-				Height(m.ButtonLarge).PaddingX(m.Space4).Center().
-				Radius(m.RadiusSM).Cursor(ui.CursorPointer).
-				Role(ui.RoleButton).Label("Create workspace").
-				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
-			switch {
-			case createBtn.Pressed():
-				createBtn.Background(tk.AccentPressed)
-			case createBtn.Hovered():
-				createBtn.Background(tk.AccentHover)
-			default:
-				createBtn.Background(tk.Accent)
+			if wsPrimaryButton(c, "ws-create-btn", "Create workspace", false).Clicked() {
+				if r != nil {
+					r.Push(routes.HubWorkspaceNew)
+				}
 			}
-			if createBtn.Clicked() {
-				st.resetCreateForm()
-				st.creating = true
-				st.createNameHandle.Focus(c)
-			}
-			createBtn.Children(func() {
-				ui.Text(c, "Create workspace").FontSize(m.FontSM).FontWeight(600).
-					TextColor(tk.OnAccent).SingleLine()
-			})
 		})
 
 		ui.Box(c).Height(18)
 
-		// 2. 筛选标签行：All / Project Workspaces / External（顺序严格对齐设计稿）
+		// 2. 筛选标签行：All / Project Workspaces / External
 		ui.Row(c).Gap(m.Space15).AlignItems(ui.Center).Children(func() {
 			wsFilterTab(c, "ws-tab-all", "All", st.tab == wsTabAll, func() {
 				st.tab = wsTabAll
@@ -341,12 +212,12 @@ func workspacesListView(c *ui.Context, db *store.Store, r nav.Navigator, st *wsC
 
 		ui.Box(c).Height(14)
 
-		// 3. 搜索框 + 筛选按钮工具条
+		// 3. 搜索框 + 筛选按钮工具条（对齐设计稿 37）
 		wsToolbar(c, st)
 
 		ui.Box(c).Height(14)
 
-		// 4. 工作区表格（顶部分割线 + 表头 + 可滚动数据行 + 底部计数）
+		// 4. 工作区表格（表头 + 可滚动数据行 + 底部计数）
 		wsTableHeader(c, st, items)
 
 		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
@@ -400,17 +271,18 @@ func wsToolbar(c *ui.Context, st *wsContentState) {
 	m, tk := thV2.Metrics, thV2.Of(c)
 
 	ui.Row(c).AlignItems(ui.Center).Gap(m.Space2).Children(func() {
-		// 搜索输入框：宽 302、高 32、圆角 4、前置放大镜图标
+		// 搜索输入框：宽 302、高 32、圆角 4、前置放大镜、聚焦 1px Focus + 3px FocusRing、右侧清空按钮
 		searchBox := ui.Row(c.Key("ws-search-box")).
 			Width(302).Height(m.ButtonLarge).
-			PaddingX(m.Space2).Gap(m.Space15).
+			PaddingX(10).Gap(m.Space15).
 			AlignItems(ui.Center).
 			Radius(m.RadiusSM).
 			Background(tk.BgSurface).
 			Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 
+		focused := searchBox.FocusWithin()
 		switch {
-		case searchBox.FocusWithin():
+		case focused:
 			searchBox.Border(m.Border, tk.Focus).Shadow(0, 0, 0, 3, tk.FocusRing)
 		case searchBox.Hovered():
 			searchBox.Border(m.Border, tk.BorderStrong)
@@ -419,7 +291,11 @@ func wsToolbar(c *ui.Context, st *wsContentState) {
 		}
 
 		searchBox.Children(func() {
-			ui.Icon(c, icons.Search).FontSize(m.IconSM).TextColor(tk.TextMuted)
+			iconColor := tk.TextMuted
+			if focused || st.query != "" {
+				iconColor = tk.TextPrimary
+			}
+			ui.Icon(c, icons.Search).FontSize(m.IconSM).TextColor(iconColor)
 			ui.TextInputBase(c.Key("ws-search-input"), &st.query).
 				Grow(1).FontSize(m.FontSM).TextColor(tk.TextPrimary).
 				Placeholder("Search workspaces").PlaceholderColor(tk.TextMuted).
@@ -444,7 +320,7 @@ func wsToolbar(c *ui.Context, st *wsContentState) {
 			}
 		})
 
-		// 筛选按钮：32×32，与搜索框同高同边框，图标 sliders-horizontal
+		// 筛选按钮：32×32，激活态边框走 tk.Focus，点击弹出筛选/排序浮层
 		filterBtn := ui.ButtonBase(c.Key("ws-filter-btn")).
 			Size(m.SizeXL, m.SizeXL).Center().
 			Radius(m.RadiusSM).Cursor(ui.CursorPointer).
@@ -474,7 +350,7 @@ func wsToolbar(c *ui.Context, st *wsContentState) {
 
 		v2.Popover(c, filterBtn, filterOpen, v2.PopoverOpts{Width: 196}, func(panel ui.Element) {
 			ui.Column(c).FillWidth().Padding(m.Space15).Gap(m.Space05).Children(func() {
-				ui.Text(c, "Workspace type").FontSize(m.FontXS).FontWeight(500).
+				ui.Text(c, "Workspace type").FontSize(m.FontMicro).FontWeight(500).
 					TextColor(tk.TextMuted).Padding(m.Space1, m.Space2)
 
 				typeOpt := func(key, label, val string) {
@@ -490,7 +366,7 @@ func wsToolbar(c *ui.Context, st *wsContentState) {
 
 				v2.PopoverDivider(c).MarginY(m.Space1)
 
-				ui.Text(c, "Sort by name").FontSize(m.FontXS).FontWeight(500).
+				ui.Text(c, "Sort by name").FontSize(m.FontMicro).FontWeight(500).
 					TextColor(tk.TextMuted).Padding(m.Space1, m.Space2)
 
 				wsPopoverOption(c, "ws-s-none", "Default order", st.sortOrder == wsSortNone, func() {
@@ -529,9 +405,13 @@ func wsPopoverOption(c *ui.Context, key, label string, selected bool, onClick fu
 		onClick()
 	}
 	b.Children(func() {
-		ui.Text(c, label).FontSize(m.FontSM).SingleLine()
+		weight := 400
 		if selected {
-			ui.Icon(c, icons.Check).FontSize(m.IconXS).TextColor(tk.Accent)
+			weight = 500
+		}
+		ui.Text(c, label).FontSize(m.FontSM).FontWeight(weight).SingleLine()
+		if selected {
+			ui.Icon(c, icons.Check).FontSize(m.IconXS).TextColor(tk.Focus)
 		}
 	})
 }
@@ -553,8 +433,8 @@ func wsTableHeader(c *ui.Context, st *wsContentState, items []wsRowItem) {
 		allState = ui.CheckMixed
 	}
 
-	// 表头顶部 1px 分割线 + 35px 表头 + 底部 1px 分割线
-	ui.Row(c).FillWidth().Height(36).AlignItems(ui.Center).
+	// 表头左右留 12px padding，与数据行严格对齐
+	ui.Row(c).FillWidth().Height(36).PaddingX(wsRowPadX).AlignItems(ui.Center).
 		BorderWidth(m.Border, 0, m.Border, 0).BorderColor(tk.Border).
 		Children(func() {
 			// 全选复选框
@@ -577,7 +457,7 @@ func wsTableHeader(c *ui.Context, st *wsContentState, items []wsRowItem) {
 			})
 
 			// Name（可点击切换排序）
-			ui.Row(c).Grow(1).MinWidth(220).AlignItems(ui.Center).Children(func() {
+			ui.Row(c).Grow(1).MinWidth(240).AlignItems(ui.Center).Children(func() {
 				nameHdr := ui.ButtonBase(c.Key("ws-hdr-name")).
 					Gap(m.Space1).AlignItems(ui.Center).Justify(ui.Start).
 					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Sort by Name").
@@ -601,18 +481,15 @@ func wsTableHeader(c *ui.Context, st *wsContentState, items []wsRowItem) {
 					ui.Text(c, "Name").FontSize(m.FontXS).FontWeight(500).SingleLine()
 					switch st.sortOrder {
 					case wsSortAsc:
-						ui.Text(c, "↑").FontSize(m.FontXS).TextColor(tk.Accent).SingleLine()
+						ui.Text(c, "↑").FontSize(m.FontXS).TextColor(tk.Focus).SingleLine()
 					case wsSortDesc:
-						ui.Text(c, "↓").FontSize(m.FontXS).TextColor(tk.Accent).SingleLine()
+						ui.Text(c, "↓").FontSize(m.FontXS).TextColor(tk.Focus).SingleLine()
 					}
 				})
 			})
 
 			wsHeaderCell(c, "Creator", wsColCreatorW)
-			wsHeaderCell(c, "Contributors", wsColContribW)
 			wsHeaderCell(c, "Last activity", wsColActiveW)
-			wsHeaderCell(c, "Access", wsColAccessW)
-			wsHeaderCell(c, "Your role", wsColRoleW)
 
 			// 右侧操作列占位
 			ui.Box(c).Width(wsColActionW)
@@ -630,18 +507,18 @@ func wsTableRow(c *ui.Context, db *store.Store, r nav.Navigator, st *wsContentSt
 	m, tk := thV2.Metrics, thV2.Of(c)
 
 	isChecked := st.checked[item.ID]
-	isStarred := st.starred[item.ID]
 
 	row := ui.Row(c.Key("ws-row-"+string(item.ID))).
-		FillWidth().Height(52).AlignItems(ui.Center).
+		FillWidth().Height(50).PaddingX(wsRowPadX).AlignItems(ui.Center).
 		BorderWidth(0, 0, m.Border, 0).BorderColor(tk.BgSubtle).
 		Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 
+	hovered := row.Hovered()
 	switch {
 	case isChecked:
 		row.Background(tk.AccentSoft)
-	case row.Hovered():
-		row.Background(tk.BgBase.Mix(tk.TextPrimary, 0.035))
+	case hovered:
+		row.Background(tk.BgBase.Mix(tk.TextPrimary, 0.04))
 	default:
 		row.Background(ui.Transparent)
 	}
@@ -651,7 +528,7 @@ func wsTableRow(c *ui.Context, db *store.Store, r nav.Navigator, st *wsContentSt
 			_ = db.SetActiveWorkspace(item.ID)
 		}
 		if r != nil {
-			r.Push(routes.Collections)
+			r.Push(routes.WorkbenchCollectionsOf(string(item.ID)))
 		}
 	}
 
@@ -677,8 +554,8 @@ func wsTableRow(c *ui.Context, db *store.Store, r nav.Navigator, st *wsContentSt
 			})
 		})
 
-		// 2. Name 列（26×26 圆形浅底图标 + 双行名称/类型，点击进入工作台）
-		ui.Row(c).Grow(1).MinWidth(220).AlignItems(ui.Center).Padding(0, m.Space2, 0, 0).Children(func() {
+		// 2. Name 列（26×26 圆形图标：支持本地自定义图片替换默认图标 + 双行名称/类型）
+		ui.Row(c).Grow(1).MinWidth(240).AlignItems(ui.Center).Padding(0, m.Space2, 0, 0).Children(func() {
 			nameBtn := ui.ButtonBase(c.Key("ws-open-"+string(item.ID))).
 				FillWidth().Justify(ui.Start).AlignItems(ui.Center).
 				Gap(10).Cursor(ui.CursorPointer).
@@ -687,11 +564,7 @@ func wsTableRow(c *ui.Context, db *store.Store, r nav.Navigator, st *wsContentSt
 				openWorkspace()
 			}
 			nameBtn.Children(func() {
-				ui.Box(c).Size(26, 26).Radius(m.RadiusFull).
-					Background(tk.BgSubtle).Center().Shrink(0).
-					Children(func() {
-						ui.Icon(c, icons.LayoutGrid).FontSize(m.IconSM).TextColor(tk.TextSecondary)
-					})
+				wsIconBadge(c, st, item.Icon, 26, false)
 
 				ui.Column(c).Gap(1).Grow(1).Children(func() {
 					ui.Text(c, item.Name).FontSize(m.FontSM).FontWeight(600).
@@ -702,35 +575,20 @@ func wsTableRow(c *ui.Context, db *store.Store, r nav.Navigator, st *wsContentSt
 			})
 		})
 
-		// 3. Creator 列（暖色调圆形头像 + 名称）
+		// 3. Creator 列（淡科技蓝圆点 + 名称，一期离线暂写死 "You"）
 		ui.Row(c).Width(wsColCreatorW).AlignItems(ui.Center).Gap(m.Space15).Children(func() {
 			ui.Box(c).Size(18, 18).Radius(m.RadiusFull).Shrink(0).
-				Background(tk.BgBase.Mix(tk.Accent, 0.22))
+				Background(tk.BgBase.Mix(tk.Accent, 0.24))
 			ui.Text(c, item.Creator).FontSize(m.FontSM).TextColor(tk.TextPrimary).SingleLine()
 		})
 
-		// 4. Contributors 列
-		ui.Row(c).Width(wsColContribW).AlignItems(ui.Center).Children(func() {
-			ui.Textf(c, "%d", item.Contributors).FontSize(m.FontSM).TextColor(tk.TextPrimary).SingleLine()
-		})
-
-		// 5. Last activity 列
+		// 4. Last activity 列
 		ui.Row(c).Width(wsColActiveW).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, item.LastActivity).FontSize(m.FontSM).TextColor(tk.TextPrimary).SingleLine()
+			ui.Text(c, item.LastActivity).FontSize(m.FontSM).TextColor(tk.TextSecondary).SingleLine()
 		})
 
-		// 6. Access 列
-		ui.Row(c).Width(wsColAccessW).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, item.Access).FontSize(m.FontSM).TextColor(tk.TextPrimary).SingleLine()
-		})
-
-		// 7. Your role 列
-		ui.Row(c).Width(wsColRoleW).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, item.Role).FontSize(m.FontSM).TextColor(tk.TextPrimary).SingleLine()
-		})
-
-		// 8. 右侧操作列：收藏星标 + 更多菜单
-		ui.Row(c).Width(wsColActionW).AlignItems(ui.Center).Justify(ui.End).Gap(m.Space1).Children(func() {
+		// 5. 右侧操作列：收藏星标（持久化） + 更多菜单（对齐设计稿 35/38）
+		ui.Row(c).Width(wsColActionW).AlignItems(ui.Center).Justify(ui.End).Gap(m.Space15).Children(func() {
 			starBtn := ui.ButtonBase(c.Key("ws-star-"+string(item.ID))).
 				Size(m.SizeMD, m.SizeMD).Center().Radius(m.RadiusSM).
 				Cursor(ui.CursorPointer).Role(ui.RoleToggleButton).
@@ -743,17 +601,13 @@ func wsTableRow(c *ui.Context, db *store.Store, r nav.Navigator, st *wsContentSt
 				starBtn.Background(tk.BgHover)
 			}
 			starColor := tk.TextMuted
-			if isStarred {
+			if item.Starred {
 				starColor = tk.Warning
-			} else if starBtn.Hovered() {
+			} else if starBtn.Hovered() || hovered {
 				starColor = tk.TextPrimary
 			}
-			if starBtn.Clicked() {
-				if isStarred {
-					delete(st.starred, item.ID)
-				} else {
-					st.starred[item.ID] = true
-				}
+			if starBtn.Clicked() && db != nil {
+				_ = db.SetWorkspaceStarred(item.ID, !item.Starred)
 			}
 			starBtn.Children(func() {
 				ui.Icon(c, icons.Star).FontSize(m.IconSM).TextColor(starColor)
@@ -770,6 +624,8 @@ func wsTableRow(c *ui.Context, db *store.Store, r nav.Navigator, st *wsContentSt
 				moreBtn.Background(tk.BgSelected).TextColor(tk.TextPrimary)
 			case moreBtn.Hovered():
 				moreBtn.Background(tk.BgHover).TextColor(tk.TextPrimary)
+			case hovered:
+				moreBtn.TextColor(tk.TextPrimary)
 			default:
 				moreBtn.TextColor(tk.TextMuted)
 			}
@@ -872,25 +728,25 @@ func wsTableFooter(c *ui.Context, st *wsContentState, items []wsRowItem) {
 		}
 	}
 
-	ui.Row(c).FillWidth().Padding(m.Space3, 0).AlignItems(ui.Center).Gap(m.Space2).Children(func() {
+	ui.Row(c).FillWidth().Padding(m.Space3, wsRowPadX).AlignItems(ui.Center).Gap(m.Space2).Children(func() {
 		ui.Text(c, countLabel).FontSize(m.FontXS).TextColor(tk.TextMuted).SingleLine()
 
 		if checkedCount > 0 {
 			ui.Text(c, fmt.Sprintf("· %d selected", checkedCount)).
-				FontSize(m.FontXS).TextColor(tk.TextSecondary).SingleLine()
+				FontSize(m.FontXS).FontWeight(500).TextColor(tk.TextSecondary).SingleLine()
 
 			clr := ui.ButtonBase(c.Key("ws-clear-sel")).
 				Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Clear selection")
 			if clr.Hovered() {
-				clr.TextColor(tk.TextPrimary)
+				clr.TextColor(tk.AccentHover)
 			} else {
-				clr.TextColor(tk.Info)
+				clr.TextColor(tk.Focus)
 			}
 			if clr.Clicked() {
 				clear(st.checked)
 			}
 			clr.Children(func() {
-				ui.Text(c, "Clear selection").FontSize(m.FontXS).SingleLine()
+				ui.Text(c, "Clear selection").FontSize(m.FontXS).FontWeight(500).SingleLine()
 			})
 		}
 	})
@@ -1048,7 +904,6 @@ func wsDeleteDialog(c *ui.Context, db *store.Store, st *wsContentState) {
 						}
 					}
 					delete(st.checked, st.deleteID)
-					delete(st.starred, st.deleteID)
 					st.deleteErr = ""
 					st.deleteOpen = false
 				}
@@ -1068,7 +923,7 @@ func wsPrimaryButton(c *ui.Context, key, label string, disabled bool) ui.Element
 		Radius(m.RadiusSM).Role(ui.RoleButton).Label(label).
 		Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 	if disabled {
-		b.Disabled(true).Background(tk.BgBase.Mix(tk.Accent, 0.45))
+		b.Disabled(true).Background(tk.BgBase.Mix(tk.Accent, 0.35))
 	} else {
 		b.Cursor(ui.CursorPointer)
 		switch {
@@ -1120,8 +975,10 @@ func filteredWorkspaces(db *store.Store, st *wsContentState) []wsRowItem {
 	out := make([]wsRowItem, 0, len(snap.Workspaces))
 
 	for _, w := range snap.Workspaces {
-		wsType := st.typeOf(w.ID)
-		access := accessLabelFor(wsType)
+		wsType := strings.TrimSpace(w.Type)
+		if wsType == "" {
+			wsType = "Internal"
+		}
 
 		// 顶部 Tab 筛选
 		switch st.tab {
@@ -1140,11 +997,11 @@ func filteredWorkspaces(db *store.Store, st *wsContentState) []wsRowItem {
 			continue
 		}
 
-		// 关键字搜索
+		// 关键字搜索（匹配名称、类型、描述）
 		if kw != "" {
 			match := strings.Contains(strings.ToLower(w.Name), kw) ||
 				strings.Contains(strings.ToLower(wsType), kw) ||
-				strings.Contains(strings.ToLower(access), kw)
+				strings.Contains(strings.ToLower(w.Description), kw)
 			if !match {
 				continue
 			}
@@ -1155,11 +1012,10 @@ func filteredWorkspaces(db *store.Store, st *wsContentState) []wsRowItem {
 			Name:         w.Name,
 			Default:      w.Default,
 			Type:         wsType,
+			Icon:         w.Icon,
+			Starred:      w.Starred,
 			Creator:      "You",
-			Contributors: 1,
-			LastActivity: "Just now",
-			Access:       access,
-			Role:         "Admin",
+			LastActivity: formatRelativeActivity(w.UpdatedAt),
 		})
 	}
 
@@ -1177,38 +1033,3 @@ func filteredWorkspaces(db *store.Store, st *wsContentState) []wsRowItem {
 	return out
 }
 
-// hubPlaceholder 为管理端尚未出独立设计帧的侧栏页面渲染统一空态骨架。
-func hubPlaceholder(c *ui.Context, activeMenu string) {
-	m, tk := thV2.Metrics, thV2.Of(c)
-
-	type meta struct {
-		title string
-		desc  string
-		icon  *ui.SVG
-	}
-	info := map[string]meta{
-		"Home":                 {"Home", "Recent workspaces and team activity will appear here.", icons.House},
-		"ApplicationInventory": {"Application Inventory", "Discover and track applications across your team.", icons.Boxes},
-		"APICatalog":           {"API Catalog", "Browse and manage your organization's API catalog.", icons.BookOpen},
-		"PrivateAPINetwork":    {"Private API Network", "Share internal APIs, collections, and workspaces with your team.", icons.Lock},
-		"PublicAPINetwork":     {"Public API Network", "Explore and publish public APIs for the community.", icons.Globe},
-		"AgentContext":         {"Agent Context", "Configure context and tools for AI agents.", icons.Sparkles},
-		"Integrations":         {"Integrations", "Connect third-party services and automate workflows.", icons.Plug},
-		"Reports":              {"Reports", "Review API usage, test runs, and workspace metrics.", icons.ChartColumn},
-	}[activeMenu]
-	if info.title == "" {
-		info = meta{title: activeMenu, desc: "This section is under construction.", icon: icons.LayoutGrid}
-	}
-
-	ui.Column(c).Fill().Padding(22, m.Space6).Background(tk.BgBase).Children(func() {
-		ui.Text(c, info.title).FontSize(m.FontXXL).Bold().TextColor(tk.TextPrimary).SingleLine()
-
-		ui.Column(c).Grow(1).FillWidth().Center().Gap(m.Space2).Children(func() {
-			ui.Box(c).Size(48, 48).Radius(m.RadiusFull).Background(tk.BgSubtle).Center().Children(func() {
-				ui.Icon(c, info.icon).FontSize(22).TextColor(tk.TextMuted)
-			})
-			ui.Text(c, info.title).FontSize(m.FontLG).FontWeight(600).TextColor(tk.TextPrimary).SingleLine()
-			ui.Text(c, info.desc).FontSize(m.FontSM).TextColor(tk.TextSecondary)
-		})
-	})
-}

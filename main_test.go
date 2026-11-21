@@ -26,14 +26,12 @@ func TestMain(m *testing.M) {
 // would.
 func TestView(t *testing.T) {
 	a := app.New()
+	t.Cleanup(a.Close)
 	tt := ui.NewTester(a.View, 1280, 800)
 	if !tt.HasText(locales.SwitchWorkspace()) {
 		t.Errorf("texts %q: the shell shows no workspace selector", tt.Texts())
 	}
-	if err := tt.Click(locales.RailHistory()); err != nil {
-		t.Fatal(err)
-	}
-	if !tt.HasText(locales.HistorySubtitle()) {
-		t.Errorf("texts %q: the router did not show the history page", tt.Texts())
+	if !tt.HasText("Workspaces") || !tt.HasText("Create workspace") {
+		t.Errorf("texts %q: expected initial HubLayout workspaces list", tt.Texts())
 	}
 }

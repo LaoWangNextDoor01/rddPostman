@@ -51,16 +51,16 @@ type Tokens struct {
 	TextMuted     ui.Color // 占位符、说明（#909090 / #858585）
 	TextDisabled  ui.Color // 禁用文字（#B5B5B5 / #636363）
 
-	// 强调色（组件稿标注）
-	Accent        ui.Color // 主按钮、选中、POST 方法（#FF6C37）
-	AccentHover   ui.Color // 主按钮 hover（#ED5B2A）
-	AccentPressed ui.Color // 主按钮按下（#D03E0A，配合内阴影）
-	AccentSoft    ui.Color // 强调浅底、选中行（#FFF1EB / #3A2A24，均为建议值）
+	// 强调色（科技蓝 #336FFF）
+	Accent        ui.Color // 主按钮、选中、勾选框（#336FFF）
+	AccentHover   ui.Color // 主按钮 hover（#225BEB / #4B82FF）
+	AccentPressed ui.Color // 主按钮按下（#1849CC / #225BEB）
+	AccentSoft    ui.Color // 强调浅底、选中行（#EBF1FF / #1D2842）
 	OnAccent      ui.Color // 主按钮之上的文字（#FFFFFF）
 
-	// 焦点（组件稿标注：聚焦 1px #097BED + 3px #E7F0FF 外环）
-	Focus     ui.Color // 聚焦边框（#097BED / #4C9AFF，Dark 建议值）
-	FocusRing ui.Color // 聚焦外环（#E7F0FF / #1E3A5F，Dark 建议值）
+	// 焦点（聚焦 1px #336FFF + 3px #DCE7FF 外环）
+	Focus     ui.Color // 聚焦边框（#336FFF / #5C8DFF）
+	FocusRing ui.Color // 聚焦外环（#DCE7FF / #1E315E）
 
 	// 语义色
 	Danger     ui.Color // 错误输入、删除（#EB2013 / #FF5F57）
@@ -100,14 +100,14 @@ var light = Tokens{
 	TextMuted:     ui.Hex("#909090"),
 	TextDisabled:  ui.Hex("#B5B5B5"),
 
-	Accent:        ui.Hex("#FF6C37"),
-	AccentHover:   ui.Hex("#ED5B2A"),
-	AccentPressed: ui.Hex("#D03E0A"),
-	AccentSoft:    ui.Hex("#FFF1EB"),
+	Accent:        ui.Hex("#336FFF"),
+	AccentHover:   ui.Hex("#225BEB"),
+	AccentPressed: ui.Hex("#1849CC"),
+	AccentSoft:    ui.Hex("#EBF1FF"),
 	OnAccent:      ui.Hex("#FFFFFF"),
 
-	Focus:     ui.Hex("#097BED"),
-	FocusRing: ui.Hex("#E7F0FF"),
+	Focus:     ui.Hex("#336FFF"),
+	FocusRing: ui.Hex("#DCE7FF"),
 
 	Danger:     ui.Hex("#EB2013"),
 	DangerSoft: ui.Hex("#FFEBE7"),
@@ -144,14 +144,14 @@ var dark = Tokens{
 	TextMuted:     ui.Hex("#858585"),
 	TextDisabled:  ui.Hex("#636363"),
 
-	Accent:        ui.Hex("#FF6C37"),
-	AccentHover:   ui.Hex("#ED5B2A"),
-	AccentPressed: ui.Hex("#D03E0A"),
-	AccentSoft:    ui.Hex("#3A2A24"),
+	Accent:        ui.Hex("#336FFF"),
+	AccentHover:   ui.Hex("#4B82FF"),
+	AccentPressed: ui.Hex("#225BEB"),
+	AccentSoft:    ui.Hex("#1D2842"),
 	OnAccent:      ui.Hex("#FFFFFF"),
 
-	Focus:     ui.Hex("#4C9AFF"),
-	FocusRing: ui.Hex("#1E3A5F"),
+	Focus:     ui.Hex("#5C8DFF"),
+	FocusRing: ui.Hex("#1E315E"),
 
 	Danger:     ui.Hex("#FF5F57"),
 	DangerSoft: ui.Hex("#3A2220"),

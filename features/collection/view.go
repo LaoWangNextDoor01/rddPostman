@@ -3,6 +3,7 @@ package collection
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -17,27 +18,57 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// View 绘制集合工作区。集合数据与当前活跃工作区均来自 store 快照。
+// WorkbenchSlots 定义外部 WorkbenchLayout 注入到分栏工作台的槽位。
+type WorkbenchSlots struct {
+	RenderLeft   func(renderCollections func(), openRequest func(nodeID string), openEnv func(envID domain.ID))
+	RenderEnvTab func(envID domain.ID)
+}
+
+// View 绘制集合工作区（保留默认单侧栏入口）。
 func View(c *ui.Context, db *store.Store, n nav.Navigator) {
+	WorkbenchView(c, db, n, "", WorkbenchSlots{})
+}
+
+// WorkbenchView 在外部传入的左侧栏容器与常驻右侧多 Tab 编辑区（支持 Request / Overview / Environment）
+// 之间建立分栏布局。当左侧在 Collections / History / Environments 间切换时，右侧主编辑区完全保持挂载不动。
+func WorkbenchView(
+	c *ui.Context,
+	db *store.Store,
+	n nav.Navigator,
+	wsID domain.ID,
+	slots WorkbenchSlots,
+) {
 	if db == nil {
 		return
 	}
 	snap := db.Snapshot()
-	ws := snap.ActiveWorkspace()
+	var ws *store.Workspace
+	if wsID != "" {
+		ws = snap.Workspace(wsID)
+	}
+	if ws == nil {
+		ws = snap.ActiveWorkspace()
+	}
 	if ws == nil {
 		return
 	}
 	workspaceID := ws.ID
 	workspaceName := ws.Name
 	m := theme.Metrics
-	root := ui.Box(c).Grow(1)
+	root := ui.Box(c).Fill()
 	state := *ui.Local(root, "workspace-"+string(workspaceID), newWorkspace)
 	width := ui.Local(root, "sidebar-width", func() float32 {
 		return m.SidebarWidth
 	})
+	if *width < 180 {
+		*width = 180
+	} else if *width > 480 {
+		*width = 480
+	}
 	collections := ws.Collections
 	environments := ws.Environments
 	selectedEnv := ws.SelectedEnvironmentID
+	state.pruneMissingEnvs(environments)
 	props := pageProps{
 		workspaceID:   workspaceID,
 		workspaceName: workspaceName,
@@ -47,13 +78,16 @@ func View(c *ui.Context, db *store.Store, n nav.Navigator) {
 		state:         state,
 	}
 	props.actions = pageActions{
-		// 创建集合
-		createCollection: func(name, desc string) (*domain.Collection, error) {
-			coll, err := db.CreateCollection(workspaceID, name, desc)
-			if err != nil {
-				return nil, err
+		// 新建集合并直接以 Tab 形式在右侧打开（模仿 Postman，不弹模态框）
+		createCollectionTab: func() {
+			name := nextCollectionName(collections)
+			coll, err := db.CreateCollection(workspaceID, name, "")
+			if err != nil || coll == nil {
+				return
 			}
-			return coll, nil
+			state.openTab(string(coll.ID))
+			state.selected = string(coll.ID)
+			state.focusNewCollID = string(coll.ID)
 		},
 		createNode: func(targetID domain.ID, kind domain.Kind) {
 			createNodeIn(db, state, collections, kind, string(targetID))
@@ -139,6 +173,9 @@ func View(c *ui.Context, db *store.Store, n nav.Navigator) {
 			state.selected = id
 			state.openTab(id)
 		},
+		openEnv: func(id domain.ID) {
+			state.openTab(EnvTabID(id))
+		},
 		rename: func(id, name string) {
 			coll, node := findNode(collections, id)
 			if coll == nil {
@@ -165,8 +202,72 @@ func View(c *ui.Context, db *store.Store, n nav.Navigator) {
 				n.Description = desc
 			})
 		},
+		updateAuth: func(id string, auth domain.Auth) {
+			coll, node := findNode(collections, id)
+			if coll == nil {
+				return
+			}
+			if node == nil {
+				_ = db.UpdateCollection(coll.ID, func(c *domain.Collection) {
+					c.Auth = auth
+				})
+				return
+			}
+			_ = db.UpdateNode(coll.ID, node.ID, func(n *domain.Node) {
+				n.Auth = auth
+			})
+		},
+		updateVariables: func(id string, vars []domain.KV) {
+			coll, node := findNode(collections, id)
+			if coll == nil {
+				return
+			}
+			if node == nil {
+				_ = db.UpdateCollection(coll.ID, func(c *domain.Collection) {
+					c.Variables = vars
+				})
+				return
+			}
+			_ = db.UpdateNode(coll.ID, node.ID, func(n *domain.Node) {
+				n.Variables = vars
+			})
+		},
 		updateNode: func(collID, nodeID domain.ID, fn func(*domain.Node)) {
 			_ = db.UpdateNode(collID, nodeID, fn)
+		},
+		saveRequest: func(id string, req domain.Request, auth domain.Auth, name string) {
+			// 1. 如果该请求是尚未入库的草稿
+			if state != nil && state.drafts != nil {
+				if draft, ok := state.drafts[id]; ok {
+					node := draft.node
+					if strings.TrimSpace(name) != "" {
+						node.Name = strings.TrimSpace(name)
+					}
+					node.Request = req.Clone()
+					node.Auth = auth
+					if err := db.AddNode(draft.collID, draft.parentID, node); err != nil {
+						return
+					}
+					delete(state.drafts, id)
+					state.setUnsaved(id, false)
+					return
+				}
+			}
+
+			// 2. 如果是已有持久化节点
+			coll, node := findNode(collections, id)
+			if coll != nil && node != nil {
+				_ = db.UpdateNode(coll.ID, node.ID, func(n *domain.Node) {
+					if strings.TrimSpace(name) != "" {
+						n.Name = strings.TrimSpace(name)
+					}
+					n.Request = req.Clone()
+					n.Auth = auth
+				})
+				if state != nil {
+					state.setUnsaved(id, false)
+				}
+			}
 		},
 		resolveAuth: func(collID, nodeID domain.ID) domain.Auth {
 			return db.ResolveAuth(collID, nodeID)
@@ -221,13 +322,47 @@ func View(c *ui.Context, db *store.Store, n nav.Navigator) {
 			}()
 			return cancel
 		},
-		navigate: n.Push,
+		renderEnvTab: slots.RenderEnvTab,
+		navigate: func(target string) {
+			if n != nil {
+				n.Push(target)
+			}
+		},
+	}
+	renderCollections := func() {
+		sidebar(c, props)
+	}
+	openEnv := func(envID domain.ID) {
+		state.openTab(EnvTabID(envID))
 	}
 	root.Children(func() {
 		ui.Split(c, width, func() {
-			sidebar(c, props)
+			if slots.RenderLeft != nil {
+				slots.RenderLeft(renderCollections, props.actions.openTab, openEnv)
+			} else {
+				renderCollections()
+			}
 		}, func() {
 			mainPane(c, props)
 		}).Fill().SplitReset(m.SidebarWidth)
 	})
+
+	importCurlDialog(c, props)
+	importPostmanDialog(c, props)
+}
+
+func nextCollectionName(existing []*domain.Collection) string {
+	used := make(map[string]bool, len(existing))
+	for _, c := range existing {
+		used[strings.ToLower(strings.TrimSpace(c.Name))] = true
+	}
+	if !used["new collection"] {
+		return "New Collection"
+	}
+	for i := 2; ; i++ {
+		cand := fmt.Sprintf("New Collection %d", i)
+		if !used[strings.ToLower(cand)] {
+			return cand
+		}
+	}
 }

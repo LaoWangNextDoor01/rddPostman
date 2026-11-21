@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -35,6 +36,12 @@ var (
 type Workspace struct {
 	ID                     domain.ID
 	Name                   string
+	Description            string
+	Type                   string
+	Icon                   string
+	Starred                bool
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
 	Default                bool
 	ReadOnly               bool
 	Collections            []*domain.Collection
@@ -341,9 +348,21 @@ func (s *Store) publishLocked() {
 		if st == nil {
 			continue
 		}
+		iconPath := st.ws.Icon
+		if iconPath != "" && !filepath.IsAbs(iconPath) {
+			if dir := s.backend.WorkspaceDir(st.ref); dir != "" {
+				iconPath = filepath.Join(dir, iconPath)
+			}
+		}
 		w := &Workspace{
 			ID:                    st.ws.ID,
 			Name:                  st.ws.Name,
+			Description:           st.ws.Description,
+			Type:                  st.ws.Type,
+			Icon:                  iconPath,
+			Starred:               st.ws.Starred,
+			CreatedAt:             st.ws.CreatedAt,
+			UpdatedAt:             st.ws.UpdatedAt,
 			Default:               ref.Default,
 			ReadOnly:              st.readOnly,
 			Collections:           append([]*domain.Collection(nil), st.collections...),

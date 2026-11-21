@@ -36,6 +36,7 @@ italic
 heading
 quote
 list
+list-filter
 list-ordered
 link
 strikethrough
@@ -61,3 +62,5 @@ users
 arrow-left
 arrow-right
 star
+file-plus
+menu
