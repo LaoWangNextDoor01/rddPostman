@@ -43,6 +43,12 @@ table
 check
 user-round
 bell
+upload
+download
+settings-2
+circle-question-mark
+info
+log-out
 
 # Hub 导航菜单（Home 菜单按钮，02 §7 映射表）
 layout-grid
@@ -54,3 +60,4 @@ chart-column
 users
 arrow-left
 arrow-right
+star

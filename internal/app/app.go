@@ -2,6 +2,8 @@
 package app
 
 import (
+	"log"
+
 	"rddpostman/components/theme"
 	v1 "rddpostman/components/v1"
 	"rddpostman/features/collection"
@@ -11,6 +13,7 @@ import (
 	"rddpostman/features/home"
 	"rddpostman/features/request"
 	"rddpostman/features/settings"
+	"rddpostman/features/workspace"
 	"rddpostman/internal/logger"
 	"rddpostman/internal/routes"
 	"rddpostman/internal/store"
@@ -42,7 +45,7 @@ type App struct {
 
 // New 创建应用状态，默认打开集合首页。
 func New() *App {
-	a := &App{router: ui.NewRouter(routeCollections)}
+	a := &App{router: ui.NewRouter(routeWorkspace)}
 	s, err := store.Open()
 	if err != nil {
 		logger.Error("打开本地数据失败: %v", err)
@@ -80,14 +83,17 @@ func (a *App) View(c *ui.Context) {
 func (a *App) content(c *ui.Context) {
 	tk := theme.Of(c)
 	ui.Box(c).Grow(1).Background(tk.BgBase).Children(func() {
+		log.Println(">> r 1")
+
 		a.router.View(c, func(r *ui.Route) {
+			log.Println(">> r 2", r)
 			switch {
 			case r.Match(routerHome):
 				r.Title(locales.RailHome())
 				home.View(c)
 			case r.Match(routeWorkspace):
 				r.Title(locales.WorkspaceTitle())
-				home.View(c)
+				workspace.View(c, a.store, a.router)
 			case r.Match(routeCollections):
 				r.Title(locales.CollectionsTitle())
 				collection.View(c, a.store, a.router)

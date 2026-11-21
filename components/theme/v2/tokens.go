@@ -91,7 +91,7 @@ var light = Tokens{
 	BgSelected:  ui.Hex("#E6E6E6"),
 	BgSurface:   ui.Hex("#FFFFFF"),
 
-	Border:        ui.Hex("#E6E6E6"),
+	Border:        ui.Hex("#EDEDED"),
 	BorderStrong:  ui.Hex("#A6A6A6"),
 	BorderPopover: ui.Hex("#D8D8D8"),
 

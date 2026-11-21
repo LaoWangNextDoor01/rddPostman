@@ -35,6 +35,9 @@ func Apply(base *ui.Theme, p ui.Preferences) *ui.Theme {
 	th.Warning = tk.Warning
 	th.Success = tk.Success
 
+	// 全局字体：现代复合字体栈（首推方案：西文 Inter 优先，中文平滑匹配 苹方 / 微软雅黑 / Segoe UI）
+	th.Font = "Inter, -apple-system, BlinkMacSystemFont, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Segoe UI, system-ui, sans-serif"
+
 	// 图标栏提示在指针停留 400ms 后出现，与设计稿一致。
 	th.TooltipDelay = 400 * time.Millisecond
 

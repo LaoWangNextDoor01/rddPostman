@@ -61,6 +61,85 @@ func (a *App) menuButton(c *ui.Context) {
 	fakeBtn.Children(func() {
 		ui.Icon(c, icons.ChevronDown).FontSize(m.IconLG)
 	})
+
+	open := ui.Local(fakeBtn, "open", func() bool {
+		return false
+	})
+
+	if fakeBtn.Clicked() {
+		*open = !*open
+	}
+
+	v2.Popover(c, fakeBtn, open, v2.PopoverOpts{}, func(panel ui.Element) {
+		ui.Column(c).Width(300).Children(func() {
+			ui.Column(c).Padding(m.Space2).Children(func() {
+				if v2.MenuButton(c, v2.MenuButtonProps{
+					Icon:  icons.Plus,
+					Key:   "New Request",
+					Label: "New Request",
+				}).Clicked() {
+					a.router.Push(routeCollections)
+					*open = false
+				}
+
+				if v2.MenuButton(c, v2.MenuButtonProps{
+					Icon:  icons.FolderPlus,
+					Key:   "New Collection",
+					Label: "New Collection",
+				}).Clicked() {
+					a.router.Push(routeCollections)
+					*open = false
+				}
+
+				if v2.MenuButton(c, v2.MenuButtonProps{
+					Icon:  icons.LayoutGrid,
+					Key:   "New Workspace",
+					Label: "New Workspace",
+				}).Clicked() {
+					a.router.Push(routeWorkspace)
+					*open = false
+				}
+			})
+
+			v2.PopoverDivider(c)
+
+			ui.Column(c).Padding(m.Space2).Children(func() {
+				v2.MenuButton(c, v2.MenuButtonProps{
+					Icon:  icons.Plus,
+					Key:   "Import",
+					Label: "Import",
+				})
+
+				v2.MenuButton(c, v2.MenuButtonProps{
+					Icon:  icons.Download,
+					Key:   "Export",
+					Label: "Export",
+				})
+			})
+
+			v2.PopoverDivider(c)
+
+			ui.Column(c).Padding(m.Space2).Children(func() {
+				v2.MenuButton(c, v2.MenuButtonProps{
+					Icon:  icons.Settings2,
+					Key:   "Settings",
+					Label: "Settings",
+				})
+
+				v2.MenuButton(c, v2.MenuButtonProps{
+					Icon:  icons.CircleHelp,
+					Key:   "Help",
+					Label: "Help",
+				})
+
+				v2.MenuButton(c, v2.MenuButtonProps{
+					Icon:  icons.CircleQuestionMark,
+					Key:   "About Postman",
+					Label: "About Postman",
+				})
+			})
+		})
+	})
 }
 
 // searchInput 是标题栏中间的全局搜索入口：默认灰底 + TextMuted，
@@ -197,6 +276,7 @@ func (a *App) workspaceSelector(c *ui.Context) {
 					}
 					if row.Clicked() {
 						_ = a.store.SetActiveWorkspace(v.ID)
+						a.router.Push(routeCollections)
 						*open = false
 					}
 					if cur.ID == v.ID {
@@ -219,17 +299,31 @@ func (a *App) workspaceSelector(c *ui.Context) {
 
 		// 底部操作行：高48，左右各一个按钮（图标+文字），中间 1px 竖分隔线。
 		ui.Row(c).FillWidth().Height(32).Children(func() {
-			ui.ButtonBase(c.Key("ws-create")).Grow(1).Height(32).
+			createBtn := ui.ButtonBase(c.Key("ws-create")).Grow(1).Height(32).
 				AlignItems(ui.Center).Justify(ui.Center).Gap(m.Space2).
-				Label("创建").Children(func() {
+				Label("创建")
+			if createBtn.Hovered() {
+				createBtn.Background(tk.BgHover)
+			}
+			createBtn.Children(func() {
 				ui.Icon(c, icons.Plus).FontSize(14).TextColor(tk.TextPrimary)
 				ui.Text(c, "创建").FontSize(m.FontMD).FontWeight(500).
 					TextColor(tk.TextPrimary)
 			})
+
 			ui.Box(c).Width(m.Border).Height(24).Background(tk.Border)
-			ui.ButtonBase(c.Key("ws-view-all")).Grow(1).Height(32).
+
+			viewAllBtn := ui.ButtonBase(c.Key("ws-view-all")).Grow(1).Height(32).
 				AlignItems(ui.Center).Justify(ui.Center).Gap(m.Space2).
-				Label("查看所有").Children(func() {
+				Label("查看所有")
+			if viewAllBtn.Hovered() {
+				viewAllBtn.Background(tk.BgHover)
+			}
+			if viewAllBtn.Clicked() {
+				a.router.Push(routeWorkspace)
+				*open = false
+			}
+			viewAllBtn.Children(func() {
 				ui.Icon(c, icons.LayoutGrid).FontSize(16).TextColor(tk.TextPrimary)
 				ui.Text(c, "查看所有").FontSize(m.FontMD).TextColor(tk.TextPrimary)
 			})

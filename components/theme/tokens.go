@@ -41,7 +41,7 @@ var light = Tokens{
 	HoverSurface:     ui.Hex("#F2F2F4"),
 	PopoverBg:        ui.Hex("#FFFFFF"),
 	PopoverItemHover: ui.Hex("#F2F2F4"),
-	Border:           ui.Hex("#E4E4E7"),
+	Border:           ui.Hex("#EDEDED"),
 	TextPrimary:      ui.Hex("#1F1F23"),
 	TextSecondary:    ui.Hex("#52525B"),
 	TextMuted:        ui.Hex("#9A9AA4"),
