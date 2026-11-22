@@ -28,7 +28,7 @@ var settingsNavItems = []settingsNavItem{
 
 // Dialog 在 RootLayout 层绘制全局设置弹窗（对齐 Pixso 24-全局框架-SettingDialog）。
 // 无论当前处于 HubLayout 还是 WorkbenchLayout，均可在不切换路由的情况下直接唤起。
-func Dialog(c *ui.Context, open *bool) {
+func Dialog(c *ui.Context, open *bool, initialTab ...string) {
 	if open == nil {
 		return
 	}
@@ -36,8 +36,21 @@ func Dialog(c *ui.Context, open *bool) {
 
 	ui.DialogBase(c, open, func(backdrop, panel ui.Element) {
 		activeTab := ui.Local(panel, "settings-active-tab", func() string {
+			if len(initialTab) > 0 && initialTab[0] != "" {
+				return initialTab[0]
+			}
 			return "general"
 		})
+		if len(initialTab) > 0 && initialTab[0] != "" {
+			req := initialTab[0]
+			lastReq := ui.Local(panel, "settings-last-req-tab", func() string {
+				return ""
+			})
+			if *lastReq != req {
+				*activeTab = req
+				*lastReq = req
+			}
+		}
 
 		backdrop.Background(tk.Overlay)
 		panel.Width(680).Height(480).Radius(m.RadiusLG).

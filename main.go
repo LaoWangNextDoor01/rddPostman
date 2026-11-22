@@ -10,6 +10,7 @@ import (
 )
 
 func main() {
+	mygo.App.SetName("rddPostman")
 	a := app.New()
 	mygo.App.OnQuit(a.Close)
 	mygo.App.WhenReady(func() {

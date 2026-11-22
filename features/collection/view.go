@@ -272,6 +272,12 @@ func WorkbenchView(
 		resolveAuth: func(collID, nodeID domain.ID) domain.Auth {
 			return db.ResolveAuth(collID, nodeID)
 		},
+		resolveVariables: func(collID, nodeID domain.ID) map[string]domain.Variable {
+			if db == nil {
+				return nil
+			}
+			return db.Variables(workspaceID, collID, nodeID)
+		},
 		sendRequest: func(collID, nodeID domain.ID, req domain.Request, auth domain.Auth, onDone func(*transport.Response)) func() {
 			ctx, cancel := context.WithCancel(context.Background())
 			// Context 是构建期的值，不能带进 goroutine；Services 可以。

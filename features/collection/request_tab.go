@@ -35,7 +35,12 @@ type reqSessionState struct {
 	scriptSubTab int     // 0: Pre-request Script, 1: Tests Script
 	methodOpen   bool    // 请求方式下拉菜单开关
 	authTypeOpen bool    // 认证方式下拉菜单开关
-	urlDraft     string        // URL 本地编辑草稿
+	urlDraft              string        // URL 本地编辑草稿
+	urlEditing            bool          // 是否正处于 URL 文本输入聚焦编辑态
+	urlFocusReq           bool          // 请求获得 URL 输入框焦点
+	autocompleteOpen      bool          // 变量输入自动补全下拉开关
+	autocompleteIndex     int           // 自动补全当前键盘选中索引
+	autocompletePrefix    string        // 触发自动补全时已键入的前缀
 	bodyRawDraft string        // Raw 请求体本地编辑草稿
 	bodyEditor   *editor.State // Raw 请求体代码编辑器状态
 	splitHeight  float32       // 请求区与响应区的上下分栏高度
@@ -469,6 +474,29 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 	tk2 := thV2.Of(c)
 	req := n.Request
 
+	var allVars map[string]domain.Variable
+	if props.actions.resolveVariables != nil {
+		var collID, nodeID domain.ID
+		if coll != nil {
+			collID = coll.ID
+		}
+		if n != nil {
+			nodeID = n.ID
+		}
+		allVars = props.actions.resolveVariables(collID, nodeID)
+	}
+
+	activeEnvName := "No Environment"
+	for _, env := range props.environments {
+		if env.ID == props.selectedEnv {
+			activeEnvName = env.Name
+			break
+		}
+	}
+
+	urlVars := extractURLVariables(state.urlDraft, allVars)
+
+
 	copyAsCurl := func() {
 		state.queryDraft = parseQueryFromURL(state.urlDraft)
 		state.pathVarsDraft = extractPathVariables(state.urlDraft, state.pathVarsDraft)
@@ -479,7 +507,9 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 		currReq.Headers = cleanKVList(state.headersDraft)
 		currReq.Body.Raw = state.bodyRawDraft
 		currReq.Body.Fields = cleanKVList(state.bodyFieldsDraft)
-		cmd := curl.ToCurl(currReq, n.Auth)
+
+		prepReq, _ := domain.Prepare(currReq, allVars)
+		cmd := curl.ToCurl(prepReq, n.Auth)
 		c.Services().WriteClipboard(cmd)
 	}
 
@@ -539,161 +569,245 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 		}
 	}
 
-	ui.Row(c).FillWidth().Height(28).Gap(6).AlignItems(ui.Center).Children(func() {
-		// 一体化 URL 容器（高 28、圆角 4、1px 描边，左侧内嵌 Method 下拉）
-		urlBox := ui.Row(c.Key("req-url-box-" + activeID)).Grow(1).Height(28).AlignItems(ui.Center).
-			Radius(4).Background(tk2.BgSurface).Border(1, tk2.Border)
-		var urlFocused bool
+	ui.Column(c).FillWidth().Gap(2).Children(func() {
+		ui.Row(c).FillWidth().Height(28).Gap(6).AlignItems(ui.Center).Children(func() {
+			// 一体化 URL 容器（高 28、圆角 4、1px 描边，左侧内嵌 Method 下拉）
+			urlBox := ui.Row(c.Key("req-url-box-" + activeID)).Grow(1).Height(28).AlignItems(ui.Center).
+				Radius(4).Background(tk2.BgSurface).Border(1, tk2.Border)
+			var urlFocused bool
 
-		urlBox.Children(func() {
-			methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
-			methodBtn := ui.ButtonBase(c.Key("req-method-btn-"+activeID)).
-				Height(26).Padding(0, 8, 0, 10).Gap(4).AlignItems(ui.Center).
-				Radius(3).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(req.Method)
-			switch {
-			case methodBtn.Pressed():
-				methodBtn.Background(tk2.BgSelected)
-			case methodBtn.Hovered():
-				methodBtn.Background(tk2.BgHover)
-			}
-			if methodBtn.Clicked() {
-				state.methodOpen = !state.methodOpen
-			}
-			methodBtn.Children(func() {
-				ui.Text(c, req.Method).FontSize(12).Bold().
-					TextColor(methodColor(tk, req.Method)).SingleLine()
-				ui.Icon(c, icons.ChevronDown).FontSize(10).TextColor(tk2.TextMuted)
-			})
-
-			v2.Popover(c, methodBtn, &state.methodOpen, v2.PopoverOpts{Width: 112}, func(panel ui.Element) {
-				ui.Column(c).Padding(4).Gap(2).Children(func() {
-					for _, mth := range methods {
-						mth := mth
-						row := ui.ButtonBase(c.Key("method-opt-" + mth)).FillWidth().Height(26).
-							PaddingX(8).Radius(4).AlignItems(ui.Center).Justify(ui.Start).
-							Cursor(ui.CursorPointer).Label(mth)
-						switch {
-						case row.Pressed():
-							row.Background(tk2.BgSelected)
-						case row.Hovered():
-							row.Background(tk2.BgHover)
-						}
-						if row.Clicked() {
-							if req.Method != mth {
-								req.Method = mth
-								props.state.setUnsaved(activeID, true)
-							}
-							state.methodOpen = false
-						}
-						row.Children(func() {
-							ui.Text(c, mth).FontSize(11).Bold().TextColor(methodColor(tk, mth))
-						})
-					}
-				})
-			})
-
-			// 细竖分隔线
-			ui.Box(c).Width(1).Height(16).Background(tk2.Border)
-
-			// URL 输入框
-			in := ui.TextInputBase(c.Key("req-url-input"), &state.urlDraft).Grow(1).FillHeight().
-				Padding(0, 10).FontSize(12).TextColor(tk2.TextPrimary).
-				Placeholder("Enter URL or paste text").PlaceholderColor(tk2.TextMuted).
-				Label("Request URL")
-			urlFocused = in.Focused()
-			if in.Submitted() || in.FocusLeft() {
-				state.queryDraft = parseQueryFromURL(state.urlDraft)
-				state.pathVarsDraft = extractPathVariables(state.urlDraft, state.pathVarsDraft)
-				trimmedURL := strings.TrimSpace(state.urlDraft)
-				if trimmedURL != req.URL {
-					props.state.setUnsaved(activeID, true)
-				}
-			}
-		})
-		if urlFocused {
-			urlBox.Border(1, tk2.Focus).Shadow(0, 0, 0, 2, tk2.FocusRing)
-		}
-
-		// 发送分裂主按钮（高 28、圆角 4、#336FFF 主色 + 30% 白叠主色分裂线 + 下拉箭头）
-		if state.sending {
-			cancelBtn := ui.ButtonBase(c.Key("req-cancel-btn")).
-				Height(28).PaddingX(14).Radius(4).Center().
-				Background(tk2.DangerSoft).Border(1, tk2.Danger).
-				Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Cancel")
-			if cancelBtn.Clicked() {
-				if state.cancelFn != nil {
-					state.cancelFn()
-				}
-				state.sending = false
-			}
-			cancelBtn.Children(func() {
-				ui.Text(c, "Cancel").FontSize(12).FontWeight(500).TextColor(tk2.Danger).SingleLine()
-			})
-		} else {
-			splitWrap := ui.Row(c.Key("req-send-split")).Height(28).Radius(4).Clip().
-				Background(tk2.Accent).AlignItems(ui.Center)
-			menuOpen := ui.Local(splitWrap, "send-menu-open", func() bool { return false })
-
-			splitWrap.Children(func() {
-				sendBtn := ui.ButtonBase(c.Key("req-send-btn")).
-					Height(28).PaddingX(16).Center().
-					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Send").
-					Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+			urlBox.Children(func() {
+				methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+				methodBtn := ui.ButtonBase(c.Key("req-method-btn-"+activeID)).
+					Height(26).Padding(0, 8, 0, 10).Gap(4).AlignItems(ui.Center).
+					Radius(3).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(req.Method)
 				switch {
-				case sendBtn.Pressed():
-					sendBtn.Background(tk2.AccentPressed)
-				case sendBtn.Hovered():
-					sendBtn.Background(tk2.AccentHover)
-				default:
-					sendBtn.Background(tk2.Accent)
+				case methodBtn.Pressed():
+					methodBtn.Background(tk2.BgSelected)
+				case methodBtn.Hovered():
+					methodBtn.Background(tk2.BgHover)
 				}
-				if sendBtn.Clicked() {
-					triggerSend()
+				if methodBtn.Clicked() {
+					state.methodOpen = !state.methodOpen
 				}
-				sendBtn.Children(func() {
-					ui.Text(c, "Send").FontSize(12).FontWeight(500).TextColor(tk2.OnAccent).SingleLine()
+				methodBtn.Children(func() {
+					ui.Text(c, req.Method).FontSize(12).Bold().
+						TextColor(methodColor(tk, req.Method)).SingleLine()
+					ui.Icon(c, icons.ChevronDown).FontSize(10).TextColor(tk2.TextMuted)
 				})
 
-				// 30% 白叠主色分裂线（对齐 Pixso 组件库 · Button 06）
-				ui.Box(c).Width(1).Height(28).Background(tk2.OnAccent.Alpha(0.3))
-
-				dropBtn := ui.ButtonBase(c.Key("req-send-more")).
-					Width(24).Height(28).Center().
-					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Send options").
-					Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
-				switch {
-				case dropBtn.Pressed():
-					dropBtn.Background(tk2.AccentPressed)
-				case dropBtn.Hovered():
-					dropBtn.Background(tk2.AccentHover)
-				default:
-					dropBtn.Background(tk2.Accent)
-				}
-				if dropBtn.Clicked() {
-					*menuOpen = !*menuOpen
-				}
-				dropBtn.Children(func() {
-					ui.Icon(c, icons.ChevronDown).FontSize(11).TextColor(tk2.OnAccent)
-				})
-
-				v2.Popover(c, dropBtn, menuOpen, v2.PopoverOpts{Width: 164}, func(panel ui.Element) {
+				v2.Popover(c, methodBtn, &state.methodOpen, v2.PopoverOpts{Width: 112}, func(panel ui.Element) {
 					ui.Column(c).Padding(4).Gap(2).Children(func() {
-						if v2.MenuButton(c, v2.MenuButtonProps{
-							Icon: icons.Send, Key: "send-opt-run", Label: "Send Request",
-						}).Clicked() {
-							*menuOpen = false
-							triggerSend()
-						}
-						if v2.MenuButton(c, v2.MenuButtonProps{
-							Icon: icons.Code, Key: "send-opt-curl", Label: "Copy as cURL",
-						}).Clicked() {
-							*menuOpen = false
-							copyAsCurl()
+						for _, mth := range methods {
+							mth := mth
+							row := ui.ButtonBase(c.Key("method-opt-" + mth)).FillWidth().Height(26).
+								PaddingX(8).Radius(4).AlignItems(ui.Center).Justify(ui.Start).
+								Cursor(ui.CursorPointer).Label(mth)
+							switch {
+							case row.Pressed():
+								row.Background(tk2.BgSelected)
+							case row.Hovered():
+								row.Background(tk2.BgHover)
+							}
+							if row.Clicked() {
+								if req.Method != mth {
+									req.Method = mth
+									props.state.setUnsaved(activeID, true)
+								}
+								state.methodOpen = false
+							}
+							row.Children(func() {
+								ui.Text(c, mth).FontSize(11).Bold().TextColor(methodColor(tk, mth))
+							})
 						}
 					})
 				})
+
+				// 细竖分隔线
+				ui.Box(c).Width(1).Height(16).Background(tk2.Border)
+
+				// URL 编辑区：非聚焦且含完整变量时使用行内交互胶囊（画板 47/48/49），聚焦、正在输入未闭合变量或无变量时直接输入
+				prefix, hasUnclosed := detectUnclosedVariable(state.urlDraft)
+				hasCompleteVars := strings.Contains(state.urlDraft, "}}") && !hasUnclosed
+				if !state.urlEditing && hasCompleteVars {
+					renderTokenizedURLBar(c, props, activeID, state, allVars, activeEnvName)
+				} else {
+					in := ui.TextInputBase(c.Key("req-url-input"), &state.urlDraft).Grow(1).FillHeight().
+						Padding(0, 8).FontSize(12).TextColor(tk2.TextPrimary).
+						Placeholder("Enter URL or paste text").PlaceholderColor(tk2.TextMuted).
+						Label("Request URL")
+					if state.urlFocusReq {
+						in.Focus()
+						state.urlFocusReq = false
+					}
+					urlFocused = in.Focused()
+
+					// 输入框内实时变量语法着色
+					var ranges []ui.TextRange
+					for _, v := range urlVars {
+						token := "{{" + v.Name + "}}"
+						start := 0
+						u := state.urlDraft
+						for {
+							pos := strings.Index(u[start:], token)
+							if pos < 0 {
+								break
+							}
+							idx := start + pos
+							clr := tk2.Accent
+							if !v.Resolved {
+								clr = tk2.Danger
+							}
+							ranges = append(ranges, ui.TextRange{
+								Start:  idx,
+								End:    idx + len(token),
+								Color:  clr,
+								Weight: 600,
+							})
+							start = idx + len(token)
+						}
+					}
+					if len(ranges) > 0 {
+						in.TextRanges(ranges...)
+					}
+
+					// 输入 {{ 时的智能下拉补全检测与快捷键监听（对齐画板 50）
+					if hasUnclosed {
+						state.autocompleteOpen = true
+						state.autocompletePrefix = prefix
+						allList := allAvailableVariables(allVars)
+						filtered := filterVariables(allList, prefix)
+						if len(filtered) > 0 {
+							if in.Shortcut(0, ui.KeyDown) {
+								state.autocompleteIndex = (state.autocompleteIndex + 1) % len(filtered)
+							}
+							if in.Shortcut(0, ui.KeyUp) {
+								state.autocompleteIndex = (state.autocompleteIndex - 1 + len(filtered)) % len(filtered)
+							}
+							if in.Shortcut(0, ui.KeyEnter) {
+								if state.autocompleteIndex >= 0 && state.autocompleteIndex < len(filtered) {
+									completeVariableInURL(state, filtered[state.autocompleteIndex].Name)
+									props.state.setUnsaved(activeID, true)
+									state.urlEditing = false
+								}
+							}
+						}
+						if in.Shortcut(0, ui.KeyEscape) {
+							state.autocompleteOpen = false
+						}
+					} else {
+						state.autocompleteOpen = false
+					}
+
+					if in.Submitted() || in.FocusLeft() {
+						state.queryDraft = parseQueryFromURL(state.urlDraft)
+						state.pathVarsDraft = extractPathVariables(state.urlDraft, state.pathVarsDraft)
+						trimmedURL := strings.TrimSpace(state.urlDraft)
+						if trimmedURL != req.URL {
+							props.state.setUnsaved(activeID, true)
+						}
+						state.urlEditing = false
+						state.autocompleteOpen = false
+					}
+				}
 			})
-		}
+			if urlFocused {
+				urlBox.Border(1, tk2.Focus).Shadow(0, 0, 0, 2, tk2.FocusRing)
+			}
+
+			// 如果正处于自动补全态，呼出画板 50 补全下拉浮层
+			if state.autocompleteOpen {
+				renderVariableAutocompleteDropdown(c, urlBox, state, allVars, activeEnvName, func(varName string) {
+					completeVariableInURL(state, varName)
+					props.state.setUnsaved(activeID, true)
+					state.urlFocusReq = false
+					state.urlEditing = false
+				})
+			}
+
+			// 发送分裂主按钮（高 28、圆角 4、#336FFF 主色 + 30% 白叠主色分裂线 + 下拉箭头）
+			if state.sending {
+				cancelBtn := ui.ButtonBase(c.Key("req-cancel-btn")).
+					Height(28).PaddingX(14).Radius(4).Center().
+					Background(tk2.DangerSoft).Border(1, tk2.Danger).
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Cancel")
+				if cancelBtn.Clicked() {
+					if state.cancelFn != nil {
+						state.cancelFn()
+					}
+					state.sending = false
+				}
+				cancelBtn.Children(func() {
+					ui.Text(c, "Cancel").FontSize(12).FontWeight(500).TextColor(tk2.Danger).SingleLine()
+				})
+			} else {
+				splitWrap := ui.Row(c.Key("req-send-split")).Height(28).Radius(4).Clip().
+					Background(tk2.Accent).AlignItems(ui.Center)
+				menuOpen := ui.Local(splitWrap, "send-menu-open", func() bool { return false })
+
+				splitWrap.Children(func() {
+					sendBtn := ui.ButtonBase(c.Key("req-send-btn")).
+						Height(28).PaddingX(16).Center().
+						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Send").
+						Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+					switch {
+					case sendBtn.Pressed():
+						sendBtn.Background(tk2.AccentPressed)
+					case sendBtn.Hovered():
+						sendBtn.Background(tk2.AccentHover)
+					default:
+						sendBtn.Background(tk2.Accent)
+					}
+					if sendBtn.Clicked() {
+						triggerSend()
+					}
+					sendBtn.Children(func() {
+						ui.Text(c, "Send").FontSize(12).FontWeight(500).TextColor(tk2.OnAccent).SingleLine()
+					})
+
+					// 30% 白叠主色分裂线（对齐 Pixso 组件库 · Button 06）
+					ui.Box(c).Width(1).Height(28).Background(tk2.OnAccent.Alpha(0.3))
+
+					dropBtn := ui.ButtonBase(c.Key("req-send-more")).
+						Width(24).Height(28).Center().
+						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Send options").
+						Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+					switch {
+					case dropBtn.Pressed():
+						dropBtn.Background(tk2.AccentPressed)
+					case dropBtn.Hovered():
+						dropBtn.Background(tk2.AccentHover)
+					default:
+						dropBtn.Background(tk2.Accent)
+					}
+					if dropBtn.Clicked() {
+						*menuOpen = !*menuOpen
+					}
+					dropBtn.Children(func() {
+						ui.Icon(c, icons.ChevronDown).FontSize(11).TextColor(tk2.OnAccent)
+					})
+
+					v2.Popover(c, dropBtn, menuOpen, v2.PopoverOpts{Width: 164}, func(panel ui.Element) {
+						ui.Column(c).Padding(4).Gap(2).Children(func() {
+							if v2.MenuButton(c, v2.MenuButtonProps{
+								Icon: icons.Send, Key: "send-opt-run", Label: "Send Request",
+							}).Clicked() {
+								*menuOpen = false
+								triggerSend()
+							}
+							if v2.MenuButton(c, v2.MenuButtonProps{
+								Icon: icons.Code, Key: "send-opt-curl", Label: "Copy as cURL",
+							}).Clicked() {
+								*menuOpen = false
+								copyAsCurl()
+							}
+						})
+					})
+				})
+			}
+		})
+
+
 	})
 }
 

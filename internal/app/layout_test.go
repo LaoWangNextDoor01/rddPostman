@@ -12,6 +12,7 @@ import (
 	"rddpostman/internal/store"
 	"rddpostman/locales"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -321,6 +322,7 @@ func TestDualLayoutHubAndWorkbench(t *testing.T) {
 
 func TestCustomWindowsAppMenu(t *testing.T) {
 	a, _ := newTestApp(t)
+	a.SetForceWindowsMenu(true)
 	quitCalled := false
 	a.SetQuitFunc(func() {
 		quitCalled = true
@@ -372,5 +374,93 @@ func TestCustomWindowsAppMenu(t *testing.T) {
 	}
 	if !quitCalled {
 		t.Fatalf("expected quit function to be called on Quit menu item click")
+	}
+}
+
+func TestDarwinPlatformMenu(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.SetForceMacMenu(true)
+
+	// 1. 验证 macOS 原生应用菜单构建（6 个主菜单：AppMenu、File、Edit、View、Window、Help）
+	menu := a.buildMacMenu()
+	items := menu.Items()
+	if len(items) != 6 {
+		t.Fatalf("macOS menu items len = %d, want 6", len(items))
+	}
+
+	// 1.1 检查 App 菜单角色与偏好设置
+	if items[0].Role != mygo.RoleAppMenu {
+		t.Fatalf("items[0].Role = %q, want %q", items[0].Role, mygo.RoleAppMenu)
+	}
+	appSettings := menu.ItemByID("settings")
+	if appSettings == nil || appSettings.Accelerator != "Cmd+," {
+		t.Fatalf("missing or invalid App Settings item: %+v", appSettings)
+	}
+	appSettings.Click(appSettings, nil)
+	if !a.settingsRequested || a.settingsTab != "general" {
+		t.Fatalf("after settings click: requested=%v, tab=%q", a.settingsRequested, a.settingsTab)
+	}
+
+	// 1.2 检查 File 菜单动作项及快捷键
+	if items[1].Label != "File" {
+		t.Fatalf("items[1].Label = %q, want File", items[1].Label)
+	}
+	newReq := menu.ItemByID("new_request")
+	if newReq == nil || newReq.Accelerator != "Cmd+N" {
+		t.Fatalf("missing or invalid new_request item: %+v", newReq)
+	}
+	newCol := menu.ItemByID("new_collection")
+	if newCol == nil || newCol.Accelerator != "Shift+Cmd+N" {
+		t.Fatalf("missing or invalid new_collection item: %+v", newCol)
+	}
+	newWs := menu.ItemByID("new_workspace")
+	if newWs == nil {
+		t.Fatalf("missing new_workspace item")
+	}
+	newWs.Click(newWs, nil)
+	if got := a.Router().Path(); got != routes.HubWorkspaceNew {
+		t.Fatalf("after menu new_workspace click, path = %q, want %q", got, routes.HubWorkspaceNew)
+	}
+
+	importItem := menu.ItemByID("import")
+	if importItem == nil || importItem.Accelerator != "Cmd+O" {
+		t.Fatalf("missing or invalid import item: %+v", importItem)
+	}
+
+	// 1.3 检查标准系统菜单角色
+	if items[2].Role != mygo.RoleEditMenu {
+		t.Fatalf("items[2].Role = %q, want %q", items[2].Role, mygo.RoleEditMenu)
+	}
+	if items[3].Role != mygo.RoleViewMenu {
+		t.Fatalf("items[3].Role = %q, want %q", items[3].Role, mygo.RoleViewMenu)
+	}
+	if items[4].Role != mygo.RoleWindowMenu {
+		t.Fatalf("items[4].Role = %q, want %q", items[4].Role, mygo.RoleWindowMenu)
+	}
+
+	// 1.4 检查 Help 菜单与 About Postman
+	if items[5].Label != "Help" {
+		t.Fatalf("items[5].Label = %q, want Help", items[5].Label)
+	}
+	aboutPostman := menu.ItemByID("about_postman")
+	if aboutPostman == nil {
+		t.Fatalf("missing about_postman item")
+	}
+	aboutPostman.Click(aboutPostman, nil)
+	if !a.settingsRequested || a.settingsTab != "about" {
+		t.Fatalf("after about click: requested=%v, tab=%q", a.settingsRequested, a.settingsTab)
+	}
+
+	// 2. 验证 macOS 下窗口内标题栏隐藏汉堡按钮，避免与系统交通灯冲突
+	tt := ui.NewTester(a.View, 1280, 800)
+	if tt.HasText("App Menu") {
+		t.Fatalf("on macOS, title bar should not render hamburger App Menu button")
+	}
+
+	// 3. 验证触发 OpenSettings 时可正常展开设置弹窗并激活指定 Tab
+	a.OpenSettings("about")
+	tt.Advance(100 * time.Millisecond)
+	if !tt.HasText("Application") || !tt.HasText("rddPostman") {
+		t.Fatalf("expected about settings dialog to be opened, got texts: %q", tt.Texts())
 	}
 }

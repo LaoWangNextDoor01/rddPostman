@@ -38,7 +38,9 @@ func (a *App) titleBar(c *ui.Context, settingsOpen *bool) {
 		BorderWidth(0, 0, m.Border, 0).BorderColor(tk.Border).
 		DragWindow().
 		Children(func() {
-			a.menuButton(c, settingsOpen)
+			if a.showWindowsMenu() {
+				a.menuButton(c, settingsOpen)
+			}
 			a.navButtons(c)
 			a.workspaceSelector(c)
 			ui.Spacer(c)

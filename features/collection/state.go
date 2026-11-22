@@ -37,6 +37,7 @@ type pageActions struct {
 	saveRequest       func(id string, req domain.Request, auth domain.Auth, name string)
 	sendRequest       func(collID, nodeID domain.ID, req domain.Request, auth domain.Auth, onDone func(*transport.Response)) func()
 	resolveAuth       func(collID, nodeID domain.ID) domain.Auth
+	resolveVariables  func(collID, nodeID domain.ID) map[string]domain.Variable
 	renderEnvTab      func(envID domain.ID)
 	navigate          func(path string)
 }

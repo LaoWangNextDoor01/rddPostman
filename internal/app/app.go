@@ -2,6 +2,9 @@
 package app
 
 import (
+	"runtime"
+	"sync"
+
 	"rddpostman/components/theme"
 	"rddpostman/features/demo"
 	"rddpostman/features/settings"
@@ -16,9 +19,14 @@ import (
 
 // App 保存窗口级状态。
 type App struct {
-	router *ui.Router
-	store  *store.Store
-	quitFn func()
+	router            *ui.Router
+	store             *store.Store
+	quitFn            func()
+	mu                sync.Mutex
+	settingsRequested bool
+	settingsTab       string
+	forceMacMenu      bool
+	forceWindowsMenu  bool
 }
 
 // New 创建应用状态，默认进入 (hub) 工作空间列表页。
@@ -36,10 +44,12 @@ func New() *App {
 
 // NewWithStore 使用指定的 Store 实例创建应用（便于测试隔离临时数据目录）。
 func NewWithStore(s *store.Store) *App {
-	return &App{
+	a := &App{
 		router: ui.NewRouter(routes.HubWorkspaces),
 		store:  s,
 	}
+	a.InitPlatformMenu()
+	return a
 }
 
 // Router 返回应用根路由（便于测试断言路径与历史栈）。
@@ -62,6 +72,49 @@ func (a *App) Close() {
 // SetQuitFunc 供测试拦截应用退出（避免在单元测试中直接退出进程）。
 func (a *App) SetQuitFunc(fn func()) {
 	a.quitFn = fn
+}
+
+// OpenSettings 标记唤起全局设置弹窗，并可选指定目标 Tab（例如 "general", "about"）。
+func (a *App) OpenSettings(tab ...string) {
+	a.mu.Lock()
+	a.settingsRequested = true
+	if len(tab) > 0 && tab[0] != "" {
+		a.settingsTab = tab[0]
+	} else {
+		a.settingsTab = "general"
+	}
+	a.mu.Unlock()
+
+	a.dispatch(nil, nil)
+}
+
+// SetForceMacMenu 供测试强制启用 macOS 菜单分支（隐藏标题栏汉堡菜单）。
+func (a *App) SetForceMacMenu(force bool) {
+	a.mu.Lock()
+	a.forceMacMenu = force
+	a.mu.Unlock()
+}
+
+// SetForceWindowsMenu 供测试强制启用 Windows 自绘汉堡菜单分支。
+func (a *App) SetForceWindowsMenu(force bool) {
+	a.mu.Lock()
+	a.forceWindowsMenu = force
+	a.mu.Unlock()
+}
+
+// showWindowsMenu 判断是否在标题栏渲染 Windows 汉堡菜单按钮：
+// macOS 环境下默认由系统顶部菜单栏承载，标题栏隐藏汉堡按钮；
+// Windows/Linux 环境下默认保留标题栏汉堡菜单与 300px 浮层。
+func (a *App) showWindowsMenu() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.forceWindowsMenu {
+		return true
+	}
+	if a.forceMacMenu {
+		return false
+	}
+	return runtime.GOOS != "darwin"
 }
 
 func (a *App) quit() {
@@ -92,6 +145,14 @@ func (a *App) View(c *ui.Context) {
 		return false
 	})
 
+	a.mu.Lock()
+	if a.settingsRequested {
+		*settingsOpen = true
+		a.settingsRequested = false
+	}
+	activeTab := a.settingsTab
+	a.mu.Unlock()
+
 	root.Children(func() {
 		a.titleBar(c, settingsOpen)
 		ui.Row(c).Grow(1).AlignItems(ui.Stretch).Children(func() {
@@ -101,7 +162,7 @@ func (a *App) View(c *ui.Context) {
 	})
 
 	// 全局设置弹窗挂载在 RootLayout 层，在 (hub) 与 (workbench) 任意位置均可无损唤起。
-	settings.Dialog(c, settingsOpen)
+	settings.Dialog(c, settingsOpen, activeTab)
 }
 
 // content 按路由前缀将页面分发到 (hub) 与 (workbench) 两套独立分组 Layout。
