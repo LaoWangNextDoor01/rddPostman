@@ -470,8 +470,22 @@ func TestBodyEditorModesAndBeautify(t *testing.T) {
 	tt.Click("Body")
 	tt.Frame()
 
+	// 验证 raw 模式下，格式下拉框 (JSON) 和 Beautify 处于同一行展示
+	if !tt.HasText("JSON") || !tt.HasText("Beautify") {
+		t.Fatalf("expected JSON format and Beautify on body mode row, got %q", tt.Texts())
+	}
+
 	// 点击 Beautify 格式化 JSON
 	tt.Click("Beautify")
+	tt.Frame()
+
+	// 验证 Raw 编辑器处于可编辑状态（模拟输入不会被重置抹除）
+	if reqNode.Request.Body.Raw == "" {
+		t.Fatal("Beautify 后请求体不应为空")
+	}
+
+	// 重新点击 raw 模式确保编辑器处于装载态
+	tt.Click("raw")
 	tt.Frame()
 
 	// 点击 binary 单选框
@@ -479,6 +493,23 @@ func TestBodyEditorModesAndBeautify(t *testing.T) {
 	tt.Frame()
 	if reqNode.Request.Body.Mode != domain.BodyMode("binary") {
 		t.Fatalf("expected binary mode, got %s", reqNode.Request.Body.Mode)
+	}
+
+	// 切回 raw 模式
+	tt.Click("raw")
+	tt.Frame()
+	if reqNode.Request.Body.Mode != domain.BodyMode("raw") {
+		t.Fatalf("expected raw mode, got %s", reqNode.Request.Body.Mode)
+	}
+
+	// 验证在 raw 模式下修改 state.bodyEditor 的 Buffer 内容并在下一帧保持（不被强制重置抹除）
+	sessionState := defaultSessionState(string(reqNode.ID), reqNode.Request, &reqNode.Auth)
+	sessionState.bodyEditor.Buffer.Reset(`{"edited": true}`)
+	if sessionState.bodyEditor.ReadOnly {
+		t.Fatal("Raw body editor must NOT be ReadOnly")
+	}
+	if sessionState.bodyEditor.Buffer.String() != `{"edited": true}` {
+		t.Fatalf("expected edited buffer content, got: %s", sessionState.bodyEditor.Buffer.String())
 	}
 }
 
@@ -618,7 +649,7 @@ func TestSidebarFlatHierarchy(t *testing.T) {
 	}
 }
 
-func TestTabsBarHorizontalScrollAndNoEnvSwitcher(t *testing.T) {
+func TestTabsBarHorizontalScrollAndEnvSwitcher(t *testing.T) {
 	ws := newWorkspace()
 	reqNode := &domain.Node{
 		ID:   "req-1",
@@ -654,9 +685,19 @@ func TestTabsBarHorizontalScrollAndNoEnvSwitcher(t *testing.T) {
 		t.Fatalf("tabsBar must render active tab, got: %q", tt.Texts())
 	}
 
-	// 2. 验证最右侧环境选择器已彻底去掉
-	if tt.HasText("No Environment") || tt.HasText("Production") {
-		t.Fatalf("tabsBar should NOT contain environment switcher, got texts: %q", tt.Texts())
+	// 2. 验证最右侧环境切换下拉按钮（无生效环境时显示 No Environment）
+	if !tt.HasText("No Environment") {
+		t.Fatalf("tabsBar should contain environment switcher 'No Environment', got texts: %q", tt.Texts())
+	}
+
+	// 3. 验证指定生效环境时显示环境名称
+	props.selectedEnv = "env-1"
+	tt2 := ui.NewTester(func(c *ui.Context) {
+		tabsBar(c, props)
+	}, 800, 40)
+	tt2.Frame()
+	if !tt2.HasText("Production") {
+		t.Fatalf("tabsBar should display active environment name 'Production', got texts: %q", tt2.Texts())
 	}
 }
 
@@ -684,6 +725,21 @@ func TestEmptyWorkspaceWhiteActionCards(t *testing.T) {
 	}
 	if !tt.HasText("New request") || !tt.HasText("New collection") || !tt.HasText("导入接口 (cURL)") {
 		t.Fatalf("mainPane should render four action cards, got: %q", tt.Texts())
+	}
+
+	// 当没有打开任何 Tab 时，Tab 栏的新建「+」按钮不显示
+	if _, ok := tt.Find("tab add"); ok {
+		t.Fatal("when tabs are empty, tab-add button should not be rendered")
+	}
+
+	// 当打开了 Tab 时，Tab 栏的新建「+」按钮应显示
+	ws.openTab("some-tab-id")
+	tt2 := ui.NewTester(func(c *ui.Context) {
+		tabsBar(c, props)
+	}, 900, 40)
+	tt2.Frame()
+	if _, ok := tt2.Find("tab add"); !ok {
+		t.Fatal("when tabs are open, tab-add button should be rendered")
 	}
 }
 
@@ -824,4 +880,110 @@ func TestDefaultRequestHeadersAndUserCustomization(t *testing.T) {
 		t.Fatalf("DefaultRequestHeaders 应返回 4 项，得到: %d", len(reset))
 	}
 }
+
+func TestRequestTabVerticalSplitScrollPanes(t *testing.T) {
+	ws := newWorkspace()
+	reqNode := &domain.Node{
+		ID:   "req-scroll-test",
+		Kind: domain.KindRequest,
+		Name: "Test Scrolling Request",
+		Request: &domain.Request{
+			Method: "GET",
+			URL:    "https://api.example.com/v1/users",
+			Headers: []domain.KV{
+				{Key: "Accept", Value: "application/json", Enabled: true},
+				{Key: "User-Agent", Value: "PostmanRuntime/7.39.0", Enabled: true},
+			},
+			Query: []domain.KV{
+				{Key: "page", Value: "1", Enabled: true},
+				{Key: "limit", Value: "20", Enabled: true},
+				{Key: "sort", Value: "desc", Enabled: true},
+			},
+		},
+	}
+	coll := &domain.Collection{
+		ID:    "coll-scroll-test",
+		Name:  "Scroll Test Coll",
+		Items: []*domain.Node{reqNode},
+	}
+	ws.openTab(string(reqNode.ID))
+	ws.selected = string(reqNode.ID)
+
+	props := pageProps{
+		workspaceID: "ws-1",
+		collections: []*domain.Collection{coll},
+		state:       ws,
+	}
+
+	// 1. 测试在较矮视口高度 (450px) 下渲染，验证上、下分栏的独立滚动容器正常工作
+	tt := ui.NewTester(func(c *ui.Context) {
+		requestTab(c, props, coll, reqNode, string(reqNode.ID))
+	}, 900, 450)
+	tt.Frame()
+
+	// 验证上半部核心组件（面包屑、URL 栏、Tabs）渲染完好
+	if !tt.HasText("Test Scrolling Request") {
+		t.Fatalf("Upper pane should render request title, got: %q", tt.Texts())
+	}
+	if !tt.HasText("Send") {
+		t.Fatalf("Upper pane should render Send button, got: %q", tt.Texts())
+	}
+	if !tt.HasText("Params") || !tt.HasText("Headers") {
+		t.Fatalf("Upper pane should render config tabs, got: %q", tt.Texts())
+	}
+
+	// 验证下半部响应面板渲染完好（空响应提示）
+	if !tt.HasText("Click Send to get a response") {
+		t.Fatalf("Lower pane should render response placeholder, got: %q", tt.Texts())
+	}
+
+	// 2. 模拟滚轮滚动上半部 Tab 下方内容区与下半部响应区，确保 ui.Scroll 容器能够正常接收滚轮事件而不崩溃
+	tt.Wheel(200, 180, 0, 50)
+	tt.Frame()
+	tt.Wheel(200, 350, 0, 50)
+	tt.Frame()
+
+	// 3. 验证顶部面包屑、URL 栏与 Tab 栏在滚动后依然固定存在
+	if !tt.HasText("Test Scrolling Request") || !tt.HasText("Send") || !tt.HasText("Params") {
+		t.Fatalf("Fixed header elements must stay visible, got: %q", tt.Texts())
+	}
+}
+
+func TestResponseCookiesLongTextEllipsisAndCopy(t *testing.T) {
+	cookies := []transport.ResponseCookie{
+		{
+			Name:     "jwt_token",
+			Value:    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+			Domain:   "very-long-domain-name-that-might-overflow.example.com",
+			Path:     "/api/v1/auth",
+			Expires:  "2026-12-31T23:59:59Z",
+			HttpOnly: true,
+		},
+	}
+
+	tt := ui.NewTester(func(c *ui.Context) {
+		renderResponseCookies(c, cookies, theme.Of(c), theme.Metrics)
+	}, 800, 300)
+	tt.Frame()
+
+	// 验证包含 Cookie 渲染与复制按钮
+	if !tt.HasText("jwt_token") {
+		t.Fatalf("expected cookie name 'jwt_token' in texts: %q", tt.Texts())
+	}
+	if !tt.HasText("Copy") {
+		t.Fatalf("expected Copy button, got texts: %q", tt.Texts())
+	}
+
+	// 测试点击复制按钮
+	if err := tt.Click("Copy jwt_token"); err != nil {
+		t.Fatalf("点击复制按钮失败: %v", err)
+	}
+	tt.Frame()
+
+	// 验证点击后显示 Copied
+	if !tt.HasText("Copied") {
+		t.Fatalf("点击后期望显示 'Copied', 实际: %q", tt.Texts())
+	}
+}
+
 

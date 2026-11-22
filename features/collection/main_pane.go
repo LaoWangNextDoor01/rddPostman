@@ -16,7 +16,7 @@ func mainPane(c *ui.Context, props pageProps) {
 	tk := thV2.Of(c)
 	state := props.state
 
-	ui.Column(c).Grow(1).Background(tk.BgSurface).Children(func() {
+	ui.Column(c).Grow(1).MinHeight(0).Background(tk.BgSurface).Children(func() {
 		// 顶部常驻 Tab 条（含多类型 Tabs、+ 与右侧环境切换器，对齐 Pixso 8-请求-Body）
 		tabsBar(c, props)
 		if envID, isEnv := parseEnvTabID(state.active); isEnv && props.actions.renderEnvTab != nil {

@@ -24,14 +24,28 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openEnv func(en
 	addOpen := ui.Local(col, "env-sb-add-open", func() bool { return false })
 	newName := ui.Local(col, "env-sb-new-name", func() string { return "" })
 	newErr := ui.Local(col, "env-sb-new-err", func() string { return "" })
+	selectedEnvID := ui.Local(col, "env-sb-selected-id", func() domain.ID { return "" })
 
 	var envs []domain.Environment
-	var selectedID domain.ID
+	var activeEnvID domain.ID
 	if db != nil {
 		snap := db.Snapshot()
 		if ws := snap.Workspace(wsID); ws != nil {
 			envs = ws.Environments
-			selectedID = ws.SelectedEnvironmentID
+			activeEnvID = ws.SelectedEnvironmentID
+		}
+	}
+
+	if *selectedEnvID != "" {
+		found := false
+		for _, e := range envs {
+			if e.ID == *selectedEnvID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			*selectedEnvID = ""
 		}
 	}
 
@@ -90,6 +104,7 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openEnv func(en
 						if openEnv != nil {
 							openEnv(env.ID)
 						}
+						*selectedEnvID = env.ID
 						*addOpen = false
 						*newName = ""
 						*newErr = ""
@@ -141,43 +156,53 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openEnv func(en
 			ui.Column(c).FillWidth().Padding(0, m.Space1, m.Space3, m.Space1).Gap(2).Children(func() {
 				for _, e := range envs {
 					env := e
-					isActive := env.ID == selectedID
+					isActive := env.ID == activeEnvID
+					isSelected := env.ID == *selectedEnvID
+
 					line := ui.Row(c.Key("wb-env-line-"+string(env.ID))).
 						FillWidth().Height(30).Padding(0, m.Space1).Gap(2).
 						Radius(m.RadiusSM).AlignItems(ui.Center)
-					if isActive {
+					if isSelected {
 						line.Background(tk.BgSelected)
 					} else if line.Hovered() {
 						line.Background(tk.BgHover)
 					}
 
 					line.Children(func() {
-						// 左侧主点击区：在右侧打开该环境的编辑 Tab
+						// 左侧主点击区：在右侧打开该环境的编辑 Tab，并将该项设为选中态
 						row := ui.ButtonBase(c.Key("wb-env-row-"+string(env.ID))).
 							Grow(1).FillHeight().Padding(0, m.Space15).Gap(m.Space2).
 							AlignItems(ui.Center).Justify(ui.Start).
 							Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(env.Name)
-						if row.Clicked() && openEnv != nil {
-							openEnv(env.ID)
+						if row.Clicked() {
+							*selectedEnvID = env.ID
+							if openEnv != nil {
+								openEnv(env.ID)
+							}
 						}
 						row.Children(func() {
-							iconColor := tk.TextMuted
-							if isActive {
-								iconColor = tk.Accent
+							iconColor := tk.TextSecondary
+							if isSelected {
+								iconColor = tk.TextPrimary
 							}
 							ui.Icon(c, icons.Globe).FontSize(m.IconXS).TextColor(iconColor)
 							ui.Text(c, env.Name).FontSize(m.FontXS).
-								FontWeight(map[bool]int{true: 600, false: 400}[isActive]).
+								FontWeight(map[bool]int{true: 600, false: 400}[isSelected]).
 								TextColor(tk.TextPrimary).SingleLine().Grow(1)
 							ui.Text(c, fmt.Sprintf("%d", len(env.Vars))).
 								FontSize(10).TextColor(tk.TextMuted).SingleLine()
 						})
 
-						// 右侧独立按钮：一键切换激活环境（避免嵌套 ButtonBase）
+						// 右侧独立按钮：一键切换激活环境（仅当前生效的环境显示高亮对钩，其余项不显示任何对号）
 						actBtn := ui.ButtonBase(c.Key("wb-env-act-"+string(env.ID))).
 							Size(22, 22).Radius(m.RadiusSM).Center().
 							Cursor(ui.CursorPointer).Role(ui.RoleButton).
-							Label("Activate " + env.Name).Tooltip("Set active environment")
+							Label("Activate " + env.Name)
+						if isActive {
+							actBtn.Tooltip("Active environment (click to deactivate)")
+						} else {
+							actBtn.Tooltip("Set active environment")
+						}
 						if actBtn.Hovered() {
 							actBtn.Background(tk.BgHover)
 						}
@@ -189,8 +214,6 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openEnv func(en
 						actBtn.Children(func() {
 							if isActive {
 								ui.Icon(c, icons.Check).FontSize(12).TextColor(tk.Accent)
-							} else {
-								ui.Icon(c, icons.Check).FontSize(11).TextColor(tk.TextDisabled)
 							}
 						})
 					})

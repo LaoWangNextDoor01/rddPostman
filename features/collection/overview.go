@@ -54,7 +54,7 @@ func overviewTab(c *ui.Context, props pageProps, coll *domain.Collection, node *
 	if node != nil {
 		id = string(node.ID)
 	}
-	root := ui.Column(c).Grow(1).Background(tk2.BgSurface)
+	root := ui.Column(c).Grow(1).MinHeight(0).Background(tk2.BgSurface)
 	title := ui.Local(root, "title-edit", func() titleState { return titleState{id: id} })
 	if title.id != id {
 		*title = titleState{id: id}
