@@ -58,11 +58,11 @@ func tabsBar(c *ui.Context, props pageProps) {
 							Border(1, tk.Border).
 							Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.05))
 					case tab.Pressed():
-						tab.Background(tk.BgSelected)
+						tab.Background(tk.BgSelected).Border(1, ui.Transparent)
 					case tab.Hovered():
-						tab.Background(tk.BgHover)
+						tab.Background(tk.BgHover).Border(1, ui.Transparent)
 					default:
-						tab.Background(ui.Transparent)
+						tab.Background(ui.Transparent).Border(1, ui.Transparent)
 					}
 					if tab.Clicked() {
 						props.actions.openTab(tabID)
@@ -74,6 +74,47 @@ func tabsBar(c *ui.Context, props pageProps) {
 						}
 						ui.Icon(c, icons.Globe).Size(12, 12).TextColor(iconColor)
 						ui.Text(c, env.Name).FontSize(m.FontXS).FontWeight(500).
+							TextColor(map[bool]ui.Color{true: tk.TextPrimary, false: tk.TextSecondary}[selected]).SingleLine()
+						tabCloseButton(c, tabID, state)
+					})
+					continue
+				}
+
+				// 开发者小工具 Tab
+				if toolID, isTool := parseToolTabID(tabID); isTool {
+					label := toolID
+					if props.actions.toolTabLabel != nil {
+						label = props.actions.toolTabLabel(toolID)
+					}
+					tab := ui.ButtonBase(c.Key("tab-"+tabID)).Height(26).MinWidth(60).
+						Padding(0, 8, 0, 10).Gap(6).
+						Radius(4).AlignItems(ui.Center).
+						Cursor(ui.CursorPointer).Label(label).Role(ui.RoleTab).
+						Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+					switch {
+					case selected:
+						tab.Background(tk.BgSurface).
+							Border(1, tk.Border).
+							Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.05))
+					case tab.Pressed():
+						tab.Background(tk.BgSelected).Border(1, ui.Transparent)
+					case tab.Hovered():
+						tab.Background(tk.BgHover).Border(1, ui.Transparent)
+					default:
+						tab.Background(ui.Transparent).Border(1, ui.Transparent)
+					}
+					if tab.Clicked() {
+						props.actions.openTab(tabID)
+					}
+					tab.Children(func() {
+						badgeColor := tk.TextSecondary
+						if selected {
+							badgeColor = tk.Accent
+						}
+						ui.Text(c, "TOOL").FontSize(10).
+							LetterSpacing(0.3).Bold().
+							TextColor(badgeColor)
+						ui.Text(c, label).FontSize(m.FontXS).FontWeight(500).
 							TextColor(map[bool]ui.Color{true: tk.TextPrimary, false: tk.TextSecondary}[selected]).SingleLine()
 						tabCloseButton(c, tabID, state)
 					})
@@ -95,11 +136,11 @@ func tabsBar(c *ui.Context, props pageProps) {
 						Border(1, tk.Border).
 						Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.05))
 				case tab.Pressed():
-					tab.Background(tk.BgSelected)
+					tab.Background(tk.BgSelected).Border(1, ui.Transparent)
 				case tab.Hovered():
-					tab.Background(tk.BgHover)
+					tab.Background(tk.BgHover).Border(1, ui.Transparent)
 				default:
-					tab.Background(ui.Transparent)
+					tab.Background(ui.Transparent).Border(1, ui.Transparent)
 				}
 				if tab.Clicked() {
 					props.actions.openTab(tabID)
@@ -287,20 +328,23 @@ func tabBarEnvironmentSwitcher(c *ui.Context, props pageProps) {
 func tabCloseButton(c *ui.Context, tabID string, state *workspace) {
 	m, tk := thV2.Metrics, thV2.Of(c)
 	closeBtn := ui.ButtonBase(c.Key("close-" + tabID)).
-		Size(16, 16).Center().Radius(m.RadiusSM).
+		Size(18, 18).Center().Radius(m.RadiusSM).
 		Cursor(ui.CursorPointer).Label(locales.Clear()).Role(ui.RoleButton).
 		Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+	iconColor := tk.TextMuted
 	switch {
 	case closeBtn.Pressed():
-		closeBtn.Background(tk.BgSelected)
+		closeBtn.Background(tk.TextPrimary.Alpha(0.14))
+		iconColor = tk.TextPrimary
 	case closeBtn.Hovered():
-		closeBtn.Background(tk.BgHover)
+		closeBtn.Background(tk.BgSelected)
+		iconColor = tk.TextPrimary
 	}
 	if closeBtn.Clicked() {
 		state.closeTab(tabID)
 	}
 	closeBtn.Children(func() {
-		ui.Icon(c, icons.X).FontSize(10).TextColor(tk.TextMuted)
+		ui.Icon(c, icons.X).FontSize(11).TextColor(iconColor)
 	})
 }
 

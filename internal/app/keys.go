@@ -27,10 +27,13 @@ const (
 	keyWorkspaceSelector = "workspace-selector"
 
 	// 状态栏与错误日志弹窗
-	keyStatusBarLogBtn = "status-bar-log-btn"
-	keyLogCopyAll      = "log-copy-all"
-	keyLogClearAll     = "log-clear-all"
-	keyLogCloseBtn     = "log-close-btn"
+	keyStatusBarLogBtn     = "status-bar-log-btn"
+	keyStatusBarGlobalsBtn = "status-bar-globals-btn"
+	keyStatusBarToolsBtn   = "status-bar-tools-btn"
+	keyGlobalSearchInput   = "global-search-input"
+	keyLogCopyAll          = "log-copy-all"
+	keyLogClearAll         = "log-clear-all"
+	keyLogCloseBtn         = "log-close-btn"
 )
 
 // 动态 Key 的前缀：拼接数据标识后使用。

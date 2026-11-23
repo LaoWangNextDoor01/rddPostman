@@ -17,7 +17,7 @@ func addMenuButton(c *ui.Context, props pageProps) {
 		Label:    locales.Add(),
 		Tooltip:  locales.Add(),
 		Icon:     icons.Plus,
-		Size:     26,
+		Size:     24,
 		IconSize: 14,
 		Radius:   4,
 	})

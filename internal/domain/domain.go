@@ -595,7 +595,19 @@ func Prepare(r Request, vars map[string]Variable) (Request, []string) {
 			kvs[i].Value = sub(kvs[i].Value)
 		}
 	}
-	subKVs(out.PathVariables)
+	for i := range out.PathVariables {
+		pv := &out.PathVariables[i]
+		if strings.TrimSpace(pv.Value) != "" {
+			pv.Value = sub(pv.Value)
+		} else if strings.TrimSpace(pv.Key) != "" {
+			key := strings.TrimSpace(pv.Key)
+			if v, ok := vars[key]; ok && v.Value != "" {
+				pv.Value = v.Value
+			} else if dynVal, ok := dynamicValue(key); ok {
+				pv.Value = dynVal
+			}
+		}
+	}
 	subKVs(out.Query)
 	subKVs(out.Headers)
 	subKVs(out.Cookies)

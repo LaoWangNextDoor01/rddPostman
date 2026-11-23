@@ -2,6 +2,7 @@ package settings
 
 import (
 	"fmt"
+	"runtime"
 
 	thV2 "rddpostman/components/theme/v2"
 	"rddpostman/components/v1/icons"
@@ -28,21 +29,28 @@ var settingsNavItems = []settingsNavItem{
 
 // Dialog 在 RootLayout 层绘制全局设置弹窗（对齐 Pixso 24-全局框架-SettingDialog）。
 // 无论当前处于 HubLayout 还是 WorkbenchLayout，均可在不切换路由的情况下直接唤起。
-func Dialog(c *ui.Context, open *bool, initialTab ...string) {
+func Dialog(c *ui.Context, open *bool, opts ...DialogOptions) {
 	if open == nil {
 		return
+	}
+	var opt DialogOptions
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
+	if opt.ThemeMode == "" {
+		opt.ThemeMode = ThemeSystem
 	}
 	m, tk := thV2.Metrics, thV2.Of(c)
 
 	ui.DialogBase(c, open, func(backdrop, panel ui.Element) {
 		activeTab := ui.Local(panel, "settings-active-tab", func() string {
-			if len(initialTab) > 0 && initialTab[0] != "" {
-				return initialTab[0]
+			if opt.InitialTab != "" {
+				return opt.InitialTab
 			}
 			return "general"
 		})
-		if len(initialTab) > 0 && initialTab[0] != "" {
-			req := initialTab[0]
+		if opt.InitialTab != "" {
+			req := opt.InitialTab
 			lastReq := ui.Local(panel, "settings-last-req-tab", func() string {
 				return ""
 			})
@@ -53,7 +61,7 @@ func Dialog(c *ui.Context, open *bool, initialTab ...string) {
 		}
 
 		backdrop.Background(tk.Overlay)
-		panel.Width(680).Height(480).Radius(m.RadiusLG).
+		panel.Width(700).Height(500).Radius(m.RadiusLG).
 			Background(tk.BgSurface).
 			Border(m.Border, tk.BorderPopover).
 			Shadow(0, 12, 32, 0, tk.Overlay).
@@ -131,22 +139,24 @@ func Dialog(c *ui.Context, open *bool, initialTab ...string) {
 
 					// 可滚动设置项区
 					ui.Scroll(c).Grow(1).FillWidth().Children(func() {
-						ui.Column(c).FillWidth().Padding(m.Space4, m.Space5).Gap(m.Space3).Children(func() {
+						ui.Column(c).FillWidth().Padding(m.Space4, m.Space5).Gap(m.Space2).Children(func() {
 							switch *activeTab {
 							case "general":
 								dialogLanguageRow(c)
 								dialogSettingRow(c, locales.DataMode(), locales.DataModeDesc(), locales.OfflineMode())
 								dialogSettingRow(c, "HTTP version", "Select the HTTP version to use for sending requests.", "Auto")
 							case "themes":
-								dialogSettingRow(c, locales.Appearance(), locales.AppearanceDesc(), locales.FollowSystem())
+								dialogThemeRow(c, opt.ThemeMode, opt.OnThemeMode)
 								dialogAccentRow(c)
 							case "shortcuts":
-								dialogSettingRow(c, locales.GlobalSearch(), "Open quick search across workspaces and requests.", "Ctrl / ⌘ + K")
-								dialogSettingRow(c, locales.NewRequest(), "Create a new HTTP request in the active collection.", "Ctrl / ⌘ + N")
-								dialogSettingRow(c, locales.NewCollection(), "Create a new collection in the active workspace.", "Ctrl / ⌘ + B")
+								dialogShortcutsList(c)
 							case "data":
 								dialogSettingRow(c, locales.DataMode(), locales.DataModeDesc(), locales.OfflineMode())
-								dialogSettingRow(c, "Workspace storage", "Each workspace stores collections, environments, and icons locally.", "JSON / Local FS")
+								storageVal := "JSON / Local FS"
+								if opt.DataDir != "" {
+									storageVal = opt.DataDir
+								}
+								dialogSettingRow(c, "Workspace storage", "Each workspace stores collections, environments, and icons locally.", storageVal)
 							case "about":
 								dialogSettingRow(c, "Application", "Offline-first API client built with Go & MyGo.", "rddPostman")
 								dialogSettingRow(c, "Version", "Current desktop application build version.", fmt.Sprintf("v%s", config.Version))
@@ -157,6 +167,98 @@ func Dialog(c *ui.Context, open *bool, initialTab ...string) {
 			})
 		})
 	})
+}
+
+func dialogThemeRow(c *ui.Context, mode ThemeMode, onChange func(ThemeMode)) {
+	m, tk := thV2.Metrics, thV2.Of(c)
+	row := ui.Row(c).FillWidth().Padding(10, 0).Gap(m.Space3).
+		AlignItems(ui.Center).
+		BorderWidth(0, 0, m.Border, 0).BorderColor(tk.Border)
+
+	choice := 0
+	switch mode {
+	case ThemeLight:
+		choice = 1
+	case ThemeDark:
+		choice = 2
+	}
+	localChoice := ui.Local(row, "dialog-theme-choice", func() int { return choice })
+	lastMode := ui.Local(row, "dialog-theme-last-mode", func() ThemeMode { return mode })
+	if *lastMode != mode {
+		*localChoice = choice
+		*lastMode = mode
+	}
+
+	row.Children(func() {
+		ui.Column(c).Grow(1).Gap(2).Children(func() {
+			ui.Text(c, locales.Appearance()).FontSize(m.FontSM).FontWeight(500).TextColor(tk.TextPrimary)
+			ui.Text(c, locales.AppearanceDesc()).FontSize(m.FontXS).TextColor(tk.TextMuted)
+		})
+		seg := ui.Segmented(c.Key("settings-dialog-theme"), localChoice,
+			locales.FollowSystem(), "Light", "Dark")
+		if seg.Changed() && onChange != nil {
+			next := ThemeSystem
+			switch *localChoice {
+			case 1:
+				next = ThemeLight
+			case 2:
+				next = ThemeDark
+			}
+			*lastMode = next
+			onChange(next)
+		}
+	})
+}
+
+func dialogShortcutsList(c *ui.Context) {
+	mod := "Ctrl"
+	alt := "Alt"
+	if runtime.GOOS == "darwin" {
+		mod = "⌘"
+		alt = "⌥"
+	}
+	join := func(parts ...string) string {
+		if runtime.GOOS == "darwin" {
+			out := ""
+			for _, p := range parts {
+				out += p
+			}
+			return out
+		}
+		out := ""
+		for i, p := range parts {
+			if i > 0 {
+				out += "+"
+			}
+			out += p
+		}
+		return out
+	}
+
+	items := []struct {
+		name, desc, keys string
+	}{
+		{locales.GlobalSearch(), "Open quick search across workspaces, collections, and requests.", join(mod, "K")},
+		{locales.ShowAllCommands(), "Open command palette in quick search.", join(mod, "Shift", "P")},
+		{"Settings", "Open global settings dialog.", join(mod, ",")},
+		{locales.NewRequest(), "Create a new HTTP request in the active workspace.", join(mod, "N")},
+		{locales.NewCollection(), "Create a new collection in the active workspace.", join(mod, "Shift", "N") + " / " + join(mod, "B")},
+		{"Import", "Open Postman / cURL import dialog.", join(mod, "O")},
+		{"Globals", "Open workspace-shared global variables editor.", join(mod, "Shift", "G")},
+		{"Save Request", "Persist current request changes to disk.", join(mod, "S")},
+		{"Send Request", "Send the active HTTP request.", join(mod, "Enter")},
+		{"Focus URL Bar", "Focus the request URL input bar.", join(mod, "L")},
+		{"Close Tab", "Close the currently active workbench tab.", join(mod, "W")},
+		{"Next / Previous Tab", "Cycle through open workbench tabs.", "Ctrl+Tab / Ctrl+Shift+Tab"},
+		{"Switch Sidebar Panel", "Switch between Collections, Environments, History, and Tools.", join(mod, "1") + " / 2 / 3 / 4"},
+		{locales.SwitchEnvironment(), "Jump to workspace environments.", join(mod, "E")},
+		{"Navigate Back / Forward", "Move back or forward in navigation history.", alt + "+← / " + alt + "+→"},
+		{"Close Modal", "Dismiss active search, settings, or utility dialog.", "Esc"},
+	}
+
+	for _, it := range items {
+		dialogSettingRow(c, it.name, it.desc, it.keys)
+	}
 }
 
 func dialogSettingRow(c *ui.Context, name, desc, value string) {

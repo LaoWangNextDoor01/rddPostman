@@ -205,7 +205,7 @@ el.Transition(ui.ElementTransition{Duration: themv2.Motion.Base})
 | Primary | `#FF6C37` 底 + 白字 | `#ED5B2A` | `#D03E0A` + 内阴影 | 整体 40% |
 | Secondary（Save / Share） | 白底 + 1px `#E6E6E6` | `#EDEDED` 底 | `#E6E6E6` + 内阴影 | 整体 40% |
 | Ghost | 无底无框 | `#EDEDED` 底 | `#E6E6E6` | 40% |
-| Danger | 白底 + 红字/红图标 | `#FFEBE7` 底 | 加深 | 40% |
+| Danger | 白底 + 红字/红图标（菜单项如 Quit 默认态与普通项一致：透明底 + `TextSecondary`） | `#FFEBE7`（`DangerSoft`）底 + `Danger` 红字 | 加深红底 + `Danger` 红字 | 40% |
 
 组合：
 
@@ -239,6 +239,7 @@ el.Transition(ui.ElementTransition{Duration: themv2.Motion.Base})
 
 - Dialog：白底、圆角 8、阴影；标题 14–16，正文 12；按钮右对齐。
 - **Popover**（`components/v2`，已落地）：白底 `BgSurface`、1px `BorderPopover`（#D8D8D8 / #4E4E4E）、圆角 `RadiusLG`(8)、双层阴影（0 1 2 黑 8% + 0 12 28 黑 14%）、锚点下方 8px、空间不足自动上翻。基于 `ui.PopoverBase`，`*open` 状态用 `ui.Local` 挂在触发元素上；内容超长在 panel 内用 `ui.Scroll`。分割线用 `v2.PopoverDivider`（#EDEDED）。
+- **Workspace 切换下拉（`overlay / workspace dropdown`）**：按桌面 12px 紧凑密度统一收敛——弹层宽 `276`、搜索框高 `28`（内边距 `8`，字号 `12`）、列表行高 `32`（图标 `20×20` 圆角 `4`，字号 `12 Medium`，当前项右侧 `12px` 对钩）、底部操作栏高 `36`（左右 `50/50` 等分 + 贯通 `1px` 竖线，`13px` 图标 + `12px Medium` 文字）。
 - Tooltip：深色底或白底 + 边框，字号 11–12，最大宽度 240。
 - Toast / 通知：按现有设计稿 30 号画面补齐（本版先不做复杂动效）。
 

@@ -1,6 +1,7 @@
 package history
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -25,6 +26,9 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openRequest fun
 	m, tk := thV2.Metrics, thV2.Of(c)
 
 	col := ui.Column(c).Fill().Background(tk.BgApp)
+	search := ui.Local(col, "hist-sb-search", func() string { return "" })
+	selectedID := ui.Local(col, "hist-sb-selected", func() domain.ID { return "" })
+	clearOpen := ui.Local(col, "hist-clear-open", func() bool { return false })
 	collapsed := ui.Local(col, "hist-collapsed", func() map[string]bool {
 		return make(map[string]bool)
 	})
@@ -34,30 +38,70 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openRequest fun
 		entries, _ = db.History(wsID, 100)
 	}
 
-	col.Children(func() {
-		// 顶部标题行：REQUEST HISTORY + 清空按钮
-		ui.Row(c).FillWidth().Height(32).Padding(0, m.Space3).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "REQUEST HISTORY").FontSize(11).FontWeight(600).
-				TextColor(tk.TextMuted).SingleLine().Grow(1)
+	kw := strings.ToLower(strings.TrimSpace(*search))
 
-			if len(entries) > 0 && db != nil {
-				clearBtn := ui.ButtonBase(c.Key("wb-history-clear")).
-					Size(22, 22).Radius(m.RadiusSM).Center().
-					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Clear history")
-				if clearBtn.Hovered() {
-					clearBtn.Background(tk.BgHover)
-				}
-				if clearBtn.Clicked() {
-					if err := db.ClearHistory(wsID); err != nil {
-						logger.Error("清空历史记录失败: %v", err)
-					} else {
-						c.Invalidate()
+	col.Children(func() {
+		// 1. 统一 34px 顶部搜索过滤条 + 清空历史按钮（与集合/环境/小工具侧栏完全齐平）
+		ui.Row(c).FillWidth().Height(34).Padding(0, m.Space3).Gap(6).
+			AlignItems(ui.Center).Children(func() {
+			searchBox := ui.Row(c.Key("hist-sb-search-box")).Grow(1).Height(26).
+				Padding(0, 8, 0, 6).Gap(6).AlignItems(ui.Center).
+				Radius(m.RadiusMD).Background(tk.BgSubtle)
+			searchBox.Children(func() {
+				ui.Icon(c, icons.ListFilter).FontSize(13).TextColor(tk.TextMuted)
+				ui.TextInputBase(c.Key("hist-sb-search-input"), search).Grow(1).
+					FontSize(m.FontSM).TextColor(tk.TextPrimary).
+					Placeholder("Search").PlaceholderColor(tk.TextMuted).
+					Label("Filter history")
+				if *search != "" {
+					clr := v2.IconButton(c, v2.IconButtonOpts{
+						Key:      "hist-sb-search-clear",
+						Label:    "Clear filter",
+						Icon:     icons.X,
+						Size:     18,
+						IconSize: 11,
+						Color:    tk.TextMuted,
+					})
+					if clr.Clicked() {
+						*search = ""
 					}
 				}
-				clearBtn.Children(func() {
-					ui.Icon(c, icons.Trash).FontSize(m.IconXS).TextColor(tk.TextMuted)
+			})
+
+			if len(entries) > 0 && db != nil {
+				clearBtn := v2.IconButton(c, v2.IconButtonOpts{
+					Key:      "wb-history-clear",
+					Label:    "Clear history",
+					Tooltip:  "Clear history",
+					Icon:     icons.Trash,
+					Size:     24,
+					IconSize: 14,
+					Radius:   m.RadiusSM,
+					Color:    tk.TextMuted,
 				})
+				if clearBtn.Clicked() {
+					*clearOpen = true
+				}
 			}
+		})
+
+		v2.ConfirmDialog(c, clearOpen, v2.ConfirmDialogOpts{
+			Key:          "hist-clear-confirm",
+			Title:        "清空请求历史",
+			Description:  "确定要清空当前工作区的全部请求历史记录吗？此操作不可撤销。",
+			ConfirmLabel: "确认清空",
+			CancelLabel:  "取消",
+			Danger:       true,
+			OnConfirm: func() {
+				if db == nil {
+					return
+				}
+				if err := db.ClearHistory(wsID); err != nil {
+					logger.Error("清空历史记录失败: %v", err)
+				} else {
+					c.Invalidate()
+				}
+			},
 		})
 
 		if len(entries) == 0 {
@@ -70,110 +114,141 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openRequest fun
 			return
 		}
 
-		groups := groupHistoryByDay(entries, time.Now())
+		var filtered []domain.HistoryEntry
+		for _, e := range entries {
+			if kw == "" ||
+				strings.Contains(strings.ToLower(e.URL), kw) ||
+				strings.Contains(strings.ToLower(e.Method), kw) {
+				filtered = append(filtered, e)
+			}
+		}
+
+		if len(filtered) == 0 {
+			ui.Column(c).Grow(1).FillWidth().Center().Padding(m.Space4).Gap(m.Space1).Children(func() {
+				ui.Text(c, "No matching history").FontSize(m.FontXS).TextColor(tk.TextMuted)
+			})
+			return
+		}
+
+		groups := groupHistoryByDay(filtered, time.Now())
 		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
-			ui.Column(c).FillWidth().Padding(0, m.Space1, m.Space3, m.Space1).Gap(m.Space1).Children(func() {
+			ui.Column(c).FillWidth().Padding(6, m.Space2, m.Space4, m.Space2).Gap(6).Children(func() {
 				for _, g := range groups {
 					group := g
-					isClosed := (*collapsed)[group.label]
+					isOpen := kw != "" || !(*collapsed)[group.label]
 
-					hdr := ui.ButtonBase(c.Key("hist-day-"+group.label)).
-						FillWidth().Height(26).Padding(0, m.Space2).Gap(m.Space15).
-						Radius(m.RadiusSM).AlignItems(ui.Center).Justify(ui.Start).
-						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(group.label)
-					if hdr.Hovered() {
-						hdr.Background(tk.BgHover)
-					}
-					if hdr.Clicked() {
-						(*collapsed)[group.label] = !isClosed
-					}
-					hdr.Children(func() {
-						arrow := "▾"
-						if isClosed {
-							arrow = "▸"
+					ui.Column(c).FillWidth().Gap(2).Children(func() {
+						hdr := ui.ButtonBase(c.Key("hist-day-"+group.label)).
+							FillWidth().Height(m.RowHeight).Padding(0, 8).Gap(5).
+							Radius(m.RadiusSM).AlignItems(ui.Center).Justify(ui.Start).
+							Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(group.label).
+							Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+						if hdr.Hovered() {
+							hdr.Background(tk.BgSubtle)
 						}
-						ui.Text(c, arrow).FontSize(10).TextColor(tk.TextMuted).Width(10)
-						ui.Text(c, group.label).FontSize(m.FontXS).FontWeight(500).
-							TextColor(tk.TextSecondary).SingleLine()
-					})
-
-					if isClosed {
-						continue
-					}
-
-					for _, item := range group.entries {
-						it := item
-						method := strings.ToUpper(strings.TrimSpace(it.Method))
-						if method == "" {
-							method = "GET"
+						if hdr.Clicked() {
+							(*collapsed)[group.label] = isOpen
 						}
-						displayURL := strings.TrimSpace(it.URL)
-						displayURL = strings.TrimPrefix(displayURL, "https://")
-						displayURL = strings.TrimPrefix(displayURL, "http://")
-						if displayURL == "" {
-							displayURL = "(empty URL)"
-						}
-
-						line := ui.Row(c.Key("wb-hist-line-"+string(it.ID))).
-							FillWidth().Height(28).Padding(0, 4).Gap(2).
-							Radius(m.RadiusSM).AlignItems(ui.Center)
-						menuOpen := ui.Local(line, "menu-open", func() bool { return false })
-						hovered := line.Hovered() || *menuOpen
-						if hovered {
-							line.Background(tk.BgHover)
-						}
-
-						line.Children(func() {
-							row := ui.ButtonBase(c.Key("wb-hist-item-"+string(it.ID))).
-								Grow(1).FillHeight().Padding(0, 4).Gap(m.Space2).
-								AlignItems(ui.Center).Justify(ui.Start).
-								Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(method + " " + displayURL)
-							if row.Clicked() {
-								if it.RequestID != "" && openRequest != nil {
-									openRequest(string(it.RequestID))
-								}
+						hdr.Children(func() {
+							arrow := ui.Icon(c, icons.ChevronDown).FontSize(11).TextColor(tk.TextMuted)
+							if !isOpen {
+								arrow.Rotate(-90)
 							}
-							row.Children(func() {
-								ui.Text(c, method).FontSize(10).FontWeight(700).
-									TextColor(sidebarMethodColor(tk, method)).Width(36).SingleLine()
-								ui.Text(c, displayURL).FontSize(m.FontXS).
-									TextColor(tk.TextPrimary).SingleLine().Grow(1)
-							})
+							ui.Icon(c, icons.Clock).FontSize(13).TextColor(tk.TextSecondary)
+							ui.Text(c, group.label).FontSize(m.FontSM).FontWeight(400).
+								TextColor(tk.TextPrimary).SingleLine().Grow(1)
+							ui.Text(c, fmt.Sprintf("%d", len(group.entries))).
+								FontSize(10).TextColor(tk.TextMuted).SingleLine()
+						})
 
-							// 悬停右侧操作（对齐 Pixso 34-侧栏-请求历史-悬停菜单：+ 与 ...）
-							moreBtn := v2.IconButton(c, v2.IconButtonOpts{
-								Key:      "wb-hist-more-" + string(it.ID),
-								Label:    "History actions",
-								Icon:     icons.Ellipsis,
-								Size:     22,
-								IconSize: 12,
-							})
-							if !hovered {
-								moreBtn.Opacity(0).IgnoreInput(true)
+						if !isOpen {
+							return
+						}
+
+						for _, item := range group.entries {
+							it := item
+							method := strings.ToUpper(strings.TrimSpace(it.Method))
+							if method == "" {
+								method = "GET"
 							}
-							if moreBtn.Clicked() {
-								*menuOpen = !*menuOpen
+							displayURL := strings.TrimSpace(it.URL)
+							displayURL = strings.TrimPrefix(displayURL, "https://")
+							displayURL = strings.TrimPrefix(displayURL, "http://")
+							if displayURL == "" {
+								displayURL = "(empty URL)"
 							}
-							v2.Popover(c, moreBtn, menuOpen, v2.PopoverOpts{Width: 164}, func(panel ui.Element) {
-								ui.Column(c).Padding(4).Gap(2).Children(func() {
+
+							isSel := *selectedID == it.ID
+							line := ui.Row(c.Key("wb-hist-line-"+string(it.ID))).
+								FillWidth().Height(m.RowHeight).Padding(0, 4, 0, 22).Gap(2).
+								Radius(m.RadiusSM).AlignItems(ui.Center).
+								Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+							menuOpen := ui.Local(line, "menu-open", func() bool { return false })
+							hovered := line.Hovered() || *menuOpen
+							switch {
+							case isSel:
+								line.Background(tk.BgSelected)
+							case hovered:
+								line.Background(tk.BgHover)
+							}
+
+							line.Children(func() {
+								row := ui.ButtonBase(c.Key("wb-hist-item-"+string(it.ID))).
+									Grow(1).FillHeight().Gap(6).
+									AlignItems(ui.Center).Justify(ui.Start).
+									Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(method + " " + displayURL)
+								if row.Clicked() {
+									*selectedID = it.ID
 									if it.RequestID != "" && openRequest != nil {
+										openRequest(string(it.RequestID))
+									}
+								}
+								row.Children(func() {
+									ui.Text(c, method).FontSize(10).FontWeight(700).
+										TextColor(sidebarMethodColor(tk, method)).Width(36).SingleLine()
+									weight := 400
+									if isSel {
+										weight = 500
+									}
+									ui.Text(c, displayURL).FontSize(m.FontSM).FontWeight(weight).
+										TextColor(tk.TextPrimary).SingleLine().Grow(1)
+								})
+
+								moreBtn := v2.IconButton(c, v2.IconButtonOpts{
+									Key:      "wb-hist-more-" + string(it.ID),
+									Label:    "History actions",
+									Icon:     icons.Ellipsis,
+									Size:     20,
+									IconSize: 12,
+									Radius:   m.RadiusSM,
+								})
+								if !hovered {
+									moreBtn.Opacity(0).IgnoreInput(true)
+								}
+								if moreBtn.Clicked() {
+									*menuOpen = !*menuOpen
+								}
+								v2.Popover(c, moreBtn, menuOpen, v2.PopoverOpts{Width: 164}, func(panel ui.Element) {
+									ui.Column(c).Padding(4).Gap(2).Children(func() {
+										if it.RequestID != "" && openRequest != nil {
+											if v2.MenuButton(c, v2.MenuButtonProps{
+												Icon: icons.Send, Key: "hist-open-" + string(it.ID), Label: "Open Request",
+											}).Clicked() {
+												openRequest(string(it.RequestID))
+												*menuOpen = false
+											}
+										}
 										if v2.MenuButton(c, v2.MenuButtonProps{
-											Icon: icons.Send, Key: "hist-open-" + string(it.ID), Label: "Open Request",
+											Icon: icons.Copy, Key: "hist-copy-" + string(it.ID), Label: "Copy URL",
 										}).Clicked() {
-											openRequest(string(it.RequestID))
+											c.Services().WriteClipboard(it.URL)
 											*menuOpen = false
 										}
-									}
-									if v2.MenuButton(c, v2.MenuButtonProps{
-										Icon: icons.Copy, Key: "hist-copy-" + string(it.ID), Label: "Copy URL",
-									}).Clicked() {
-										c.Services().WriteClipboard(it.URL)
-										*menuOpen = false
-									}
+									})
 								})
 							})
-						})
-					}
+						}
+					})
 				}
 			})
 		})

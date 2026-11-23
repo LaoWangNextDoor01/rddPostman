@@ -9,6 +9,7 @@ import (
 	"rddpostman/features/collection"
 	"rddpostman/features/environment"
 	"rddpostman/features/history"
+	"rddpostman/features/tools"
 	"rddpostman/internal/domain"
 	"rddpostman/internal/routes"
 	"rddpostman/locales"
@@ -41,10 +42,10 @@ func (a *App) workbenchLayout(c *ui.Context, r *ui.Route) {
 	root := ui.Box(c.Key(keyLayoutWorkbench + "-" + idStr)).Fill()
 	root.Children(func() {
 		collection.WorkbenchView(c, a.store, a.router, wsID, collection.WorkbenchSlots{
-			RenderLeft: func(renderCollections func(), openRequest func(nodeID string), openEnv func(envID domain.ID)) {
+			RenderLeft: func(renderCollections func(), openRequest func(nodeID string), openEnv func(envID domain.ID), openTool func(toolID string), activeToolID string) {
 				m, tk := thV2.Metrics, thV2.Of(c)
 				ui.Column(c).Fill().Background(tk.BgApp).Children(func() {
-					// 1. 顶部工作台左侧模块图标切换条（对齐 Pixso 8-请求-Body：36px 高、BgApp、无底线）
+					// 1. 顶部工作台左侧模块图标切换条（Collections / Environments / History / Tools）
 					a.workbenchSidebarTabs(c, idStr)
 
 					// 2. 下方面板区：走 MyGo 原生嵌套 r.View，确保同一 wsID 下切换左侧面板时
@@ -61,6 +62,9 @@ func (a *App) workbenchLayout(c *ui.Context, r *ui.Route) {
 							case sub.Match(routes.SectionEnvironments):
 								sub.Title(locales.EnvironmentTitle())
 								environment.SidebarView(c, a.store, wsID, openEnv)
+							case sub.Match(routes.SectionTools):
+								sub.Title("Dev Tools")
+								tools.SidebarView(c, activeToolID, openTool)
 							case sub.Match(routes.SectionSpecs), sub.Match(routes.SectionDocs):
 								sub.Title(locales.DocsTitle())
 								workbenchSidebarPlaceholder(c, "SPECS & DOCS", "API specifications and workspace documentation will appear here.", icons.File, m, tk)
@@ -75,6 +79,12 @@ func (a *App) workbenchLayout(c *ui.Context, r *ui.Route) {
 			RenderEnvTab: func(envID domain.ID) {
 				environment.EditorView(c, a.store, wsID, envID)
 			},
+			RenderToolTab: func(toolID string) {
+				tools.EditorView(c, toolID)
+			},
+			ToolTabLabel:   tools.LabelOf,
+			ConsumeCommand: a.consumeWorkbenchCommand,
+			ModalOpen:      a.modalOpen,
 		})
 	})
 }
@@ -94,6 +104,7 @@ func (a *App) workbenchSidebarTabs(c *ui.Context, wsID string) {
 		{key: "collections", label: "Collections", target: routes.WorkbenchCollectionsOf(wsID), section: routes.SectionCollections, icon: icons.Layers},
 		{key: "environments", label: "Environments", target: routes.WorkbenchEnvironmentsOf(wsID), section: routes.SectionEnvironments, icon: icons.Globe},
 		{key: "history", label: "History", target: routes.WorkbenchHistoryOf(wsID), section: routes.SectionHistory, icon: icons.Clock},
+		{key: "tools", label: "Tools", target: routes.WorkbenchToolsOf(wsID), section: routes.SectionTools, icon: icons.Code},
 	}
 
 	ui.Row(c).FillWidth().Height(36).Padding(0, m.Space3).Gap(m.Space1).

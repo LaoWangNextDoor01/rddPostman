@@ -64,7 +64,7 @@ func (a *App) buildMacMenu() *mygo.Menu {
 					Accelerator: "Cmd+N",
 					Click: func(_ *mygo.MenuItem, win *mygo.Window) {
 						a.dispatch(win, func() {
-							a.router.Push(a.activeWorkbenchRoute(routes.SectionCollections))
+							a.triggerNewRequest()
 						})
 					},
 				},
@@ -74,7 +74,7 @@ func (a *App) buildMacMenu() *mygo.Menu {
 					Accelerator: "Shift+Cmd+N",
 					Click: func(_ *mygo.MenuItem, win *mygo.Window) {
 						a.dispatch(win, func() {
-							a.router.Push(a.activeWorkbenchRoute(routes.SectionCollections))
+							a.triggerNewCollection()
 						})
 					},
 				},
@@ -94,15 +94,17 @@ func (a *App) buildMacMenu() *mygo.Menu {
 					Accelerator: "Cmd+O",
 					Click: func(_ *mygo.MenuItem, win *mygo.Window) {
 						a.dispatch(win, func() {
-							a.router.Push(a.activeWorkbenchRoute(routes.SectionCollections))
+							a.triggerImportPostman()
 						})
 					},
 				},
 				{
 					ID:    "export",
 					Label: "Export...",
-					Click: func(_ *mygo.MenuItem, _ *mygo.Window) {
-						// 导出占位
+					Click: func(_ *mygo.MenuItem, win *mygo.Window) {
+						a.dispatch(win, func() {
+							a.OpenExport()
+						})
 					},
 				},
 				mygo.Separator(),
@@ -128,8 +130,10 @@ func (a *App) buildMacMenu() *mygo.Menu {
 				{
 					ID:    "help",
 					Label: "rddPostman Help",
-					Click: func(_ *mygo.MenuItem, _ *mygo.Window) {
-						// 帮助占位
+					Click: func(_ *mygo.MenuItem, win *mygo.Window) {
+						a.dispatch(win, func() {
+							a.OpenSettings("shortcuts")
+						})
 					},
 				},
 				{

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"rddpostman/components/theme"
+	thV2 "rddpostman/components/theme/v2"
 	"rddpostman/components/v1/icons"
 
 	"github.com/egoist/mygo/ui"
@@ -17,8 +17,8 @@ func View(c *ui.Context, src string) ui.Element {
 
 // ViewWithWidth 按指定宽度渲染 markdown 内容。width <= 0 表示撑满父容器。
 func ViewWithWidth(c *ui.Context, src string, width float32) ui.Element {
-	tk := theme.Of(c)
-	m := theme.Metrics
+	tk := thV2.Of(c)
+	m := thV2.Metrics
 
 	blocks := ParseBlocks(src)
 	col := ui.Column(c).Gap(m.Space2)
@@ -56,7 +56,7 @@ func ViewWithWidth(c *ui.Context, src string, width float32) ui.Element {
 	return col
 }
 
-func renderHeading(c *ui.Context, b Block, tk theme.Tokens, m theme.Metric) {
+func renderHeading(c *ui.Context, b Block, tk thV2.Tokens, m thV2.Metric) {
 	var fontSize float32
 	var topMargin, bottomMargin float32
 
@@ -86,7 +86,7 @@ func renderHeading(c *ui.Context, b Block, tk theme.Tokens, m theme.Metric) {
 	})
 }
 
-func renderParagraph(c *ui.Context, text string, tk theme.Tokens, m theme.Metric) {
+func renderParagraph(c *ui.Context, text string, tk thV2.Tokens, m thV2.Metric) {
 	segs := ParseInline(text)
 	hasLink := false
 	for _, s := range segs {
@@ -126,12 +126,12 @@ func renderParagraph(c *ui.Context, text string, tk theme.Tokens, m theme.Metric
 	})
 }
 
-func renderCodeBlock(c *ui.Context, lang, code string, tk theme.Tokens, m theme.Metric, key string) {
+func renderCodeBlock(c *ui.Context, lang, code string, tk thV2.Tokens, m thV2.Metric, key string) {
 	ui.Column(c).FillWidth().Margin(6, 0, 10, 0).Radius(m.RadiusMD).
-		Background(tk.BgElevated).Border(m.Border, tk.Border).Children(func() {
+		Background(tk.BgSubtle).Border(m.Border, tk.Border).Children(func() {
 		// 顶栏：语言标签与复制按钮
 		ui.Row(c).FillWidth().Height(28).PaddingX(m.Space2).AlignItems(ui.Center).
-			Background(tk.HoverSurface).Radius(m.RadiusMD).Children(func() {
+			Background(tk.BgHover).Radius(m.RadiusMD).Children(func() {
 			displayLang := "CODE"
 			if lang != "" {
 				displayLang = strings.ToUpper(lang)
@@ -169,7 +169,7 @@ func renderCodeBlock(c *ui.Context, lang, code string, tk theme.Tokens, m theme.
 	})
 }
 
-func renderQuote(c *ui.Context, quoteLines []string, tk theme.Tokens, m theme.Metric) {
+func renderQuote(c *ui.Context, quoteLines []string, tk thV2.Tokens, m thV2.Metric) {
 	ui.Row(c).FillWidth().Margin(4, 0, 8, 0).Children(func() {
 		// 左侧重点色坚条
 		ui.Box(c).Width(3).Radius(1.5).Background(tk.Accent).Margin(2, 8, 2, 0)
@@ -189,7 +189,7 @@ func renderQuote(c *ui.Context, quoteLines []string, tk theme.Tokens, m theme.Me
 	})
 }
 
-func renderList(c *ui.Context, b Block, tk theme.Tokens, m theme.Metric) {
+func renderList(c *ui.Context, b Block, tk thV2.Tokens, m thV2.Metric) {
 	ui.Column(c).FillWidth().Margin(4, 0, 8, 0).Gap(4).Children(func() {
 		for i, item := range b.Items {
 			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Start).Children(func() {
@@ -217,13 +217,13 @@ func renderList(c *ui.Context, b Block, tk theme.Tokens, m theme.Metric) {
 	})
 }
 
-func renderTable(c *ui.Context, b Block, tk theme.Tokens, m theme.Metric) {
+func renderTable(c *ui.Context, b Block, tk thV2.Tokens, m thV2.Metric) {
 	ui.Column(c).FillWidth().Margin(6, 0, 10, 0).Radius(m.RadiusMD).
 		Border(m.Border, tk.Border).Children(func() {
 		// 表头
 		if len(b.Headers) > 0 {
 			ui.Row(c).FillWidth().Height(32).PaddingX(m.Space2).
-				AlignItems(ui.Center).Background(tk.BgElevated).Children(func() {
+				AlignItems(ui.Center).Background(tk.BgSubtle).Children(func() {
 				for i, h := range b.Headers {
 					align := getAlign(b.Aligns, i)
 					text := ui.Text(c, h).FontSize(m.FontSM).FontWeight(600).
@@ -243,7 +243,7 @@ func renderTable(c *ui.Context, b Block, tk theme.Tokens, m theme.Metric) {
 			rowElem := ui.Row(c).FillWidth().MinHeight(30).Padding(4, m.Space2).
 				AlignItems(ui.Center)
 			if rIdx%2 == 1 {
-				rowElem.Background(tk.HoverSurface.Alpha(0.3))
+				rowElem.Background(tk.BgHover.Alpha(0.3))
 			}
 			rowElem.Children(func() {
 				for i, cell := range row {
@@ -268,7 +268,7 @@ func getAlign(aligns []string, i int) string {
 	return "left"
 }
 
-func toSpans(text string, tk theme.Tokens, m theme.Metric, fontSize float32, baseWeight int) []ui.Span {
+func toSpans(text string, tk thV2.Tokens, m thV2.Metric, fontSize float32, baseWeight int) []ui.Span {
 	segs := ParseInline(text)
 	spans := make([]ui.Span, 0, len(segs))
 
@@ -289,7 +289,7 @@ func toSpans(text string, tk theme.Tokens, m theme.Metric, fontSize float32, bas
 		}
 		if seg.Code {
 			span.Font = "monospace"
-			span.Background = tk.BgElevated
+			span.Background = tk.BgSubtle
 			span.Color = tk.Accent
 			span.PaddingX = 4
 			span.PaddingY = 1

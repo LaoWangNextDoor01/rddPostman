@@ -182,21 +182,24 @@ func MenuButton(c *ui.Context, props MenuButtonProps) ui.Element {
 	// - 未选中悬停态：浅灰 BgSubtle (#F2F2F2)
 	// - 选中激活态：更明确沉稳的 BgHover (#EDEDED) + 主文字色 (TextPrimary)
 	// - 选中项再悬停/按下：微调加深至 BgSelected (#E6E6E6)
-	// - 危险操作项 (Danger)：淡红底 #FFF1F0 + 危险红 #D92D20，hover #FEE4E2，pressed #FECDCA
+	// - 危险操作项 (Danger)：默认态与普通菜单项完全一致（透明底 + TextSecondary + 快捷键 TextMuted）；
+	//   仅在 hover（DangerSoft + Danger）与 pressed（更深红底 + Danger）时呈现危险红色态。
 	bg := ui.Transparent
 	textColor := tk.TextSecondary
+	dangerActive := false
 
 	if props.Danger {
-		bg = ui.Hex("#FFF1F0")
-		textColor = ui.Hex("#D92D20")
 		switch {
 		case b.Pressed():
-			b.Background(ui.Hex("#FECDCA")).TextColor(textColor)
+			bg = tk.Danger.Alpha(0.22)
+			textColor = tk.Danger
+			dangerActive = true
 		case b.Hovered():
-			b.Background(ui.Hex("#FEE4E2")).TextColor(textColor)
-		default:
-			b.Background(bg).TextColor(textColor)
+			bg = tk.DangerSoft
+			textColor = tk.Danger
+			dangerActive = true
 		}
+		b.Background(bg).TextColor(textColor)
 	} else {
 		if props.Selected {
 			bg = tk.BgHover
@@ -231,8 +234,8 @@ func MenuButton(c *ui.Context, props MenuButtonProps) ui.Element {
 		if props.Shortcut != "" {
 			ui.Spacer(c)
 			scColor := tk.TextMuted
-			if props.Danger {
-				scColor = ui.Hex("#F06258")
+			if dangerActive {
+				scColor = tk.Danger.Alpha(0.75)
 			}
 			ui.Text(c, props.Shortcut).FontSize(m.FontXS).FontWeight(400).TextColor(scColor).SingleLine()
 		}

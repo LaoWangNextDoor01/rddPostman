@@ -7,6 +7,7 @@ import (
 
 	"rddpostman/components/theme"
 	"rddpostman/components/v1/icons"
+	v2 "rddpostman/components/v2"
 	"rddpostman/internal/domain"
 	"rddpostman/locales"
 
@@ -75,11 +76,11 @@ func buildNodes(nodes []*domain.Node) []*treeNode {
 }
 
 // collectionTree 用 TreeBase 画工作区里的集合树，点击行选中并打开对应内容。
+// 全量对齐 theme/v2 统一侧栏规范：26px 行高、中性灰选中态、12px 字号与平滑过渡。
 func collectionTree(c *ui.Context, state *workspace, rows []*treeNode, actions treeActions) {
-	m := theme.Metrics
-	tk := theme.Of(c)
+	m, tk := thV2.Metrics, thV2.Of(c)
 	tree := ui.TreeBase(c)
-	tree.Root.Grow(1).Gap(1).Children(func() {
+	tree.Root.Grow(1).Gap(2).Children(func() {
 		var add func(n *treeNode, depth int)
 		add = func(n *treeNode, depth int) {
 			c.Key("tree-" + n.id)
@@ -89,23 +90,27 @@ func collectionTree(c *ui.Context, state *workspace, rows []*treeNode, actions t
 				open = state.openFlag(n.id)
 			}
 			item := tree.Item(open)
-			row := item.Row.Height(m.SizeLG).Gap(m.Space1).
-				Padding(0, m.Space1).
-				PaddingStart(m.Space1 + 14*float32(depth)).
-				Radius(m.RadiusSM).MarginY(1)
+			row := item.Row.Height(m.RowHeight).Gap(6).
+				Padding(0, 8).
+				PaddingStart(8 + 16*float32(depth)).
+				Radius(m.RadiusSM).
+				Cursor(ui.CursorPointer).
+				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 			selected := state.selected == n.id
+			menuOpen := ui.Local(row, "tree-menu-open", func() bool { return false })
+			rowHovered := row.Hovered() || *menuOpen
 			switch {
-			case selected:
-				row.Background(tk.AccentSoft)
-			case row.Hovered():
-				row.Background(tk.HoverSurface)
+			case row.Pressed(), selected:
+				row.Background(tk.BgSelected)
+			case rowHovered:
+				row.Background(tk.BgHover)
 			}
 			if row.Clicked() {
 				actions.open(n)
 			}
 			row.Children(func() {
 				if expandable {
-					arrow := ui.Icon(c, icons.Get("chevron-down")).Size(12, 12).
+					arrow := ui.Icon(c, icons.ChevronDown).FontSize(11).
 						TextColor(tk.TextMuted)
 					if open != nil && !*open {
 						arrow.Rotate(-90)
@@ -114,57 +119,53 @@ func collectionTree(c *ui.Context, state *workspace, rows []*treeNode, actions t
 						*open = !*open
 					}
 				} else {
-					ui.Box(c).Width(12)
+					ui.Box(c).Width(11)
 				}
 
 				switch n.kind {
 				case treeCollection:
-					ui.Icon(c, icons.Get("library")).FontSize(m.IconSM).
-						TextColor(tk.TextPrimary).Bold()
+					icColor := tk.TextSecondary
+					if selected {
+						icColor = tk.TextPrimary
+					}
+					ui.Icon(c, icons.Library).FontSize(13).TextColor(icColor)
 				case treeRequest:
-					ui.Text(c, n.method).FontSize(10).TextColor(methodColor(tk, n.method)).Bold()
+					ui.Text(c, n.method).FontSize(10).FontWeight(700).
+						TextColor(methodColorV2(tk, n.method)).SingleLine()
 				default:
-					ui.Icon(c, icons.Get("folder")).FontSize(m.IconSM).
-						TextColor(tk.TextSecondary)
+					icColor := tk.TextSecondary
+					if selected {
+						icColor = tk.TextPrimary
+					}
+					ui.Icon(c, icons.Folder).FontSize(13).TextColor(icColor)
 				}
 
-				textColor := tk.TextSecondary
-				if selected {
-					textColor = tk.TextPrimary
+				weight := 400
+				if selected || n.kind == treeCollection {
+					weight = 500
 				}
-				title := ui.Text(c, n.name).FontSize(m.FontSM).Grow(1).SingleLine().TextColor(textColor)
-				if n.kind == treeCollection {
-					title.Bold()
-				}
+				ui.Text(c, n.name).FontSize(m.FontSM).FontWeight(weight).
+					Grow(1).SingleLine().TextColor(tk.TextPrimary)
 
 				// 始终构建按钮，保证 popover 打开时锚点还在；
-				// 只是整行没有悬停时把它透明掉。
-				more := ui.ButtonBase(c.Key("tree-menu-" + n.id)).
-					Width(m.SizeSM).Height(m.SizeSM).
-					Justify(ui.Center).AlignItems(ui.Center).
-					Radius(m.RadiusSM).Label(locales.TreeMore()).
-					Role(ui.RoleButton)
-				if !row.Hovered() {
+				// 仅在行悬停或菜单展开时可见。
+				more := v2.IconButton(c, v2.IconButtonOpts{
+					Key:      "tree-menu-" + n.id,
+					Label:    locales.TreeMore(),
+					Icon:     icons.Ellipsis,
+					Size:     20,
+					IconSize: 12,
+					Radius:   m.RadiusSM,
+					Selected: *menuOpen,
+				})
+				if !rowHovered {
 					more.Opacity(0).IgnoreInput(true)
 				}
-				iconColor := tk.TextMuted
-				if more.Hovered() {
-					// 行本身是 hover-surface，按钮再深一档，避免糊在一起。
-					more.Background(tk.Border)
-					iconColor = tk.TextPrimary
+				if more.Clicked() {
+					*menuOpen = !*menuOpen
 				}
-				more.Children(func() {
-					ui.Icon(c, icons.Get("ellipsis")).FontSize(m.IconXS).
-						TextColor(iconColor)
-				})
-				more.PopoverMenuButton(func(menu *ui.Menu) {
-					rowMenu(menu, n, state, actions)
-				}, ui.PopoverMenuButtonOptions{
-					// 菜单面板采用统一的弹层外观，和下拉、对话框一致。
-					Panel: func(panel ui.Element) {
-						panel.MinWidth(160).Padding(m.Space1).FontSize(m.FontSM)
-						theme.PopoverPanel(c, panel)
-					},
+				v2.Popover(c, more, menuOpen, v2.PopoverOpts{Width: 180}, func(panel ui.Element) {
+					renderTreeRowMenu(c, n, state, actions, menuOpen)
 				})
 			})
 			if expandable {
@@ -186,58 +187,80 @@ func collectionTree(c *ui.Context, state *workspace, rows []*treeNode, actions t
 	})
 }
 
-// rowMenu 按节点类型构建不同的操作菜单。集合/目录可以继续创建子节点，
-// 请求则提供打开、复制 URL 等操作；「其他」是一层子菜单。
-func rowMenu(m *ui.Menu, n *treeNode, state *workspace, actions treeActions) {
-	switch n.kind {
-	case treeCollection, treeFolder:
-		if m.Item(locales.NewFolder()).Chosen() {
-			actions.create(n, treeFolder)
-		}
-		if m.Item(locales.NewRequest()).Chosen() {
-			actions.create(n, treeRequest)
-		}
-		m.Separator()
-		if m.Item(locales.TreeDelete()).Danger().Chosen() {
-			actions.remove(n)
-		}
-		m.Separator()
-		m.Submenu(locales.TreeOther(), func(sub *ui.Menu) {
-			if sub.Item(locales.TreeCopyName()).Chosen() {
+// renderTreeRowMenu 使用统一的 v2.Popover + v2.MenuButton + v2.PopoverDivider 渲染节点操作菜单，
+// 与侧栏顶部「+」/「...」、历史侧栏「...」及工作区列表菜单保持 100% 视觉与交互一致。
+func renderTreeRowMenu(c *ui.Context, n *treeNode, state *workspace, actions treeActions, open *bool) {
+	ui.Column(c).Padding(4).Gap(2).Children(func() {
+		switch n.kind {
+		case treeCollection, treeFolder:
+			if v2.MenuButton(c, v2.MenuButtonProps{
+				Icon: icons.Send, Key: "tm-new-req-" + n.id, Label: locales.NewRequest(),
+			}).Clicked() {
+				actions.create(n, treeRequest)
+				*open = false
+			}
+			if v2.MenuButton(c, v2.MenuButtonProps{
+				Icon: icons.FolderPlus, Key: "tm-new-fld-" + n.id, Label: locales.NewFolder(),
+			}).Clicked() {
+				actions.create(n, treeFolder)
+				*open = false
+			}
+			v2.PopoverDivider(c)
+			if v2.MenuButton(c, v2.MenuButtonProps{
+				Icon: icons.Layers, Key: "tm-toggle-" + n.id, Label: locales.TreeExpandCollapse(),
+			}).Clicked() {
+				flag := state.openFlag(n.id)
+				*flag = !*flag
+				*open = false
+			}
+			if v2.MenuButton(c, v2.MenuButtonProps{
+				Icon: icons.Copy, Key: "tm-copy-name-" + n.id, Label: locales.TreeCopyName(),
+			}).Clicked() {
 				actions.copy(n.name)
+				*open = false
 			}
-			if sub.Item(locales.TreeCopyID()).Chosen() {
-				actions.copy(n.id)
+			v2.PopoverDivider(c)
+			if v2.MenuButton(c, v2.MenuButtonProps{
+				Icon: icons.Trash, Key: "tm-del-" + n.id, Label: locales.TreeDelete(), Danger: true,
+			}).Clicked() {
+				actions.remove(n)
+				*open = false
 			}
-			if sub.Item(locales.TreeExpandCollapse()).Chosen() {
-				open := state.openFlag(n.id)
-				*open = !*open
+		case treeRequest:
+			if v2.MenuButton(c, v2.MenuButtonProps{
+				Icon: icons.Send, Key: "tm-open-" + n.id, Label: locales.TreeOpen(),
+			}).Clicked() {
+				actions.open(n)
+				*open = false
 			}
-		})
-	case treeRequest:
-		if m.Item(locales.TreeOpen()).Chosen() {
-			actions.open(n)
-		}
-		if actions.duplicate != nil && m.Item("复制请求").Chosen() {
-			actions.duplicate(n)
-		}
-		m.Separator()
-		if m.Item(locales.TreeDelete()).Danger().Chosen() {
-			actions.remove(n)
-		}
-		m.Separator()
-		m.Submenu(locales.TreeOther(), func(sub *ui.Menu) {
-			if sub.Item(locales.TreeCopyName()).Chosen() {
-				actions.copy(n.name)
+			if actions.duplicate != nil && v2.MenuButton(c, v2.MenuButtonProps{
+				Icon: icons.Copy, Key: "tm-dup-" + n.id, Label: "复制请求",
+			}).Clicked() {
+				actions.duplicate(n)
+				*open = false
 			}
-			if sub.Item(locales.TreeCopyURL()).Chosen() {
+			v2.PopoverDivider(c)
+			if v2.MenuButton(c, v2.MenuButtonProps{
+				Icon: icons.Link, Key: "tm-copy-url-" + n.id, Label: locales.TreeCopyURL(),
+			}).Clicked() {
 				actions.copy(n.url)
+				*open = false
 			}
-			if sub.Item(locales.TreeCopyID()).Chosen() {
-				actions.copy(n.id)
+			if v2.MenuButton(c, v2.MenuButtonProps{
+				Icon: icons.Copy, Key: "tm-copy-name-" + n.id, Label: locales.TreeCopyName(),
+			}).Clicked() {
+				actions.copy(n.name)
+				*open = false
 			}
-		})
-	}
+			v2.PopoverDivider(c)
+			if v2.MenuButton(c, v2.MenuButtonProps{
+				Icon: icons.Trash, Key: "tm-del-" + n.id, Label: locales.TreeDelete(), Danger: true,
+			}).Clicked() {
+				actions.remove(n)
+				*open = false
+			}
+		}
+	})
 }
 
 func methodColor(tk theme.Tokens, method string) ui.Color {

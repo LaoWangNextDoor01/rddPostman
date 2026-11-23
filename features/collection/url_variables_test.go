@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"rddpostman/components/theme"
 	"rddpostman/internal/domain"
 	"rddpostman/internal/transport"
 
@@ -226,6 +227,90 @@ func TestAddressBarVariableUI(t *testing.T) {
 	}
 }
 
+func TestURLVariableHoverDismissesOnLeave(t *testing.T) {
+	ws := newWorkspace()
+	reqID := domain.ID("req-var-hover-test")
+	collID := domain.ID("coll-var-hover-test")
+	envID := domain.ID("env-dev")
+
+	coll := &domain.Collection{ID: collID, Name: "Hover Test Coll"}
+	n := &domain.Node{
+		ID:   reqID,
+		Name: "Hover Test Request",
+		Kind: domain.KindRequest,
+		Request: &domain.Request{
+			Method: "GET",
+			URL:    "{{baseUrl}}/api/v1/users/{{userID}}",
+		},
+	}
+	envVars := map[string]domain.Variable{
+		"baseUrl": {Key: "baseUrl", Value: "https://api.example.com", Source: domain.VarEnvironment},
+	}
+	props := pageProps{
+		workspaceID:   "ws-1",
+		workspaceName: "Default Workspace",
+		collections:   []*domain.Collection{coll},
+		environments:  []domain.Environment{{ID: envID, Name: "Dev"}},
+		selectedEnv:   envID,
+		state:         ws,
+		actions: pageActions{
+			resolveVariables: func(cID, nID domain.ID) map[string]domain.Variable {
+				return envVars
+			},
+		},
+	}
+
+	tt := ui.NewTester(func(c *ui.Context) {
+		requestTab(c, props, coll, n, string(reqID))
+	}, 960, 600)
+
+	rect, ok := tt.Find("{{baseUrl}}")
+	if !ok {
+		t.Fatalf("could not find {{baseUrl}} pill; texts=%q", tt.Texts())
+	}
+
+	// 1. 鼠标移入 {{baseUrl}} 胶囊 -> 显示浮层
+	tt.Move(rect.X+rect.W/2, rect.Y+rect.H/2)
+	tt.Frame()
+	if !tt.HasText("CURRENT VALUE:") {
+		t.Fatalf("expected hover popover to appear on {{baseUrl}}; texts=%q", tt.Texts())
+	}
+
+	// 2. 鼠标移入浮层内部 -> 保持显示不闪退
+	valRect, ok := tt.Find("CURRENT VALUE:")
+	if !ok {
+		t.Fatalf("could not find popover body; texts=%q", tt.Texts())
+	}
+	tt.Move(valRect.X+valRect.W/2, valRect.Y+valRect.H/2)
+	tt.Frame()
+	if !tt.HasText("CURRENT VALUE:") {
+		t.Fatalf("expected popover to stay open while hovering inside panel; texts=%q", tt.Texts())
+	}
+
+	// 3. 鼠标移出胶囊与浮层 -> 浮层自动收起
+	tt.Move(10, 500)
+	tt.Frame()
+	if tt.HasText("CURRENT VALUE:") {
+		t.Fatalf("expected hover popover to dismiss after pointer leaves; texts=%q", tt.Texts())
+	}
+
+	// 4. 鼠标移入 {{userID}} 未定义变量 -> 显示警告浮层，移出后自动收起
+	uRect, ok := tt.Find("{{userID}}")
+	if !ok {
+		t.Fatalf("could not find {{userID}} pill; texts=%q", tt.Texts())
+	}
+	tt.Move(uRect.X+uRect.W/2, uRect.Y+uRect.H/2)
+	tt.Frame()
+	if !tt.HasText("UNRESOLVED") {
+		t.Fatalf("expected unresolved popover on hover; texts=%q", tt.Texts())
+	}
+	tt.Move(10, 500)
+	tt.Frame()
+	if tt.HasText("UNRESOLVED") {
+		t.Fatalf("expected unresolved popover to dismiss after pointer leaves; texts=%q", tt.Texts())
+	}
+}
+
 func TestVariableAutocompleteUI(t *testing.T) {
 	ws := newWorkspace()
 	reqID := domain.ID("req-auto-ui-test")
@@ -296,5 +381,116 @@ func TestVariableAutocompleteUI(t *testing.T) {
 	// 验证标记为未保存
 	if !ws.unsaved[string(reqID)] {
 		t.Fatalf("expected tab marked unsaved after autocomplete completion")
+	}
+}
+
+func TestPathVariablesDefaultAndOverrideUI(t *testing.T) {
+	ws := newWorkspace()
+	collID := domain.ID("coll-1")
+	reqID := domain.ID("req-1")
+
+	coll := &domain.Collection{
+		ID:   collID,
+		Name: "Test Collection",
+	}
+	n := &domain.Node{
+		ID:   reqID,
+		Name: "Get User Order",
+		Kind: domain.KindRequest,
+		Request: &domain.Request{
+			Method: "GET",
+			URL:    "https://api.example.com/users/:userId/orders/{orderId}",
+			PathVariables: []domain.KV{
+				{Key: "userId", Value: "", Enabled: true},
+				{Key: "orderId", Value: "", Enabled: true},
+			},
+		},
+	}
+
+	ws.openTab(string(reqID))
+
+	// 环境变量 userId=u-1001, collection 变量 orderId=ord-555
+	vars := map[string]domain.Variable{
+		"userId": {
+			Key:    "userId",
+			Value:  "u-1001",
+			Source: domain.VarEnvironment,
+		},
+		"orderId": {
+			Key:    "orderId",
+			Value:  "ord-555",
+			Source: domain.VarCollection,
+		},
+	}
+
+	props := pageProps{
+		collections: []*domain.Collection{coll},
+		state:       ws,
+		actions: pageActions{
+			resolveVariables: func(cID, nID domain.ID) map[string]domain.Variable {
+				return vars
+			},
+			updateNode: func(cID, nID domain.ID, fn func(*domain.Node)) {
+				fn(n)
+			},
+		},
+	}
+
+	tt := ui.NewTester(func(c *ui.Context) {
+		requestTab(c, props, coll, n, string(reqID))
+	}, 960, 600)
+
+	// 1. 验证 Path Variables 区域存在
+	if !tt.HasText("Path Variables") {
+		t.Fatalf("expected Path Variables section, got texts: %q", tt.Texts())
+	}
+
+	// 2. 默认状态：Value 为空，显示默认变量来源标签（environment, collection）
+	if !tt.HasText(string(domain.VarEnvironment)) || !tt.HasText(string(domain.VarCollection)) {
+		t.Fatalf("expected source badges for default variables, got texts: %q", tt.Texts())
+	}
+
+	// 3. 用户修改 userId 的值：直接在 kv 列表中体现修改
+	pvs := []domain.KV{
+		{Key: "userId", Value: "u-9999", Enabled: true},
+		{Key: "orderId", Value: "", Enabled: true},
+	}
+	ttOverride := ui.NewTester(func(c *ui.Context) {
+		renderKVEditor(c, theme.Tokens{}, theme.Metrics, "pathvars", &pvs, func(items []domain.KV) {}, vars)
+	}, 600, 300)
+
+	// 修改后，userId 显示为 override 状态
+	if !ttOverride.HasText("override") {
+		t.Fatalf("expected 'override' badge after modifying path variable, got texts: %q", ttOverride.Texts())
+	}
+
+	// 验证实际 Prepare 结果：userId 使用修改后的值 u-9999，orderId 仍然使用默认值 ord-555
+	currReq := *n.Request.Clone()
+	currReq.PathVariables = cleanKVList(pvs)
+	prep1, _ := domain.Prepare(currReq, vars)
+	if prep1.PathVariables[0].Value != "u-9999" {
+		t.Fatalf("expected modified value u-9999, got %q", prep1.PathVariables[0].Value)
+	}
+	if prep1.PathVariables[1].Value != "ord-555" {
+		t.Fatalf("expected default value ord-555, got %q", prep1.PathVariables[1].Value)
+	}
+
+	// 4. 用户清空 userId 的值（输入清空）
+	pvs[0].Value = ""
+	ttCleared := ui.NewTester(func(c *ui.Context) {
+		renderKVEditor(c, theme.Tokens{}, theme.Metrics, "pathvars", &pvs, func(items []domain.KV) {}, vars)
+	}, 600, 300)
+
+	// 清空后，override 标签消失，重新显示默认来源标签 environment
+	if ttCleared.HasText("override") || !ttCleared.HasText(string(domain.VarEnvironment)) {
+		t.Fatalf("expected override badge to disappear and environment badge to return when input cleared, got: %q", ttCleared.Texts())
+	}
+
+	// 验证 Prepare 结果重新回退到默认变量值 u-1001
+	currReq2 := *n.Request.Clone()
+	currReq2.PathVariables = cleanKVList(pvs)
+	prep2, _ := domain.Prepare(currReq2, vars)
+	if prep2.PathVariables[0].Value != "u-1001" {
+		t.Fatalf("expected cleared path variable to fallback to default value u-1001, got %q", prep2.PathVariables[0].Value)
 	}
 }

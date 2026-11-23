@@ -21,6 +21,7 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openEnv func(en
 	m, tk := thV2.Metrics, thV2.Of(c)
 
 	col := ui.Column(c).Fill().Background(tk.BgApp)
+	search := ui.Local(col, "env-sb-search", func() string { return "" })
 	addOpen := ui.Local(col, "env-sb-add-open", func() bool { return false })
 	newName := ui.Local(col, "env-sb-new-name", func() string { return "" })
 	newErr := ui.Local(col, "env-sb-new-err", func() string { return "" })
@@ -49,26 +50,50 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openEnv func(en
 		}
 	}
 
-	col.Children(func() {
-		// 顶部标题行：ENVIRONMENTS + 新建按钮
-		ui.Row(c).FillWidth().Height(32).Padding(0, m.Space3).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "ENVIRONMENTS").FontSize(11).FontWeight(600).
-				TextColor(tk.TextMuted).SingleLine().Grow(1)
+	kw := strings.ToLower(strings.TrimSpace(*search))
 
-			addBtn := ui.ButtonBase(c.Key("wb-env-add")).
-				Size(22, 22).Radius(m.RadiusSM).Center().
-				Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("New environment")
-			if addBtn.Hovered() {
-				addBtn.Background(tk.BgHover)
-			}
+	col.Children(func() {
+		// 1. 统一 34px 顶部搜索过滤条 + 新建「+」按钮（与集合/小工具侧栏完全齐平）
+		ui.Row(c).FillWidth().Height(34).Padding(0, m.Space3).Gap(6).
+			AlignItems(ui.Center).Children(func() {
+			searchBox := ui.Row(c.Key("env-sb-search-box")).Grow(1).Height(26).
+				Padding(0, 8, 0, 6).Gap(6).AlignItems(ui.Center).
+				Radius(m.RadiusMD).Background(tk.BgSubtle)
+			searchBox.Children(func() {
+				ui.Icon(c, icons.ListFilter).FontSize(13).TextColor(tk.TextMuted)
+				ui.TextInputBase(c.Key("env-sb-search-input"), search).Grow(1).
+					FontSize(m.FontSM).TextColor(tk.TextPrimary).
+					Placeholder("Search").PlaceholderColor(tk.TextMuted).
+					Label("Filter environments")
+				if *search != "" {
+					clr := v2.IconButton(c, v2.IconButtonOpts{
+						Key:      "env-sb-search-clear",
+						Label:    "Clear filter",
+						Icon:     icons.X,
+						Size:     18,
+						IconSize: 11,
+						Color:    tk.TextMuted,
+					})
+					if clr.Clicked() {
+						*search = ""
+					}
+				}
+			})
+
+			addBtn := v2.IconButton(c, v2.IconButtonOpts{
+				Key:      "wb-env-add",
+				Label:    "New environment",
+				Tooltip:  "New environment",
+				Icon:     icons.Plus,
+				Size:     24,
+				IconSize: 14,
+				Radius:   m.RadiusSM,
+			})
 			if addBtn.Clicked() {
 				*addOpen = !*addOpen
 				*newName = ""
 				*newErr = ""
 			}
-			addBtn.Children(func() {
-				ui.Icon(c, icons.Plus).FontSize(m.IconXS).TextColor(tk.TextSecondary)
-			})
 
 			v2.Popover(c, addBtn, addOpen, v2.PopoverOpts{Width: 240}, func(panel ui.Element) {
 				ui.Column(c).Padding(m.Space3).Gap(m.Space2).Children(func() {
@@ -152,26 +177,49 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openEnv func(en
 			return
 		}
 
+		var filtered []domain.Environment
+		for _, e := range envs {
+			if kw == "" || strings.Contains(strings.ToLower(e.Name), kw) {
+				filtered = append(filtered, e)
+				continue
+			}
+			for _, kv := range e.Vars {
+				if strings.Contains(strings.ToLower(kv.Key), kw) {
+					filtered = append(filtered, e)
+					break
+				}
+			}
+		}
+
+		if len(filtered) == 0 {
+			ui.Column(c).Grow(1).FillWidth().Center().Padding(m.Space4).Gap(m.Space1).Children(func() {
+				ui.Text(c, "No matching environments").FontSize(m.FontXS).TextColor(tk.TextMuted)
+			})
+			return
+		}
+
 		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
-			ui.Column(c).FillWidth().Padding(0, m.Space1, m.Space3, m.Space1).Gap(2).Children(func() {
-				for _, e := range envs {
+			ui.Column(c).FillWidth().Padding(6, m.Space2, m.Space4, m.Space2).Gap(2).Children(func() {
+				for _, e := range filtered {
 					env := e
 					isActive := env.ID == activeEnvID
 					isSelected := env.ID == *selectedEnvID
 
 					line := ui.Row(c.Key("wb-env-line-"+string(env.ID))).
-						FillWidth().Height(30).Padding(0, m.Space1).Gap(2).
-						Radius(m.RadiusSM).AlignItems(ui.Center)
-					if isSelected {
+						FillWidth().Height(m.RowHeight).Padding(0, 4, 0, 8).Gap(4).
+						Radius(m.RadiusSM).AlignItems(ui.Center).
+						Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+					switch {
+					case isSelected:
 						line.Background(tk.BgSelected)
-					} else if line.Hovered() {
+					case line.Hovered():
 						line.Background(tk.BgHover)
 					}
 
 					line.Children(func() {
 						// 左侧主点击区：在右侧打开该环境的编辑 Tab，并将该项设为选中态
 						row := ui.ButtonBase(c.Key("wb-env-row-"+string(env.ID))).
-							Grow(1).FillHeight().Padding(0, m.Space15).Gap(m.Space2).
+							Grow(1).FillHeight().Gap(6).
 							AlignItems(ui.Center).Justify(ui.Start).
 							Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(env.Name)
 						if row.Clicked() {
@@ -182,29 +230,34 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openEnv func(en
 						}
 						row.Children(func() {
 							iconColor := tk.TextSecondary
+							weight := 400
 							if isSelected {
 								iconColor = tk.TextPrimary
+								weight = 500
 							}
-							ui.Icon(c, icons.Globe).FontSize(m.IconXS).TextColor(iconColor)
-							ui.Text(c, env.Name).FontSize(m.FontXS).
-								FontWeight(map[bool]int{true: 600, false: 400}[isSelected]).
+							ui.Icon(c, icons.Globe).FontSize(13).TextColor(iconColor)
+							ui.Text(c, env.Name).FontSize(m.FontSM).FontWeight(weight).
 								TextColor(tk.TextPrimary).SingleLine().Grow(1)
 							ui.Text(c, fmt.Sprintf("%d", len(env.Vars))).
 								FontSize(10).TextColor(tk.TextMuted).SingleLine()
 						})
 
 						// 右侧独立按钮：一键切换激活环境（仅当前生效的环境显示高亮对钩，其余项不显示任何对号）
-						actBtn := ui.ButtonBase(c.Key("wb-env-act-"+string(env.ID))).
-							Size(22, 22).Radius(m.RadiusSM).Center().
-							Cursor(ui.CursorPointer).Role(ui.RoleButton).
-							Label("Activate " + env.Name)
+						tipText := "Set active environment"
 						if isActive {
-							actBtn.Tooltip("Active environment (click to deactivate)")
-						} else {
-							actBtn.Tooltip("Set active environment")
+							tipText = "Active environment"
 						}
-						if actBtn.Hovered() {
-							actBtn.Background(tk.BgHover)
+						actBtn := ui.ButtonBase(c.Key("wb-env-act-"+string(env.ID))).
+							Size(20, 20).Radius(m.RadiusSM).Center().
+							Cursor(ui.CursorPointer).Role(ui.RoleButton).
+							Label("Activate " + env.Name).
+							Description(tipText).
+							Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+						switch {
+						case actBtn.Pressed():
+							actBtn.Background(tk.BgSelected)
+						case actBtn.Hovered():
+							actBtn.Background(tk.BgSelected)
 						}
 						if actBtn.Clicked() && db != nil {
 							if err := db.SelectEnvironment(wsID, env.ID); err != nil {
@@ -215,6 +268,16 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openEnv func(en
 							if isActive {
 								ui.Icon(c, icons.Check).FontSize(12).TextColor(tk.Accent)
 							}
+						})
+						ui.TooltipBase(c, actBtn, func(tip ui.Element) {
+							tip.AttachTo(actBtn, ui.AnchorRight, ui.AnchorLeft).
+								MarginStart(8).Padding(5, 8).Radius(m.RadiusMD).
+								Background(tk.BgSurface).Border(m.Border, tk.BorderPopover).
+								Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.06)).
+								Shadow(0, 6, 16, 0, ui.RGBA(0, 0, 0, 0.10))
+							tip.Children(func() {
+								ui.Text(c, tipText).FontSize(m.FontXS).TextColor(tk.TextSecondary).SingleLine()
+							})
 						})
 					})
 				}

@@ -178,7 +178,7 @@ func TestRequestTabRender(t *testing.T) {
 			s.methodOpen = true
 			return s
 		})
-		reqLine(c, props, coll, reqNode, string(reqNode.ID), state, theme.Of(c), theme.Metrics)
+		reqLine(c, props, coll, reqNode, string(reqNode.ID), state, func() {}, theme.Of(c), theme.Metrics)
 	}
 	ttRLine := ui.NewTester(rLineView, 960, 200)
 	ttRLine.Frame()

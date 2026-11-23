@@ -179,6 +179,14 @@ func TestDualLayoutHubAndWorkbench(t *testing.T) {
 	if !tt.HasText("Demo Collection") {
 		t.Fatalf("expected Collections sidebar in WorkbenchLayout; got %q", tt.Texts())
 	}
+	saveLayoutPNG(t, snapDir, "workbench-empty.png", tt)
+	if snapDir != "" {
+		tt.SetDark(true)
+		tt.Advance(300 * time.Millisecond)
+		saveLayoutPNG(t, snapDir, "workbench-empty-dark.png", tt)
+		tt.SetDark(false)
+		tt.Advance(300 * time.Millisecond)
+	}
 
 	// 展开集合并打开一个请求 Tab
 	if err := tt.Click("Demo Collection"); err != nil {
@@ -202,7 +210,7 @@ func TestDualLayoutHubAndWorkbench(t *testing.T) {
 		tt.Advance(300 * time.Millisecond)
 	}
 
-	// 6. 切换工作台左侧图标到 History：左侧变为 REQUEST HISTORY，右侧已打开的请求 Tab 保持不动！
+	// 6. 切换工作台左侧图标到 History：左侧变为统一搜索栏 + 历史分组，右侧已打开的请求 Tab 保持不动！
 	if err := tt.Click("History"); err != nil {
 		t.Fatalf("Click History tab: %v", err)
 	}
@@ -210,15 +218,15 @@ func TestDualLayoutHubAndWorkbench(t *testing.T) {
 	if got := a.Router().Path(); got != routes.WorkbenchHistoryOf(string(ws.ID)) {
 		t.Fatalf("history path = %q, want %q", got, routes.WorkbenchHistoryOf(string(ws.ID)))
 	}
-	if !tt.HasText("REQUEST HISTORY") || !tt.HasText("Today") {
-		t.Fatalf("expected History sidebar panel; got %q", tt.Texts())
+	if _, ok := tt.Find("Filter history"); !ok || !tt.HasText("Today") {
+		t.Fatalf("expected History sidebar panel with Filter history + Today; got %q", tt.Texts())
 	}
 	if !tt.HasText("Query Params") || !tt.HasText("Get User Profile") {
 		t.Fatalf("right mainPane lost open request tab when switching to History; got %q", tt.Texts())
 	}
 	saveLayoutPNG(t, snapDir, "workbench-history.png", tt)
 
-	// 7. 再切到 Environments：左侧变为 ENVIRONMENTS，右侧已打开的请求 Tab 依然保持不动！
+	// 7. 再切到 Environments：左侧变为统一搜索栏 + 环境列表，右侧已打开的请求 Tab 依然保持不动！
 	if err := tt.Click("Environments"); err != nil {
 		t.Fatalf("Click Environments tab: %v", err)
 	}
@@ -226,8 +234,8 @@ func TestDualLayoutHubAndWorkbench(t *testing.T) {
 	if got := a.Router().Path(); got != routes.WorkbenchEnvironmentsOf(string(ws.ID)) {
 		t.Fatalf("environments path = %q, want %q", got, routes.WorkbenchEnvironmentsOf(string(ws.ID)))
 	}
-	if !tt.HasText("ENVIRONMENTS") || !tt.HasText("Staging") {
-		t.Fatalf("expected Environments sidebar panel with Staging; got %q", tt.Texts())
+	if _, ok := tt.Find("Filter environments"); !ok || !tt.HasText("Staging") {
+		t.Fatalf("expected Environments sidebar panel with Filter environments + Staging; got %q", tt.Texts())
 	}
 	if !tt.HasText("Query Params") || !tt.HasText("Get User Profile") {
 		t.Fatalf("right mainPane lost open request tab when switching to Environments; got %q", tt.Texts())
@@ -351,6 +359,12 @@ func TestCustomWindowsAppMenu(t *testing.T) {
 		if !tt.HasText(item) {
 			t.Fatalf("custom Windows app menu missing item %q; got texts: %q", item, tt.Texts())
 		}
+	}
+	saveLayoutPNG(t, os.Getenv("LAYOUT_SNAPSHOT_DIR"), "win-menu-default.png", tt)
+	if qRect, ok := tt.Find("Quit"); ok {
+		tt.Move(qRect.X+qRect.W/2, qRect.Y+qRect.H/2)
+		tt.Frame()
+		saveLayoutPNG(t, os.Getenv("LAYOUT_SNAPSHOT_DIR"), "win-menu-quit-hover.png", tt)
 	}
 
 	// 3. 点击 New Workspace 验证路由跳转及菜单关闭

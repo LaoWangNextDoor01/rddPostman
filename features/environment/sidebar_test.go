@@ -103,3 +103,55 @@ func TestEnvironmentSidebarStates(t *testing.T) {
 		t.Fatalf("点击 envA 激活按钮后，期望生效环境切换为 envA, 实际: %v", curWS.SelectedEnvironmentID)
 	}
 }
+
+func TestEnvironmentEditorDeleteConfirm(t *testing.T) {
+	db := newTestStore(t)
+	ws, err := db.CreateWorkspace("Test Workspace")
+	if err != nil {
+		t.Fatalf("CreateWorkspace failed: %v", err)
+	}
+	env, err := db.CreateEnvironment(ws.ID, "Staging")
+	if err != nil {
+		t.Fatalf("CreateEnvironment failed: %v", err)
+	}
+
+	tt := ui.NewTester(func(c *ui.Context) {
+		EditorView(c, db, ws.ID, env.ID)
+	}, 900, 600)
+
+	// 点击 Delete 只弹出二次确认框，不直接删除
+	if err := tt.Click("Delete"); err != nil {
+		t.Fatalf("Click Delete: %v", err)
+	}
+	tt.Frame()
+	if !tt.HasText("删除环境") {
+		t.Fatalf("expected delete confirmation dialog; got %q", tt.Texts())
+	}
+	if len(db.Snapshot().Workspace(ws.ID).Environments) != 2 { // 默认环境 + Staging
+		t.Fatalf("environment should not be deleted before confirmation")
+	}
+
+	// 点击取消后环境依然存在
+	if err := tt.Click("取消"); err != nil {
+		t.Fatalf("Click Cancel: %v", err)
+	}
+	tt.Frame()
+	if tt.HasText("删除环境") {
+		t.Fatalf("confirm dialog should close after cancel")
+	}
+
+	// 再次点击 Delete -> 确认删除 -> 环境被移除
+	if err := tt.Click("Delete"); err != nil {
+		t.Fatalf("Click Delete again: %v", err)
+	}
+	tt.Frame()
+	if err := tt.Click("确认删除"); err != nil {
+		t.Fatalf("Click confirm delete: %v", err)
+	}
+	tt.Frame()
+	for _, e := range db.Snapshot().Workspace(ws.ID).Environments {
+		if e.ID == env.ID {
+			t.Fatalf("environment %q still present after confirming delete", env.Name)
+		}
+	}
+}

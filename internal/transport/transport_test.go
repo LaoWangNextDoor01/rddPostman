@@ -1,6 +1,10 @@
 package transport
 
 import (
+	"bytes"
+	"compress/flate"
+	"compress/gzip"
+	"compress/zlib"
 	"context"
 	"encoding/json"
 	"io"
@@ -12,6 +16,10 @@ import (
 	"time"
 
 	"rddpostman/internal/domain"
+
+	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 func TestTransportSendGET(t *testing.T) {
@@ -403,5 +411,125 @@ func TestTransportProxyConfig(t *testing.T) {
 	}
 	if resp.StatusCode != 200 {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestTransportResponseDecompressionAndCharsets(t *testing.T) {
+	wantJSON := `{"badge":"守护者徽章","ok":true}`
+
+	compressBrotli := func(b []byte) []byte {
+		var buf bytes.Buffer
+		w := brotli.NewWriter(&buf)
+		_, _ = w.Write(b)
+		_ = w.Close()
+		return buf.Bytes()
+	}
+	compressGzip := func(b []byte) []byte {
+		var buf bytes.Buffer
+		w := gzip.NewWriter(&buf)
+		_, _ = w.Write(b)
+		_ = w.Close()
+		return buf.Bytes()
+	}
+	compressZlib := func(b []byte) []byte {
+		var buf bytes.Buffer
+		w := zlib.NewWriter(&buf)
+		_, _ = w.Write(b)
+		_ = w.Close()
+		return buf.Bytes()
+	}
+	compressRawFlate := func(b []byte) []byte {
+		var buf bytes.Buffer
+		w, _ := flate.NewWriter(&buf, flate.DefaultCompression)
+		_, _ = w.Write(b)
+		_ = w.Close()
+		return buf.Bytes()
+	}
+	compressZstd := func(b []byte) []byte {
+		var buf bytes.Buffer
+		w, _ := zstd.NewWriter(&buf)
+		_, _ = w.Write(b)
+		_ = w.Close()
+		return buf.Bytes()
+	}
+
+	cases := []struct {
+		name        string
+		encoding    string
+		contentType string
+		payload     []byte
+	}{
+		{
+			name:        "brotli",
+			encoding:    "br",
+			contentType: "application/json; charset=utf-8",
+			payload:     compressBrotli([]byte(wantJSON)),
+		},
+		{
+			name:        "gzip",
+			encoding:    "gzip",
+			contentType: "application/json",
+			payload:     compressGzip([]byte(wantJSON)),
+		},
+		{
+			name:        "deflate-zlib",
+			encoding:    "deflate",
+			contentType: "application/json",
+			payload:     compressZlib([]byte(wantJSON)),
+		},
+		{
+			name:        "deflate-raw",
+			encoding:    "deflate",
+			contentType: "application/json",
+			payload:     compressRawFlate([]byte(wantJSON)),
+		},
+		{
+			name:        "zstd",
+			encoding:    "zstd",
+			contentType: "application/json",
+			payload:     compressZstd([]byte(wantJSON)),
+		},
+		{
+			name:        "chained-gzip-br",
+			encoding:    "gzip, br",
+			contentType: "application/json",
+			payload:     compressBrotli(compressGzip([]byte(wantJSON))),
+		},
+		{
+			name:        "gbk-charset",
+			encoding:    "",
+			contentType: "application/json; charset=gbk",
+			payload: func() []byte {
+				b, _ := simplifiedchinese.GBK.NewEncoder().Bytes([]byte(wantJSON))
+				return b
+			}(),
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tc.encoding != "" {
+					w.Header().Set("Content-Encoding", tc.encoding)
+				}
+				w.Header().Set("Content-Type", tc.contentType)
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write(tc.payload)
+			}))
+			defer ts.Close()
+
+			req := domain.Request{
+				Method:  "GET",
+				URL:     ts.URL,
+				Headers: domain.DefaultRequestHeaders(),
+			}
+			resp, err := Send(context.Background(), req, domain.Auth{})
+			if err != nil {
+				t.Fatalf("Send error: %v", err)
+			}
+			if !strings.Contains(resp.FormattedBody, "守护者徽章") {
+				t.Fatalf("%s: expected decoded Chinese text, got %q", tc.name, resp.FormattedBody)
+			}
+		})
 	}
 }

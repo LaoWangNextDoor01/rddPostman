@@ -6,11 +6,13 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"compress/zlib"
 	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
@@ -21,9 +23,15 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"rddpostman/internal/domain"
 	"rddpostman/internal/scripting"
+
+	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
+	"golang.org/x/text/encoding/htmlindex"
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 // Response 是 HTTP 请求发送后返回的结构化响应数据。
@@ -109,35 +117,25 @@ func Send(ctx context.Context, r domain.Request, auth domain.Auth) (*Response, e
 	limitReader := io.LimitReader(resp.Body, 10<<20)
 	bodyBytes, readErr := io.ReadAll(limitReader)
 
-	// 自动解压 gzip / deflate 响应体
-	contentEncoding := strings.ToLower(resp.Header.Get("Content-Encoding"))
-	if contentEncoding == "gzip" || (len(bodyBytes) > 2 && bodyBytes[0] == 0x1f && bodyBytes[1] == 0x8b) {
-		if gzReader, err := gzip.NewReader(bytes.NewReader(bodyBytes)); err == nil {
-			if decompressed, err := io.ReadAll(gzReader); err == nil {
-				bodyBytes = decompressed
-			}
-			_ = gzReader.Close()
-		}
-	} else if contentEncoding == "deflate" {
-		if flateReader := flate.NewReader(bytes.NewReader(bodyBytes)); flateReader != nil {
-			if decompressed, err := io.ReadAll(flateReader); err == nil {
-				bodyBytes = decompressed
-			}
-			_ = flateReader.Close()
-		}
-	}
+	// 自动解压响应体（完整支持 br / gzip / deflate(zlib+raw) / zstd 及多级编码）
+	bodyBytes = decompressBody(bodyBytes, resp.Header.Values("Content-Encoding"))
 
-	bodyStr := string(bodyBytes)
+	// 提取完整 Content-Type 并处理非 UTF-8 字符集（如 GBK / GB18030 / ISO-8859-1）
+	rawContentType := resp.Header.Get("Content-Type")
+	decodedBytes := decodeBodyCharset(bodyBytes, rawContentType)
+	decodedBytes = bytes.TrimPrefix(decodedBytes, []byte{0xEF, 0xBB, 0xBF})
+
+	bodyStr := string(decodedBytes)
 	formattedBody := bodyStr
-	if len(bodyBytes) > 0 {
+	if len(decodedBytes) > 0 {
 		var prettyBuf bytes.Buffer
-		if json.Indent(&prettyBuf, bodyBytes, "", "  ") == nil {
+		if json.Indent(&prettyBuf, decodedBytes, "", "  ") == nil {
 			formattedBody = prettyBuf.String()
 		}
 	}
 
-	// 提取 Content-Type
-	contentType := resp.Header.Get("Content-Type")
+	// 提取主 MIME 类型
+	contentType := rawContentType
 	if idx := strings.Index(contentType, ";"); idx > 0 {
 		contentType = strings.TrimSpace(contentType[:idx])
 	}
@@ -506,4 +504,145 @@ func FormatSize(bytes int64) string {
 // ApplyPathVariables 将 URL 中的路径变量（支持 :key 与 {key} 语法）替换为真实值。
 func ApplyPathVariables(rawURL string, pathVars []domain.KV) string {
 	return domain.ApplyPathVariables(rawURL, pathVars)
+}
+
+const maxDecompressedBytes = 25 << 20 // 25MB 解压上限，防止压缩炸弹
+
+// decompressBody 按 RFC 9110 逆序解码 Content-Encoding 链路（支持 br / gzip / deflate / zstd），
+// 当响应头缺失但魔数匹配 gzip/zstd 时也自动兜底解压。
+func decompressBody(data []byte, encodingHeaders []string) []byte {
+	if len(data) == 0 {
+		return data
+	}
+
+	var encodings []string
+	for _, hdr := range encodingHeaders {
+		for _, part := range strings.Split(hdr, ",") {
+			enc := strings.ToLower(strings.TrimSpace(part))
+			if enc != "" && enc != "identity" {
+				encodings = append(encodings, enc)
+			}
+		}
+	}
+
+	// 响应头缺失时的常见压缩魔数兜底
+	if len(encodings) == 0 {
+		if len(data) >= 2 && data[0] == 0x1f && data[1] == 0x8b {
+			encodings = append(encodings, "gzip")
+		} else if len(data) >= 4 && data[0] == 0x28 && data[1] == 0xb5 && data[2] == 0x2f && data[3] == 0xfd {
+			encodings = append(encodings, "zstd")
+		}
+	}
+
+	cur := data
+	for i := len(encodings) - 1; i >= 0; i-- {
+		next, ok := decompressOnce(cur, encodings[i])
+		if !ok {
+			break
+		}
+		cur = next
+	}
+	return cur
+}
+
+func decompressOnce(data []byte, enc string) ([]byte, bool) {
+	switch enc {
+	case "br", "brotli":
+		r := brotli.NewReader(bytes.NewReader(data))
+		out, err := io.ReadAll(io.LimitReader(r, maxDecompressedBytes))
+		if err != nil {
+			return nil, false
+		}
+		return out, true
+
+	case "gzip", "x-gzip":
+		r, err := gzip.NewReader(bytes.NewReader(data))
+		if err != nil {
+			return nil, false
+		}
+		defer r.Close()
+		out, err := io.ReadAll(io.LimitReader(r, maxDecompressedBytes))
+		if err != nil {
+			return nil, false
+		}
+		return out, true
+
+	case "deflate":
+		// RFC 9110 规范要求 HTTP deflate 使用 zlib 封装，部分服务端使用裸 flate，两者都兼容。
+		if zr, err := zlib.NewReader(bytes.NewReader(data)); err == nil {
+			out, readErr := io.ReadAll(io.LimitReader(zr, maxDecompressedBytes))
+			_ = zr.Close()
+			if readErr == nil {
+				return out, true
+			}
+		}
+		fr := flate.NewReader(bytes.NewReader(data))
+		out, err := io.ReadAll(io.LimitReader(fr, maxDecompressedBytes))
+		_ = fr.Close()
+		if err != nil {
+			return nil, false
+		}
+		return out, true
+
+	case "zstd":
+		dec, err := zstd.NewReader(bytes.NewReader(data))
+		if err != nil {
+			return nil, false
+		}
+		defer dec.Close()
+		out, err := io.ReadAll(io.LimitReader(dec, maxDecompressedBytes))
+		if err != nil {
+			return nil, false
+		}
+		return out, true
+
+	default:
+		return nil, false
+	}
+}
+
+// decodeBodyCharset 根据 Content-Type 的 charset 将非 UTF-8 文本响应转为 UTF-8；
+// 若未声明 charset 但属于文本类型且非法 UTF-8，则尝试 GB18030 解码。
+func decodeBodyCharset(data []byte, rawContentType string) []byte {
+	if len(data) == 0 {
+		return data
+	}
+
+	mediaType, params, err := mime.ParseMediaType(rawContentType)
+	if err == nil {
+		if cs := strings.TrimSpace(params["charset"]); cs != "" {
+			low := strings.ToLower(cs)
+			if low == "utf-8" || low == "utf8" {
+				return data
+			}
+			if enc, err := htmlindex.Get(cs); err == nil && enc != nil {
+				if out, err := enc.NewDecoder().Bytes(data); err == nil {
+					return out
+				}
+			}
+		}
+	}
+
+	if utf8.Valid(data) {
+		return data
+	}
+
+	// 仅对文本/JSON/XML/HTML 等文本响应在非法 UTF-8 时尝试 GB18030，避免破坏二进制图片/文件
+	if isTextLikeMediaType(mediaType) {
+		if out, err := simplifiedchinese.GB18030.NewDecoder().Bytes(data); err == nil && utf8.Valid(out) {
+			return out
+		}
+	}
+	return data
+}
+
+func isTextLikeMediaType(mediaType string) bool {
+	mt := strings.ToLower(strings.TrimSpace(mediaType))
+	if mt == "" || strings.HasPrefix(mt, "text/") {
+		return true
+	}
+	return strings.Contains(mt, "json") ||
+		strings.Contains(mt, "xml") ||
+		strings.Contains(mt, "javascript") ||
+		strings.Contains(mt, "html")
 }

@@ -6,6 +6,7 @@ import (
 
 	thV2 "rddpostman/components/theme/v2"
 	"rddpostman/components/v1/icons"
+	v2 "rddpostman/components/v2"
 	"rddpostman/internal/domain"
 	"rddpostman/internal/logger"
 	"rddpostman/internal/store"
@@ -53,6 +54,7 @@ func EditorView(c *ui.Context, db *store.Store, wsID, envID domain.ID) {
 	st := ui.Local(root, "state", func() envEditorState {
 		return envEditorState{}
 	})
+	deleteOpen := ui.Local(root, "env-ed-del-open", func() bool { return false })
 	if !st.initialized {
 		st.initialized = true
 		if len(currentEnv.Vars) == 0 {
@@ -125,14 +127,9 @@ func EditorView(c *ui.Context, db *store.Store, wsID, envID domain.ID) {
 				}
 			}
 
-			// 删除环境
+			// 删除环境（触发二次确认弹窗）
 			if envDangerBtn(c, "env-ed-del-"+string(envID), "Delete").Clicked() {
-				if err := db.DeleteEnvironment(wsID, envID); err != nil {
-					st.errMsg = err.Error()
-				} else {
-					st.errMsg = ""
-					c.Invalidate()
-				}
+				*deleteOpen = true
 			}
 		})
 
@@ -168,6 +165,23 @@ func EditorView(c *ui.Context, db *store.Store, wsID, envID domain.ID) {
 				}
 			})
 		})
+	})
+
+	v2.ConfirmDialog(c, deleteOpen, v2.ConfirmDialogOpts{
+		Key:          "env-ed-del-confirm-" + string(envID),
+		Title:        "删除环境",
+		Description:  fmt.Sprintf("确定要删除环境「%s」及其全部环境变量吗？此操作不可撤销。", currentEnv.Name),
+		ConfirmLabel: "确认删除",
+		CancelLabel:  "取消",
+		Danger:       true,
+		OnConfirm: func() {
+			if err := db.DeleteEnvironment(wsID, envID); err != nil {
+				st.errMsg = err.Error()
+			} else {
+				st.errMsg = ""
+				c.Invalidate()
+			}
+		},
 	})
 }
 

@@ -1083,68 +1083,7 @@ func docScripts(c *ui.Context, props pageProps, coll *domain.Collection, node *d
 	})
 }
 
-// docRun 渲染集合批量运行启动界面。
+// docRun 渲染集合批量运行启动界面（支持顺序执行请求与实时结果展示）。
 func docRun(c *ui.Context, props pageProps, coll *domain.Collection, node *domain.Node, id string) {
-	tk := thV2.Of(c)
-	m := thV2.Metrics
-
-	reqTotal := 0
-	folderTot := 0
-	if coll != nil {
-		reqTotal = requestTotal(coll.Items)
-		folderTot = folderTotal(coll.Items)
-	}
-
-	ui.Scroll(c).Grow(1).Children(func() {
-		ui.Row(c).FillWidth().Justify(ui.Center).Children(func() {
-			ui.Column(c).Width(docWidth).Padding(32, 0, 40, 0).Gap(20).Children(func() {
-				ui.Column(c).Gap(4).Children(func() {
-					ui.Text(c, "批量运行 (Collection Runner)").FontSize(18).FontWeight(600).
-						TextColor(tk.TextPrimary)
-					ui.Text(c, "自动化按序执行该集合下的所有请求，验证 API 契约与断言测试。").
-						FontSize(13).TextColor(tk.TextMuted)
-				})
-
-				ui.Box(c).FillWidth().Height(1).Background(tk.Border)
-
-				ui.Row(c).Gap(16).Children(func() {
-					ui.Box(c).Padding(16, 20).Radius(m.RadiusSM).Background(tk.BgSubtle).
-						Border(1, tk.Border).Children(func() {
-						ui.Column(c).Gap(4).Children(func() {
-							ui.Text(c, "包含请求数").FontSize(12).TextColor(tk.TextMuted)
-							ui.Text(c, fmt.Sprintf("%d", reqTotal)).FontSize(22).FontWeight(600).
-								TextColor(tk.TextPrimary)
-						})
-					})
-
-					ui.Box(c).Padding(16, 20).Radius(m.RadiusSM).Background(tk.BgSubtle).
-						Border(1, tk.Border).Children(func() {
-						ui.Column(c).Gap(4).Children(func() {
-							ui.Text(c, "包含子目录").FontSize(12).TextColor(tk.TextMuted)
-							ui.Text(c, fmt.Sprintf("%d", folderTot)).FontSize(22).FontWeight(600).
-								TextColor(tk.TextPrimary)
-						})
-					})
-				})
-
-				runBtn := ui.ButtonBase(c.Key("coll-run-start")).
-					Height(34).Padding(0, 20).Radius(6).Background(tk.Accent).
-					AlignItems(ui.Center).Justify(ui.Center).Cursor(ui.CursorPointer).
-					Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
-				switch {
-				case runBtn.Pressed():
-					runBtn.Background(tk.AccentPressed)
-				case runBtn.Hovered():
-					runBtn.Background(tk.AccentHover)
-				}
-				runBtn.Children(func() {
-					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-						ui.Icon(c, icons.Play).FontSize(13).TextColor(tk.OnAccent)
-						ui.Text(c, "Run Collection").FontSize(13).FontWeight(500).
-							TextColor(tk.OnAccent)
-					})
-				})
-			})
-		})
-	})
+	renderCollectionRunner(c, props, coll, node, id)
 }

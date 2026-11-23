@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"rddpostman/components/theme"
+	v2 "rddpostman/components/v2"
 	"rddpostman/internal/curl"
 	"rddpostman/internal/domain"
 	"rddpostman/internal/importer"
@@ -20,8 +21,12 @@ import (
 
 // WorkbenchSlots 定义外部 WorkbenchLayout 注入到分栏工作台的槽位。
 type WorkbenchSlots struct {
-	RenderLeft   func(renderCollections func(), openRequest func(nodeID string), openEnv func(envID domain.ID))
-	RenderEnvTab func(envID domain.ID)
+	RenderLeft     func(renderCollections func(), openRequest func(nodeID string), openEnv func(envID domain.ID), openTool func(toolID string), activeToolID string)
+	RenderEnvTab   func(envID domain.ID)
+	RenderToolTab  func(toolID string)
+	ToolTabLabel   func(toolID string) string
+	ConsumeCommand func() *WorkbenchCommand
+	ModalOpen      bool
 }
 
 // View 绘制集合工作区（保留默认单侧栏入口）。
@@ -69,13 +74,15 @@ func WorkbenchView(
 	environments := ws.Environments
 	selectedEnv := ws.SelectedEnvironmentID
 	state.pruneMissingEnvs(environments)
+	shortcutsDisabled := slots.ModalOpen || state.importCurlOpen || state.importPostmanOpen
 	props := pageProps{
-		workspaceID:   workspaceID,
-		workspaceName: workspaceName,
-		collections:   collections,
-		environments:  environments,
-		selectedEnv:   selectedEnv,
-		state:         state,
+		workspaceID:       workspaceID,
+		workspaceName:     workspaceName,
+		collections:       collections,
+		environments:      environments,
+		selectedEnv:       selectedEnv,
+		shortcutsDisabled: shortcutsDisabled,
+		state:             state,
 	}
 	props.actions = pageActions{
 		// 新建集合并直接以 Tab 形式在右侧打开（模仿 Postman，不弹模态框）
@@ -175,6 +182,9 @@ func WorkbenchView(
 		},
 		openEnv: func(id domain.ID) {
 			state.openTab(EnvTabID(id))
+		},
+		openTool: func(toolID string) {
+			state.openTab(ToolTabID(toolID))
 		},
 		rename: func(id, name string) {
 			coll, node := findNode(collections, id)
@@ -283,57 +293,86 @@ func WorkbenchView(
 			// Context 是构建期的值，不能带进 goroutine；Services 可以。
 			services := c.Services()
 			go func() {
-				// 1. 变量插值与认证继承解析
-				prepReq, prepAuth, _, err := db.PrepareRequestWith(workspaceID, collID, nodeID, req, auth)
-				if err != nil {
-					resp := &transport.Response{
-						StatusCode: 0,
-						StatusText: "Error",
-						Error:      "准备请求参数失败: " + err.Error(),
-						Timestamp:  time.Now(),
-					}
-					onDone(resp)
-					services.Invalidate()
-					return
-				}
-
-				// 2. 真实网络发送
-				resp, _ := transport.Send(ctx, prepReq, prepAuth)
-
-				// 3. 记录请求历史并同步由脚本更新的环境变量（pm.environment.set）
-				if resp != nil {
-					_ = db.RecordHistory(workspaceID, domain.HistoryEntry{
-						WorkspaceID:  workspaceID,
-						CollectionID: collID,
-						RequestID:    nodeID,
-						Method:       prepReq.Method,
-						URL:          prepReq.URL,
-						Status:       resp.StatusCode,
-						DurationMS:   resp.DurationMS,
-						Size:         resp.Size,
-						Error:        resp.Error,
-						At:           resp.Timestamp,
-					})
-
-					if len(resp.UpdatedEnv) > 0 && selectedEnv != "" {
-						for k, v := range resp.UpdatedEnv {
-							_ = db.SetEnvironmentVariable(workspaceID, selectedEnv, k, v)
-						}
-					}
-				}
-
-				// 4. 回调响应并触发重绘
+				resp := executeRequestSync(ctx, db, workspaceID, selectedEnv, collID, nodeID, req, auth)
 				onDone(resp)
 				services.Invalidate()
 			}()
 			return cancel
 		},
-		renderEnvTab: slots.RenderEnvTab,
+		runRequestSync: func(ctx context.Context, collID, nodeID domain.ID, req domain.Request, auth domain.Auth) *transport.Response {
+			return executeRequestSync(ctx, db, workspaceID, selectedEnv, collID, nodeID, req, auth)
+		},
+		renderEnvTab:  slots.RenderEnvTab,
+		renderToolTab: slots.RenderToolTab,
+		toolTabLabel:  slots.ToolTabLabel,
 		navigate: func(target string) {
 			if n != nil {
 				n.Push(target)
 			}
 		},
+	}
+
+	// 消费来自菜单、全局搜索或全局快捷键的工作台指令
+	if slots.ConsumeCommand != nil {
+		if cmd := slots.ConsumeCommand(); cmd != nil {
+			switch cmd.Kind {
+			case CmdNewRequest:
+				if len(collections) > 0 {
+					props.actions.createNode(collections[0].ID, domain.KindRequest)
+				} else if props.actions.createCollectionTab != nil {
+					props.actions.createCollectionTab()
+				}
+			case CmdNewCollection:
+				if props.actions.createCollectionTab != nil {
+					props.actions.createCollectionTab()
+				}
+			case CmdImportPostman:
+				state.importPostmanOpen = true
+				state.importPostmanText = ""
+				state.importPostmanErr = ""
+			case CmdImportCurl:
+				state.importCurlOpen = true
+				state.importCurlText = ""
+				state.importCurlErr = ""
+			case CmdOpenTab:
+				if cmd.TargetID != "" {
+					props.actions.openTab(cmd.TargetID)
+				}
+			case CmdOpenEnv:
+				if cmd.EnvID != "" {
+					props.actions.openEnv(cmd.EnvID)
+				}
+			case CmdOpenTool:
+				if cmd.ToolID != "" {
+					props.actions.openTool(cmd.ToolID)
+				}
+			case CmdCloseActiveTab:
+				if state.active != "" {
+					state.closeTab(state.active)
+				}
+			case CmdNextTab:
+				state.nextTab()
+			case CmdPrevTab:
+				state.prevTab()
+			case CmdFocusURL:
+				state.focusURLReq = true
+			}
+		}
+	}
+
+	// 工作台级 Tab 快捷键：关闭当前 Tab (Cmd/Ctrl+W)、切换相邻 Tab (Ctrl+Tab / Ctrl+Shift+Tab / Cmd+Alt+←/→)
+	if !shortcutsDisabled {
+		if c.Shortcut(ui.Cmd, ui.KeyW) {
+			if state.active != "" {
+				state.closeTab(state.active)
+			}
+		}
+		if c.Shortcut(ui.Ctrl, ui.KeyTab) || c.Shortcut(ui.Cmd|ui.Alt, ui.KeyRight) {
+			state.nextTab()
+		}
+		if c.Shortcut(ui.Ctrl|ui.Shift, ui.KeyTab) || c.Shortcut(ui.Cmd|ui.Alt, ui.KeyLeft) {
+			state.prevTab()
+		}
 	}
 	renderCollections := func() {
 		sidebar(c, props)
@@ -341,10 +380,14 @@ func WorkbenchView(
 	openEnv := func(envID domain.ID) {
 		state.openTab(EnvTabID(envID))
 	}
+	openTool := func(toolID string) {
+		state.openTab(ToolTabID(toolID))
+	}
+	activeToolID, _ := parseToolTabID(state.active)
 	root.Children(func() {
 		ui.Split(c, width, func() {
 			if slots.RenderLeft != nil {
-				slots.RenderLeft(renderCollections, props.actions.openTab, openEnv)
+				slots.RenderLeft(renderCollections, props.actions.openTab, openEnv, openTool, activeToolID)
 			} else {
 				renderCollections()
 			}
@@ -355,6 +398,43 @@ func WorkbenchView(
 
 	importCurlDialog(c, props)
 	importPostmanDialog(c, props)
+	deleteTreeRowDialog(c, props)
+}
+
+func deleteTreeRowDialog(c *ui.Context, props pageProps) {
+	state := props.state
+	if state == nil || state.deletePending == nil {
+		return
+	}
+	target := state.deletePending
+	title := "删除请求"
+	desc := fmt.Sprintf("确定要删除请求「%s」吗？此操作不可撤销。", target.name)
+	switch target.kind {
+	case treeCollection:
+		title = "删除集合"
+		desc = fmt.Sprintf("确定要删除集合「%s」吗？该集合下的所有目录和请求也将一并删除，此操作不可撤销。", target.name)
+	case treeFolder:
+		title = "删除目录"
+		desc = fmt.Sprintf("确定要删除目录「%s」吗？该目录下的所有子目录和请求也将一并删除，此操作不可撤销。", target.name)
+	}
+	v2.ConfirmDialog(c, &state.deleteConfirmOpen, v2.ConfirmDialogOpts{
+		Key:          "coll-del-confirm",
+		Title:        title,
+		Description:  desc,
+		ConfirmLabel: "确认删除",
+		CancelLabel:  "取消",
+		Danger:       true,
+		OnConfirm: func() {
+			row := state.deletePending
+			state.deletePending = nil
+			if row != nil && props.actions.deleteRow != nil {
+				props.actions.deleteRow(row)
+			}
+		},
+		OnCancel: func() {
+			state.deletePending = nil
+		},
+	})
 }
 
 func nextCollectionName(existing []*domain.Collection) string {
@@ -371,4 +451,45 @@ func nextCollectionName(existing []*domain.Collection) string {
 			return cand
 		}
 	}
+}
+
+func executeRequestSync(
+	ctx context.Context,
+	db *store.Store,
+	workspaceID, selectedEnv, collID, nodeID domain.ID,
+	req domain.Request,
+	auth domain.Auth,
+) *transport.Response {
+	prepReq, prepAuth, _, err := db.PrepareRequestWith(workspaceID, collID, nodeID, req, auth)
+	if err != nil {
+		return &transport.Response{
+			StatusCode: 0,
+			StatusText: "Error",
+			Error:      "准备请求参数失败: " + err.Error(),
+			Timestamp:  time.Now(),
+		}
+	}
+
+	resp, _ := transport.Send(ctx, prepReq, prepAuth)
+	if resp != nil {
+		_ = db.RecordHistory(workspaceID, domain.HistoryEntry{
+			WorkspaceID:  workspaceID,
+			CollectionID: collID,
+			RequestID:    nodeID,
+			Method:       prepReq.Method,
+			URL:          prepReq.URL,
+			Status:       resp.StatusCode,
+			DurationMS:   resp.DurationMS,
+			Size:         resp.Size,
+			Error:        resp.Error,
+			At:           resp.Timestamp,
+		})
+
+		if len(resp.UpdatedEnv) > 0 && selectedEnv != "" {
+			for k, v := range resp.UpdatedEnv {
+				_ = db.SetEnvironmentVariable(workspaceID, selectedEnv, k, v)
+			}
+		}
+	}
+	return resp
 }

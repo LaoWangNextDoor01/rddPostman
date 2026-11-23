@@ -6,7 +6,10 @@ import (
 	"rddpostman/internal/domain"
 )
 
-const envTabPrefix = "env:"
+const (
+	envTabPrefix  = "env:"
+	toolTabPrefix = "tool:"
+)
 
 // EnvTabID 返回环境变量编辑 Tab 的唯一标识。
 func EnvTabID(envID domain.ID) string { return envTabPrefix + string(envID) }
@@ -14,6 +17,16 @@ func EnvTabID(envID domain.ID) string { return envTabPrefix + string(envID) }
 func parseEnvTabID(id string) (domain.ID, bool) {
 	if raw, ok := strings.CutPrefix(id, envTabPrefix); ok && raw != "" {
 		return domain.ID(raw), true
+	}
+	return "", false
+}
+
+// ToolTabID 返回开发者小工具 Tab 的唯一标识。
+func ToolTabID(toolID string) string { return toolTabPrefix + toolID }
+
+func parseToolTabID(id string) (string, bool) {
+	if raw, ok := strings.CutPrefix(id, toolTabPrefix); ok && raw != "" {
+		return raw, true
 	}
 	return "", false
 }
@@ -33,6 +46,7 @@ type workspace struct {
 	active         string
 	addOpen        bool
 	focusNewCollID string // 新建集合后在 Tab 内自动进入标题行内编辑态
+	focusURLReq    bool   // 快捷键 Cmd/Ctrl+L 触发聚焦当前请求 URL 输入框
 
 	drafts  map[string]*draftNode // 未持久化的草稿节点：tabID -> draftNode
 	unsaved map[string]bool       // 标记 tab 是否存在未保存变更：tabID -> bool
@@ -43,6 +57,9 @@ type workspace struct {
 	importPostmanOpen bool
 	importPostmanText string
 	importPostmanErr  string
+
+	deleteConfirmOpen bool
+	deletePending     *treeNode
 
 	sidebarFilter map[string]bool // 侧栏搜索筛选勾选状态（缺省全选）
 	open          map[string]*bool  // 目录展开状态，缺省展开
@@ -201,6 +218,9 @@ func (w *workspace) pruneTabs(collections []*domain.Collection) {
 		if _, isEnv := parseEnvTabID(id); isEnv {
 			return true
 		}
+		if _, isTool := parseToolTabID(id); isTool {
+			return true
+		}
 		if _, isDraft := w.drafts[id]; isDraft {
 			return true
 		}
@@ -276,4 +296,34 @@ func (w *workspace) closeTab(id string) {
 	}
 	w.active = w.tabs[len(w.tabs)-1]
 	w.selected = w.active
+}
+
+// nextTab 切换到下一个打开的 Tab（循环）。
+func (w *workspace) nextTab() {
+	if len(w.tabs) <= 1 {
+		return
+	}
+	for i, t := range w.tabs {
+		if t == w.active {
+			next := w.tabs[(i+1)%len(w.tabs)]
+			w.active, w.selected = next, next
+			return
+		}
+	}
+	w.active, w.selected = w.tabs[0], w.tabs[0]
+}
+
+// prevTab 切换到上一个打开的 Tab（循环）。
+func (w *workspace) prevTab() {
+	if len(w.tabs) <= 1 {
+		return
+	}
+	for i, t := range w.tabs {
+		if t == w.active {
+			prev := w.tabs[(i-1+len(w.tabs))%len(w.tabs)]
+			w.active, w.selected = prev, prev
+			return
+		}
+	}
+	w.active, w.selected = w.tabs[len(w.tabs)-1], w.tabs[len(w.tabs)-1]
 }

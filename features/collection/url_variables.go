@@ -440,6 +440,12 @@ func renderVariableTooltip(c *ui.Context, info URLVarInfo, activeEnvName string)
 	})
 }
 
+type varPopoverState struct {
+	open                bool
+	pinned              bool
+	dismissedUntilLeave bool
+}
+
 // renderTokenizedURLBar 渲染常规展示态下的行内变量胶囊（对齐 Pixso 画板 47 与 48）。
 func renderTokenizedURLBar(c *ui.Context, props pageProps, activeID string,
 	state *reqSessionState, allVars map[string]domain.Variable, activeEnvName string,
@@ -474,22 +480,36 @@ func renderTokenizedURLBar(c *ui.Context, props pageProps, activeID string,
 					Height(20).PaddingX(6).Radius(m.RadiusSM).AlignItems(ui.Center).
 					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(segment.Raw)
 
-				open := ui.Local(pill, "var-popover-open", func() bool { return false })
-				if pill.Clicked() {
-					*open = !*open
+				st := ui.Local(pill, "var-popover-state", func() varPopoverState {
+					return varPopoverState{}
+				})
+				pillHovered := pill.Hovered()
+				if !pillHovered {
+					st.dismissedUntilLeave = false
 				}
-				if pill.Hovered() {
-					*open = true
+				if pillHovered && !st.dismissedUntilLeave {
+					st.open = true
+				}
+				if pill.Clicked() {
+					if st.pinned {
+						st.pinned = false
+						st.open = false
+						st.dismissedUntilLeave = true
+					} else {
+						st.pinned = true
+						st.open = true
+						st.dismissedUntilLeave = false
+					}
 				}
 
 				if segment.VarInfo.Resolved {
-					if *open || pill.Hovered() {
+					if st.open || pillHovered {
 						pill.Background(ui.RGBA(220, 231, 255, 255)).Border(1, tk2.Accent.Alpha(0.6))
 					} else {
 						pill.Background(tk2.AccentSoft).Border(1, tk2.Accent.Alpha(0.25))
 					}
 				} else {
-					if *open || pill.Hovered() {
+					if st.open || pillHovered {
 						pill.Background(ui.RGBA(255, 220, 215, 255)).Border(1, tk2.Danger.Alpha(0.6))
 					} else {
 						pill.Background(tk2.DangerSoft).Border(1, tk2.Danger.Alpha(0.25))
@@ -505,10 +525,29 @@ func renderTokenizedURLBar(c *ui.Context, props pageProps, activeID string,
 						TextColor(txtColor).SingleLine()
 				})
 
-				// 悬停 Popover（画板 48 & 49）
-				v2.Popover(c, pill, open, v2.PopoverOpts{Width: 280}, func(panel ui.Element) {
-					renderVariableTooltip(c, segment.VarInfo, activeEnvName)
+				// 悬停/点击 Popover（画板 48 & 49）：外层透明 4px 顶部过渡区避免鼠标移入浮层时闪退
+				panelHovered := false
+				ui.PopoverBase(c, pill, &st.open, func(panel ui.Element) {
+					panel.Padding(m.Space1, 0, 0, 0)
+					panelHovered = panel.Hovered()
+					ui.Box(c).Width(280).
+						Background(tk2.BgSurface).
+						Border(m.Border, tk2.BorderPopover).
+						Radius(m.RadiusLG).
+						Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.08)).
+						Shadow(0, 12, 28, 0, ui.RGBA(0, 0, 0, 0.14)).
+						Children(func() {
+							renderVariableTooltip(c, segment.VarInfo, activeEnvName)
+						})
 				})
+
+				// 外部点击或 Esc 关闭时同步清除固定态；非固定态下鼠标移出胶囊与浮层后立即收起
+				if !st.open {
+					st.pinned = false
+				} else if !st.pinned && !pillHovered && !panelHovered {
+					st.open = false
+					c.Invalidate()
+				}
 			}
 		}
 

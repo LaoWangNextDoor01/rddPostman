@@ -64,6 +64,65 @@ func TestPrepareBodyAndQuery(t *testing.T) {
 	}
 }
 
+func TestPreparePathVariablesDefaultAndOverride(t *testing.T) {
+	vars := Merge([]Layer{{Source: VarEnvironment, Vars: []KV{
+		{Key: "userId", Value: "1001", Enabled: true},
+		{Key: "orderId", Value: "ord-888", Enabled: true},
+	}}})
+
+	// Case 1: Path variable 没有输入值（默认），应自动回退并显示当前变量的值
+	reqDefault := Request{
+		URL: "https://api.example.com/users/:userId/orders/:orderId",
+		PathVariables: []KV{
+			{Key: "userId", Value: "", Enabled: true},
+			{Key: "orderId", Value: "", Enabled: true},
+		},
+	}
+	prepDefault, _ := Prepare(reqDefault, vars)
+	if prepDefault.PathVariables[0].Value != "1001" {
+		t.Errorf("默认值应为变量值 1001，得到 %q", prepDefault.PathVariables[0].Value)
+	}
+	if prepDefault.PathVariables[1].Value != "ord-888" {
+		t.Errorf("默认值应为变量值 ord-888，得到 %q", prepDefault.PathVariables[1].Value)
+	}
+	appliedURL := ApplyPathVariables(prepDefault.URL, prepDefault.PathVariables)
+	if want := "https://api.example.com/users/1001/orders/ord-888"; appliedURL != want {
+		t.Errorf("URL 替换结果: %q，想要 %q", appliedURL, want)
+	}
+
+	// Case 2: 用户修改了值，应以用户修改后的值为准
+	reqOverride := Request{
+		URL: "https://api.example.com/users/:userId/orders/:orderId",
+		PathVariables: []KV{
+			{Key: "userId", Value: "2002", Enabled: true},
+			{Key: "orderId", Value: "ord-999", Enabled: true},
+		},
+	}
+	prepOverride, _ := Prepare(reqOverride, vars)
+	if prepOverride.PathVariables[0].Value != "2002" {
+		t.Errorf("修改后应为 2002，得到 %q", prepOverride.PathVariables[0].Value)
+	}
+	if prepOverride.PathVariables[1].Value != "ord-999" {
+		t.Errorf("修改后应为 ord-999，得到 %q", prepOverride.PathVariables[1].Value)
+	}
+	appliedOverride := ApplyPathVariables(prepOverride.URL, prepOverride.PathVariables)
+	if want := "https://api.example.com/users/2002/orders/ord-999"; appliedOverride != want {
+		t.Errorf("URL 替换结果: %q，想要 %q", appliedOverride, want)
+	}
+
+	// Case 3: 用户清空值（变成空字符串），依然应回退到默认变量值
+	reqCleared := Request{
+		URL: "https://api.example.com/users/:userId",
+		PathVariables: []KV{
+			{Key: "userId", Value: "", Enabled: true},
+		},
+	}
+	prepCleared, _ := Prepare(reqCleared, vars)
+	if prepCleared.PathVariables[0].Value != "1001" {
+		t.Errorf("清空后应重新回退到默认变量值 1001，得到 %q", prepCleared.PathVariables[0].Value)
+	}
+}
+
 func TestMergePriority(t *testing.T) {
 	layers := []Layer{
 		{Source: VarGlobal, Vars: []KV{{ID: "g", Key: "a", Value: "global", Enabled: true}}},

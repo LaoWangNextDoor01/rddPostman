@@ -23,6 +23,10 @@ func mainPane(c *ui.Context, props pageProps) {
 			props.actions.renderEnvTab(envID)
 			return
 		}
+		if toolID, isTool := parseToolTabID(state.active); isTool && props.actions.renderToolTab != nil {
+			props.actions.renderToolTab(toolID)
+			return
+		}
 		coll, node := findNodeInWorkspace(props.collections, props.state, state.active)
 		switch {
 		case node != nil && node.Kind == domain.KindRequest:
@@ -54,7 +58,7 @@ func emptyWorkspace(c *ui.Context, props pageProps) {
 				ui.Box(c).Size(52, 52).Radius(14).
 					Background(tk.Accent.Alpha(0.12)).
 					Border(1, tk.Accent.Alpha(0.24)).Center().Children(func() {
-					ui.Icon(c, icons.Layers).FontSize(24).TextColor(tk.Accent)
+					ui.Icon(c, icons.LayersBoldDuotone).FontSize(26).TextColor(tk.Accent)
 				})
 
 				ui.Column(c).AlignItems(ui.Center).Gap(6).Children(func() {
@@ -66,15 +70,15 @@ func emptyWorkspace(c *ui.Context, props pageProps) {
 
 				ui.Box(c).Height(4)
 
-				// 2. 核心快捷操作卡片组（2 × 2 网格，完全内联创建，无弹窗）
+				// 2. 核心快捷操作卡片组（2 × 2 网格，使用 Solar Bold Duotone 双色实心图标突出主入口）
 				ui.Column(c).FillWidth().Gap(12).Children(func() {
 					// 第一行：新建请求 + 新建集合
 					ui.Row(c).FillWidth().Gap(12).Children(func() {
 						emptyActionCard(c, emptyCardProps{
-							Key:      "empty-act-new-req",
-							Icon:     icons.Send,
-							Title:    locales.NewRequest(),
-							Desc:     "快速创建并调试单个 HTTP 请求",
+							Key:   "empty-act-new-req",
+							Icon:  icons.SendBoldDuotone,
+							Title: locales.NewRequest(),
+							Desc:  "快速创建并调试单个 HTTP 请求",
 							OnClick: func() {
 								if len(props.collections) > 0 {
 									props.actions.createNode(domain.ID(props.collections[0].ID), domain.KindRequest)
@@ -85,10 +89,10 @@ func emptyWorkspace(c *ui.Context, props pageProps) {
 						})
 
 						emptyActionCard(c, emptyCardProps{
-							Key:      "empty-act-new-coll",
-							Icon:     icons.Library,
-							Title:    locales.NewCollection(),
-							Desc:     "在 Tab 内直接编辑集合名称与统一认证",
+							Key:   "empty-act-new-coll",
+							Icon:  icons.LibraryBoldDuotone,
+							Title: locales.NewCollection(),
+							Desc:  "在 Tab 内直接编辑集合名称与统一认证",
 							OnClick: func() {
 								if props.actions.createCollectionTab != nil {
 									props.actions.createCollectionTab()
@@ -100,10 +104,10 @@ func emptyWorkspace(c *ui.Context, props pageProps) {
 					// 第二行：导入接口 + 环境管理
 					ui.Row(c).FillWidth().Gap(12).Children(func() {
 						emptyActionCard(c, emptyCardProps{
-							Key:      "empty-act-import",
-							Icon:     icons.Code,
-							Title:    "导入接口 (cURL)",
-							Desc:     "从 cURL 命令一键生成并解析请求",
+							Key:   "empty-act-import",
+							Icon:  icons.CodeBoldDuotone,
+							Title: "导入接口 (cURL)",
+							Desc:  "从 cURL 命令一键生成并解析请求",
 							OnClick: func() {
 								props.state.importCurlOpen = true
 								props.state.importCurlText = ""
@@ -112,10 +116,10 @@ func emptyWorkspace(c *ui.Context, props pageProps) {
 						})
 
 						emptyActionCard(c, emptyCardProps{
-							Key:      "empty-act-env",
-							Icon:     icons.Globe,
-							Title:    locales.RailEnvironments(),
-							Desc:     "配置 baseUrl 与多套环境变量",
+							Key:   "empty-act-env",
+							Icon:  icons.GlobeBoldDuotone,
+							Title: locales.RailEnvironments(),
+							Desc:  "配置 baseUrl 与多套环境变量",
 							OnClick: func() {
 								props.actions.navigate(routes.WorkbenchEnvironmentsOf(string(props.workspaceID)))
 							},
@@ -182,7 +186,7 @@ func emptyActionCard(c *ui.Context, p emptyCardProps) {
 
 		ui.Box(c).Size(40, 40).Radius(8).
 			Background(iconBg).Center().Children(func() {
-			ui.Icon(c, p.Icon).FontSize(18).TextColor(tk.Accent)
+			ui.Icon(c, p.Icon).FontSize(20).TextColor(tk.Accent)
 		})
 
 		// 右侧文字标题与说明
@@ -202,11 +206,13 @@ func shortcutCheatsheet(c *ui.Context, tk thV2.Tokens, m thV2.Metric) {
 	col1 := []struct{ label, key string }{
 		{locales.NewRequest(), keycap("", "N")},
 		{locales.NewCollection(), keycap("", "B")},
+		{"保存请求", keycap("", "S")},
 		{"发送请求", keycap("", "Enter")},
 	}
 	col2 := []struct{ label, key string }{
 		{locales.GlobalSearch(), keycap("", "K")},
 		{locales.SwitchEnvironment(), keycap("", "E")},
+		{"关闭当前标签", keycap("", "W")},
 		{locales.ShowAllCommands(), keycap("shift", "P")},
 	}
 

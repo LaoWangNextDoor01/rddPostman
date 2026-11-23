@@ -34,6 +34,7 @@ const (
 	SectionCollections  = "/collections"
 	SectionHistory      = "/history"
 	SectionEnvironments = "/environments"
+	SectionTools        = "/tools"
 	SectionSpecs        = "/specs"
 	SectionDocs         = "/docs"
 
@@ -49,6 +50,9 @@ func WorkbenchHistoryOf(wsID string) string { return "/w/" + wsID + SectionHisto
 
 // WorkbenchEnvironmentsOf 返回指定工作空间的环境变量侧栏路径。
 func WorkbenchEnvironmentsOf(wsID string) string { return "/w/" + wsID + SectionEnvironments }
+
+// WorkbenchToolsOf 返回指定工作空间的开发者小工具侧栏路径。
+func WorkbenchToolsOf(wsID string) string { return "/w/" + wsID + SectionTools }
 
 // WorkbenchSpecsOf 返回指定工作空间的规范/文档侧栏路径。
 func WorkbenchSpecsOf(wsID string) string { return "/w/" + wsID + SectionSpecs }

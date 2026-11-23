@@ -3,6 +3,7 @@ package collection
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -41,8 +42,11 @@ type reqSessionState struct {
 	autocompleteOpen      bool          // 变量输入自动补全下拉开关
 	autocompleteIndex     int           // 自动补全当前键盘选中索引
 	autocompletePrefix    string        // 触发自动补全时已键入的前缀
-	bodyRawDraft string        // Raw 请求体本地编辑草稿
-	bodyEditor   *editor.State // Raw 请求体代码编辑器状态
+	bodyRawDraft  string                // Raw 请求体本地编辑草稿
+	bodyFileDraft string                // Binary 请求体本地文件路径
+	binaryPick    *binaryFilePickResult // Binary 文件选择异步结果
+	binaryPickErr string                // Binary 文件选择错误提示
+	bodyEditor    *editor.State         // Raw 请求体代码编辑器状态
 	splitHeight  float32       // 请求区与响应区的上下分栏高度
 
 	// 可编辑表单与列表草稿（保证 TextInputBase 在重绘时不被擦除）
@@ -120,6 +124,7 @@ func extractPathVariables(rawURL string, existing []domain.KV) []domain.KV {
 func defaultSessionState(id string, req *domain.Request, auth *domain.Auth) reqSessionState {
 	url := ""
 	rawBody := ""
+	fileBody := ""
 	var pathVars []domain.KV
 	var query []domain.KV
 	var headers []domain.KV
@@ -135,6 +140,7 @@ func defaultSessionState(id string, req *domain.Request, auth *domain.Auth) reqS
 	if req != nil {
 		url = req.URL
 		rawBody = req.Body.Raw
+		fileBody = req.Body.File
 		preScript = req.PreRequestScript
 		testsScript = req.TestsScript
 		proxyURL = req.Options.ProxyURL
@@ -204,6 +210,8 @@ func defaultSessionState(id string, req *domain.Request, auth *domain.Auth) reqS
 		respTab:               0,
 		urlDraft:              url,
 		bodyRawDraft:          rawBody,
+		bodyFileDraft:         fileBody,
+		binaryPick:            &binaryFilePickResult{},
 		splitHeight:           340,
 		pathVarsDraft:         pathVars,
 		queryDraft:            query,
@@ -281,8 +289,15 @@ func requestTab(c *ui.Context, props pageProps, coll *domain.Collection, n *doma
 		title.draft = n.Name
 	}
 
-	// 触发手动持久化保存
-	triggerSave := func() {
+	// 响应外部 Cmd/Ctrl+L 聚焦 URL 指令
+	if props.state != nil && props.state.focusURLReq {
+		props.state.focusURLReq = false
+		state.urlEditing = true
+		state.urlFocusReq = true
+	}
+
+	// 组装当前编辑草稿为完整请求对象
+	buildCurrentRequest := func() domain.Request {
 		state.queryDraft = parseQueryFromURL(state.urlDraft)
 		state.pathVarsDraft = extractPathVariables(state.urlDraft, state.pathVarsDraft)
 		currReq := *req.Clone()
@@ -291,11 +306,19 @@ func requestTab(c *ui.Context, props pageProps, coll *domain.Collection, n *doma
 		currReq.Query = cleanKVList(state.queryDraft)
 		currReq.Headers = cleanKVList(state.headersDraft)
 		currReq.Body.Raw = state.bodyRawDraft
+		currReq.Body.File = state.bodyFileDraft
 		currReq.Body.Fields = cleanKVList(state.bodyFieldsDraft)
 		currReq.PreRequestScript = state.preScriptDraft
 		currReq.TestsScript = state.testsScriptDraft
 		currReq.Options.ProxyURL = state.proxyDraft
 		currReq.Options.DisableProxy = state.disableProxyDraft
+		currReq.Options.DisableCookieJar = state.disableCookieJarDraft
+		return currReq
+	}
+
+	// 触发手动持久化保存
+	triggerSave := func() {
+		currReq := buildCurrentRequest()
 
 		reqName := strings.TrimSpace(title.draft)
 		if reqName == "" {
@@ -306,8 +329,65 @@ func requestTab(c *ui.Context, props pageProps, coll *domain.Collection, n *doma
 		}
 	}
 
-	if root.Shortcut(ui.Cmd, ui.KeyS) {
-		triggerSave()
+	// 触发请求发送（供 Send 按钮及 Cmd/Ctrl+Enter 快捷键共用）
+	triggerSend := func() {
+		if state.sending {
+			return
+		}
+		currReq := buildCurrentRequest()
+
+		if props.state.isDraft(string(n.ID)) {
+			if n.Request != nil {
+				*n.Request = *currReq.Clone()
+			}
+		} else if props.actions.updateNode != nil {
+			props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+				if node.Request != nil {
+					*node.Request = *currReq.Clone()
+				}
+			})
+		}
+
+		state.sending = true
+		if props.actions.sendRequest != nil {
+			cancel := props.actions.sendRequest(coll.ID, n.ID, currReq, n.Auth, func(resp *transport.Response) {
+				state.sending = false
+				if resp == nil {
+					return
+				}
+				state.hasResponse = true
+				state.respStatus = resp.StatusCode
+				state.respDuration = transport.FormatDuration(resp.Duration)
+				state.respSize = transport.FormatSize(resp.Size)
+				state.respBody = resp.FormattedBody
+				state.respHeaders = resp.Headers
+				state.respCookies = resp.Cookies
+				state.respTestResults = resp.TestResults
+				state.respError = resp.Error
+			})
+			state.cancelFn = cancel
+		} else {
+			state.sending = false
+			state.hasResponse = true
+			state.respStatus = 200
+			state.respDuration = "89 ms"
+			state.respSize = "1.42 KB"
+			state.respBody = "{\n  \"message\": \"Simulated local response\"\n}"
+		}
+	}
+
+	// 请求级快捷键：Cmd/Ctrl+S 保存、Cmd/Ctrl+Enter 发送、Cmd/Ctrl+L 聚焦 URL 栏
+	if !props.shortcutsDisabled {
+		if c.Shortcut(ui.Cmd, ui.KeyS) {
+			triggerSave()
+		}
+		if c.Shortcut(ui.Cmd, ui.KeyEnter) {
+			triggerSend()
+		}
+		if c.Shortcut(ui.Cmd, ui.KeyL) {
+			state.urlEditing = true
+			state.urlFocusReq = true
+		}
 	}
 
 	root.Children(func() {
@@ -319,7 +399,7 @@ func requestTab(c *ui.Context, props pageProps, coll *domain.Collection, n *doma
 				ui.Column(c).FillWidth().Padding(10, 12, 0, 12).Children(func() {
 					reqBreadcrumb(c, props, n, activeID, title, triggerSave, tk, m)
 					ui.Box(c).Height(6)
-					reqLine(c, props, coll, n, activeID, state, tk, m)
+					reqLine(c, props, coll, n, activeID, state, triggerSend, tk, m)
 					ui.Box(c).Height(8)
 					reqConfigTabBar(c, state, thV2.Of(c))
 				})
@@ -461,7 +541,6 @@ func reqBreadcrumb(c *ui.Context, props pageProps, n *domain.Node, activeID stri
 				}
 				ui.Icon(c, icons.Copy).FontSize(12).TextColor(iconColor)
 				ui.Text(c, "Save").FontSize(12).FontWeight(500).TextColor(textColor).SingleLine()
-				ui.Icon(c, icons.ChevronDown).FontSize(10).TextColor(tk2.TextMuted)
 			})
 		})
 	})
@@ -469,7 +548,7 @@ func reqBreadcrumb(c *ui.Context, props pageProps, n *domain.Node, activeID stri
 
 // 2. 请求行：一体化边框 URL 栏（内嵌 Method 下拉）+ 科技蓝分裂 Send | v 按钮（对齐 Pixso inst / row / url bar）
 func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.Node,
-	activeID string, state *reqSessionState, tk theme.Tokens, m theme.Metric,
+	activeID string, state *reqSessionState, triggerSend func(), tk theme.Tokens, m theme.Metric,
 ) {
 	tk2 := thV2.Of(c)
 	req := n.Request
@@ -506,67 +585,12 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 		currReq.Query = cleanKVList(state.queryDraft)
 		currReq.Headers = cleanKVList(state.headersDraft)
 		currReq.Body.Raw = state.bodyRawDraft
+		currReq.Body.File = state.bodyFileDraft
 		currReq.Body.Fields = cleanKVList(state.bodyFieldsDraft)
 
 		prepReq, _ := domain.Prepare(currReq, allVars)
 		cmd := curl.ToCurl(prepReq, n.Auth)
 		c.Services().WriteClipboard(cmd)
-	}
-
-	triggerSend := func() {
-		state.queryDraft = parseQueryFromURL(state.urlDraft)
-		state.pathVarsDraft = extractPathVariables(state.urlDraft, state.pathVarsDraft)
-		currReq := *req.Clone()
-		currReq.URL = strings.TrimSpace(state.urlDraft)
-		currReq.PathVariables = cleanKVList(state.pathVarsDraft)
-		currReq.Query = cleanKVList(state.queryDraft)
-		currReq.Headers = cleanKVList(state.headersDraft)
-		currReq.Body.Raw = state.bodyRawDraft
-		currReq.Body.Fields = cleanKVList(state.bodyFieldsDraft)
-		currReq.PreRequestScript = state.preScriptDraft
-		currReq.TestsScript = state.testsScriptDraft
-		currReq.Options.ProxyURL = state.proxyDraft
-		currReq.Options.DisableProxy = state.disableProxyDraft
-		currReq.Options.DisableCookieJar = state.disableCookieJarDraft
-
-		if props.state.isDraft(string(n.ID)) {
-			if n.Request != nil {
-				*n.Request = *currReq.Clone()
-			}
-		} else if props.actions.updateNode != nil {
-			props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
-				if node.Request != nil {
-					*node.Request = *currReq.Clone()
-				}
-			})
-		}
-
-		state.sending = true
-		if props.actions.sendRequest != nil {
-			cancel := props.actions.sendRequest(coll.ID, n.ID, currReq, n.Auth, func(resp *transport.Response) {
-				state.sending = false
-				if resp == nil {
-					return
-				}
-				state.hasResponse = true
-				state.respStatus = resp.StatusCode
-				state.respDuration = transport.FormatDuration(resp.Duration)
-				state.respSize = transport.FormatSize(resp.Size)
-				state.respBody = resp.FormattedBody
-				state.respHeaders = resp.Headers
-				state.respCookies = resp.Cookies
-				state.respTestResults = resp.TestResults
-				state.respError = resp.Error
-			})
-			state.cancelFn = cancel
-		} else {
-			state.sending = false
-			state.hasResponse = true
-			state.respStatus = 200
-			state.respDuration = "89 ms"
-			state.respSize = "1.42 KB"
-			state.respBody = "{\n  \"message\": \"Simulated local response\"\n}"
-		}
 	}
 
 	ui.Column(c).FillWidth().Gap(2).Children(func() {
@@ -758,7 +782,7 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 					default:
 						sendBtn.Background(tk2.Accent)
 					}
-					if sendBtn.Clicked() {
+					if sendBtn.Clicked() && triggerSend != nil {
 						triggerSend()
 					}
 					sendBtn.Children(func() {
@@ -793,7 +817,9 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 								Icon: icons.Send, Key: "send-opt-run", Label: "Send Request",
 							}).Clicked() {
 								*menuOpen = false
-								triggerSend()
+								if triggerSend != nil {
+									triggerSend()
+								}
 							}
 							if v2.MenuButton(c, v2.MenuButtonProps{
 								Icon: icons.Code, Key: "send-opt-curl", Label: "Copy as cURL",
@@ -863,6 +889,18 @@ func reqConfigTabContent(c *ui.Context, props pageProps, coll *domain.Collection
 		renderDocsEditor(c, props, coll, n, state, tk2, m)
 	case 1:
 		// Params 参数编辑（包含 Query 与 Path 变量，与 URL 保持双向联动）
+		var allVars map[string]domain.Variable
+		if props.actions.resolveVariables != nil {
+			var collID, nodeID domain.ID
+			if coll != nil {
+				collID = coll.ID
+			}
+			if n != nil {
+				nodeID = n.ID
+			}
+			allVars = props.actions.resolveVariables(collID, nodeID)
+		}
+
 		ui.Column(c).Grow(1).Gap(6).Children(func() {
 			ui.Row(c).Height(20).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, "Query Params").FontSize(12).FontWeight(500).TextColor(tk2.TextSecondary)
@@ -888,7 +926,7 @@ func reqConfigTabContent(c *ui.Context, props pageProps, coll *domain.Collection
 							node.Request.PathVariables = cleanKVList(items)
 						}
 					})
-				})
+				}, allVars)
 			}
 		})
 	case 2:
@@ -1052,10 +1090,15 @@ func renderDocsEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 // 通用网格型键值对表格编辑器（对齐 Pixso 5-请求-Params & 15-请求体-BulkEdit：支持 Key-Value 表格与 Bulk Edit 纯文本双向切换）
 func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 	keyPrefix string, items *[]domain.KV, onPersist func([]domain.KV),
+	defaultVars ...map[string]domain.Variable,
 ) {
 	tk2 := thV2.Of(c)
 	if items == nil {
 		return
+	}
+	var defMap map[string]domain.Variable
+	if len(defaultVars) > 0 {
+		defMap = defaultVars[0]
 	}
 	if len(*items) == 0 {
 		*items = []domain.KV{{ID: domain.NewID(), Enabled: true}}
@@ -1208,9 +1251,31 @@ func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 				// 3. Value 单元格
 				ui.Row(c).Grow(1).FillHeight().AlignItems(ui.Center).
 					BorderWidth(0, 1, 0, 0).BorderColor(tk2.Border).Children(func() {
+					placeholder := "Value"
+					placeholderColor := tk2.TextMuted
+					var defaultVal string
+					var hasDefault bool
+					var defaultSource string
+					if keyPrefix == "pathvars" && len(defMap) > 0 && strings.TrimSpace(kv.Key) != "" {
+						k := strings.TrimSpace(kv.Key)
+						if v, ok := defMap[k]; ok && v.Value != "" {
+							defaultVal = v.Value
+							hasDefault = true
+							defaultSource = string(v.Source)
+						} else if dynVal, ok := getDynamicVariableValue(k); ok {
+							defaultVal = dynVal
+							hasDefault = true
+							defaultSource = "dynamic"
+						}
+					}
+					if hasDefault {
+						placeholder = defaultVal
+						placeholderColor = tk2.TextSecondary
+					}
+
 					valIn := ui.TextInputBase(c.Key(fmt.Sprintf("%s-val-%d", keyPrefix, i)), &kv.Value).
-						Fill().Padding(0, 8).FontSize(12).TextColor(tk2.TextPrimary).
-						Placeholder("Value").PlaceholderColor(tk2.TextMuted)
+						Grow(1).FillHeight().Padding(0, 8).FontSize(12).TextColor(tk2.TextPrimary).
+						Placeholder(placeholder).PlaceholderColor(placeholderColor)
 					if valIn.Changed() {
 						if i == len(*items)-1 && (kv.Key != "" || kv.Value != "") {
 							*items = append(*items, domain.KV{ID: domain.NewID(), Enabled: true})
@@ -1218,6 +1283,20 @@ func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 					}
 					if valIn.FocusLeft() || valIn.Submitted() {
 						onPersist(*items)
+					}
+
+					if hasDefault {
+						if strings.TrimSpace(kv.Value) == "" {
+							ui.Row(c).Height(18).Padding(0, 6).Margin(0, 6).Radius(3).
+								Background(tk2.BgSubtle).AlignItems(ui.Center).Children(func() {
+								ui.Text(c, defaultSource).FontSize(10).TextColor(tk2.TextMuted)
+							})
+						} else {
+							ui.Row(c).Height(18).Padding(0, 6).Margin(0, 6).Radius(3).
+								Background(tk2.Accent.Alpha(0.1)).AlignItems(ui.Center).Children(func() {
+								ui.Text(c, "override").FontSize(10).TextColor(tk2.Accent)
+							})
+						}
 					}
 				})
 
@@ -1617,24 +1696,110 @@ func renderBodyEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 				})
 			})
 		case "binary":
+			// 回收异步文件选择结果
+			if state.binaryPick == nil {
+				state.binaryPick = &binaryFilePickResult{}
+			}
+			if picked, errMsg, ok := state.binaryPick.drain(); ok {
+				state.binaryPickErr = errMsg
+				if picked != "" {
+					state.bodyFileDraft = picked
+					if props.state.isDraft(string(n.ID)) {
+						req.Body.File = picked
+					} else if props.actions.updateNode != nil {
+						props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+							if node.Request != nil {
+								node.Request.Body.File = picked
+							}
+						})
+					}
+					props.state.setUnsaved(string(n.ID), true)
+				}
+			}
+
+			triggerPickFile := func() {
+				if !state.binaryPick.start() {
+					return
+				}
+				picker := openBinaryFilePicker
+				pickRes := state.binaryPick
+				services := c.Services()
+				go func() {
+					path, err := picker()
+					errMsg := ""
+					if err != nil {
+						errMsg = err.Error()
+					}
+					pickRes.finish(path, errMsg)
+					services.Invalidate()
+				}()
+			}
+
 			// 二进制文件上传投放区（对齐 Pixso 14-请求体-Binary：节点 32:96001）
-			dropZone := ui.Column(c.Key("binary-dropzone")).FillWidth().Height(140).Radius(4).
+			dropZone := ui.Column(c.Key("binary-dropzone")).FillWidth().MinHeight(140).Padding(16).Radius(4).
 				Border(1, tk2.Border).Background(tk2.BgSurface).Center().Gap(8)
 			dropZone.Children(func() {
-				ui.Text(c, "Drag and drop a file here, or click to browse").FontSize(12).
-					TextColor(tk2.TextMuted)
+				if strings.TrimSpace(state.bodyFileDraft) != "" {
+					filePath := state.bodyFileDraft
+					ui.Row(c).AlignItems(ui.Center).Gap(8).Padding(6, 10).Radius(6).
+						Background(tk2.BgSubtle).Border(1, tk2.Border).Children(func() {
+						ui.Icon(c, icons.File).FontSize(14).TextColor(tk2.Accent)
+						ui.Column(c).Gap(2).Children(func() {
+							ui.Text(c, filepath.Base(filePath)).FontSize(12).FontWeight(500).
+								TextColor(tk2.TextPrimary).SingleLine()
+							ui.Text(c, filePath).FontSize(11).TextColor(tk2.TextMuted).SingleLine()
+						})
+						clearBtn := ui.ButtonBase(c.Key("binary-clear-file")).Size(22, 22).Radius(4).Center().
+							Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Clear file")
+						if clearBtn.Hovered() {
+							clearBtn.Background(tk2.BgHover)
+						}
+						if clearBtn.Clicked() {
+							state.bodyFileDraft = ""
+							state.binaryPickErr = ""
+							if props.state.isDraft(string(n.ID)) {
+								req.Body.File = ""
+							} else if props.actions.updateNode != nil {
+								props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
+									if node.Request != nil {
+										node.Request.Body.File = ""
+									}
+								})
+							}
+							props.state.setUnsaved(string(n.ID), true)
+						}
+						clearBtn.Children(func() {
+							ui.Icon(c, icons.X).FontSize(11).TextColor(tk2.TextMuted)
+						})
+					})
+				} else {
+					ui.Text(c, "Select a local binary file to send as the request body").FontSize(12).
+						TextColor(tk2.TextMuted)
+				}
+
+				btnLabel := "Select File"
+				if strings.TrimSpace(state.bodyFileDraft) != "" {
+					btnLabel = "Change File"
+				}
 				selFileBtn := ui.ButtonBase(c.Key("binary-select-file")).Height(28).PaddingX(12).
 					Radius(4).Border(1, tk2.Border).Background(tk2.BgSurface).Center().
-					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Select File")
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(btnLabel)
 				switch {
 				case selFileBtn.Pressed():
 					selFileBtn.Background(tk2.BgSelected)
 				case selFileBtn.Hovered():
 					selFileBtn.Background(tk2.BgHover)
 				}
+				if selFileBtn.Clicked() {
+					triggerPickFile()
+				}
 				selFileBtn.Children(func() {
-					ui.Text(c, "Select File").FontSize(12).FontWeight(500).TextColor(tk2.TextPrimary).SingleLine()
+					ui.Text(c, btnLabel).FontSize(12).FontWeight(500).TextColor(tk2.TextPrimary).SingleLine()
 				})
+
+				if state.binaryPickErr != "" {
+					ui.Text(c, state.binaryPickErr).FontSize(11).TextColor(tk2.Danger)
+				}
 			})
 		}
 	})
@@ -2025,18 +2190,33 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 						ui.Text(c, state.respDuration).FontSize(11).TextColor(tk2.TextMuted).SingleLine()
 						ui.Text(c, state.respSize).FontSize(11).TextColor(tk2.TextMuted).SingleLine()
 
-						if len(state.respBody) > 0 {
+						copyPayload, copyTooltip := responseTabCopyPayload(state)
+						if copyPayload != "" {
 							copyBtn := ui.ButtonBase(c.Key("resp-copy-btn")).Height(22).PaddingX(6).
-								Radius(4).AlignItems(ui.Center).Gap(4).Cursor(ui.CursorPointer)
-							if copyBtn.Hovered() {
+								Radius(4).AlignItems(ui.Center).Gap(4).Cursor(ui.CursorPointer).
+								Role(ui.RoleButton).Label("Copy response").Tooltip(copyTooltip)
+							copiedTab := ui.Local(copyBtn, "resp-copied-payload", func() string { return "" })
+							if *copiedTab != "" && *copiedTab != copyPayload {
+								*copiedTab = ""
+							}
+							isCopied := *copiedTab == copyPayload
+							if isCopied {
+								copyBtn.Background(tk2.AccentSoft)
+							} else if copyBtn.Hovered() {
 								copyBtn.Background(tk2.BgHover)
 							}
 							if copyBtn.Clicked() {
-								c.Services().WriteClipboard(state.respBody)
+								c.Services().WriteClipboard(copyPayload)
+								*copiedTab = copyPayload
 							}
 							copyBtn.Children(func() {
-								ui.Icon(c, icons.Copy).Size(11, 11).TextColor(tk2.TextSecondary)
-								ui.Text(c, "Copy").FontSize(11).TextColor(tk2.TextSecondary)
+								if isCopied {
+									ui.Icon(c, icons.Check).Size(11, 11).TextColor(tk2.Success)
+									ui.Text(c, "Copied").FontSize(11).TextColor(tk2.Success)
+								} else {
+									ui.Icon(c, icons.Copy).Size(11, 11).TextColor(tk2.TextSecondary)
+									ui.Text(c, "Copy").FontSize(11).TextColor(tk2.TextSecondary)
+								}
 							})
 						}
 					}
@@ -2155,7 +2335,67 @@ func renderResponseBody(c *ui.Context, state *reqSessionState, tk theme.Tokens, 
 	editor.View(c, state.respEditor).Grow(1).MinHeight(0)
 }
 
-// 响应头列表展示
+func formatResponseHeaders(headers []domain.KV) string {
+	if len(headers) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for i, h := range headers {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(h.Key)
+		b.WriteString(": ")
+		b.WriteString(h.Value)
+	}
+	return b.String()
+}
+
+func formatResponseCookies(cookies []transport.ResponseCookie) string {
+	if len(cookies) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, ck := range cookies {
+		parts = append(parts, ck.Name+"="+ck.Value)
+	}
+	return strings.Join(parts, "; ")
+}
+
+func responseTabCopyPayload(state *reqSessionState) (payload, tooltip string) {
+	if state == nil {
+		return "", ""
+	}
+	switch state.respTab {
+	case 1:
+		return formatResponseHeaders(state.respHeaders), "Copy all headers"
+	case 2:
+		return formatResponseCookies(state.respCookies), "Copy all cookies"
+	case 3:
+		if len(state.respTestResults) == 0 {
+			return "", ""
+		}
+		var b strings.Builder
+		for i, tr := range state.respTestResults {
+			if i > 0 {
+				b.WriteByte('\n')
+			}
+			status := "PASS"
+			if !tr.Passed {
+				status = "FAIL"
+			}
+			fmt.Fprintf(&b, "[%s] %s", status, tr.Name)
+			if tr.Error != "" {
+				fmt.Fprintf(&b, " (%s)", tr.Error)
+			}
+		}
+		return b.String(), "Copy test results"
+	default:
+		return state.respBody, "Copy response body"
+	}
+}
+
+// 响应头列表展示（支持点击单行复制 Value / Key: Value 以及一键复制全部响应头）
 func renderResponseHeaders(c *ui.Context, headers []domain.KV, tk theme.Tokens, m theme.Metric) {
 	if len(headers) == 0 {
 		ui.Row(c).Height(40).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
@@ -2164,25 +2404,124 @@ func renderResponseHeaders(c *ui.Context, headers []domain.KV, tk theme.Tokens, 
 		return
 	}
 
-	ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-		ui.Column(c).Grow(1).Children(func() {
+	tk2 := thV2.Of(c)
+	scroll := ui.Scroll(c).Grow(1).MinHeight(0)
+	copiedKey := ui.Local(scroll, "hdr-copied-key", func() string { return "" })
+
+	scroll.Children(func() {
+		ui.Column(c).Grow(1).FillWidth().Padding(0, 4).Children(func() {
+			// 表头 + Copy All 按钮
+			allCopied := *copiedKey == "__all__"
+			ui.Row(c).FillWidth().Height(28).PaddingX(8).Gap(8).AlignItems(ui.Center).
+				Background(tk2.BgSubtle).
+				BorderWidth(0, 0, 1, 0).BorderColor(tk2.Border).Children(func() {
+				ui.Text(c, "KEY").FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Width(200).SingleLine()
+				ui.Text(c, "VALUE").FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Grow(1).SingleLine()
+
+				copyAllBtn := ui.ButtonBase(c.Key("resp-hdr-copy-all")).
+					Height(20).PaddingX(6).Gap(4).Radius(m.RadiusSM).
+					AlignItems(ui.Center).Justify(ui.Center).
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).
+					Label("Copy All Headers").Tooltip("Copy all headers as Key: Value")
+				if allCopied {
+					copyAllBtn.Background(tk2.AccentSoft)
+				} else if copyAllBtn.Hovered() {
+					copyAllBtn.Background(tk2.BgSelected)
+				}
+				if copyAllBtn.Clicked() {
+					c.Services().WriteClipboard(formatResponseHeaders(headers))
+					*copiedKey = "__all__"
+				}
+				copyAllBtn.Children(func() {
+					if allCopied {
+						ui.Icon(c, icons.Check).FontSize(10).TextColor(tk2.Success)
+						ui.Text(c, "Copied").FontSize(10).TextColor(tk2.Success).SingleLine()
+					} else {
+						ui.Icon(c, icons.Copy).FontSize(10).TextColor(tk2.TextSecondary)
+						ui.Text(c, "Copy All").FontSize(10).TextColor(tk2.TextSecondary).SingleLine()
+					}
+				})
+			})
+
 			for i, h := range headers {
 				i, h := i, h
-				ui.Row(c).Height(26).PaddingX(8).AlignItems(ui.Center).
-					BorderWidth(0, 0, m.Border, 0).BorderColor(tk.Border.Alpha(0.3)).
-					Children(func() {
+				rowID := fmt.Sprintf("resp-hdr-%d-%s", i, h.Key)
+				isCopied := *copiedKey == rowID
+				row := ui.Row(c.Key(rowID)).
+					FillWidth().Height(28).PaddingX(8).Gap(8).AlignItems(ui.Center).
+					Radius(m.RadiusSM).
+					BorderWidth(0, 0, 1, 0).BorderColor(tk2.Border.Alpha(0.4))
+				if row.Hovered() {
+					row.Background(tk2.BgHover)
+				}
+				row.Children(func() {
+					// 1. KEY 列：点击复制 "Key: Value"
+					keyBtn := ui.ButtonBase(c.Key(rowID + "-key")).
+						Width(200).Height(22).PaddingX(4).Radius(m.RadiusSM).
+						AlignItems(ui.Center).Justify(ui.Start).
+						Cursor(ui.CursorPointer).Role(ui.RoleButton).
+						Label("Header key " + h.Key).Tooltip("Click to copy " + h.Key + ": " + h.Value)
+					if keyBtn.Hovered() {
+						keyBtn.Background(tk2.BgSelected)
+					}
+					if keyBtn.Clicked() {
+						c.Services().WriteClipboard(h.Key + ": " + h.Value)
+						*copiedKey = rowID
+					}
+					keyBtn.Children(func() {
 						ui.Text(c, h.Key).FontSize(m.FontXS).FontWeight(600).
-							TextColor(tk.TextSecondary).Width(200)
-						ui.Text(c, h.Value).FontSize(m.FontXS).
-							TextColor(tk.TextPrimary).Grow(1)
+							TextColor(tk2.TextSecondary).SingleLine().Grow(1)
 					})
-				_ = i
+
+					// 2. VALUE 列：点击复制完整值
+					valBtn := ui.ButtonBase(c.Key(rowID + "-val")).
+						Grow(1).Height(22).PaddingX(4).Radius(m.RadiusSM).
+						AlignItems(ui.Center).Justify(ui.Start).
+						Cursor(ui.CursorPointer).Role(ui.RoleButton).
+						Label("Header value " + h.Key).Tooltip(h.Value)
+					if valBtn.Hovered() {
+						valBtn.Background(tk2.BgSelected)
+					}
+					if valBtn.Clicked() {
+						c.Services().WriteClipboard(h.Value)
+						*copiedKey = rowID
+					}
+					valBtn.Children(func() {
+						ui.Text(c, h.Value).FontSize(m.FontXS).
+							TextColor(tk2.TextPrimary).SingleLine().Grow(1)
+					})
+
+					// 3. 行尾复制按钮（复制该响应头的值）
+					copyBtn := ui.ButtonBase(c.Key(rowID + "-copy")).
+						Height(22).PaddingX(6).Gap(4).Radius(m.RadiusSM).
+						AlignItems(ui.Center).Justify(ui.Center).
+						Cursor(ui.CursorPointer).Role(ui.RoleButton).
+						Label("Copy header " + h.Key).Tooltip("Copy value")
+					if isCopied {
+						copyBtn.Background(tk2.AccentSoft)
+					} else if copyBtn.Hovered() {
+						copyBtn.Background(tk2.BgSelected)
+					}
+					if copyBtn.Clicked() {
+						c.Services().WriteClipboard(h.Value)
+						*copiedKey = rowID
+					}
+					copyBtn.Children(func() {
+						if isCopied {
+							ui.Icon(c, icons.Check).FontSize(11).TextColor(tk2.Success)
+							ui.Text(c, "Copied").FontSize(10).TextColor(tk2.Success).SingleLine()
+						} else {
+							ui.Icon(c, icons.Copy).FontSize(11).TextColor(tk2.TextSecondary)
+							ui.Text(c, "Copy").FontSize(10).TextColor(tk2.TextSecondary).SingleLine()
+						}
+					})
+				})
 			}
 		})
 	})
 }
 
-// Cookie 列表展示（单行超出省略并支持点击复制完整内容）
+// Cookie 列表展示（单行超出省略并支持点击复制 Value / Name=Value 及一键复制全部 Cookie）
 func renderResponseCookies(c *ui.Context, cookies []transport.ResponseCookie, tk theme.Tokens, m theme.Metric) {
 	if len(cookies) == 0 {
 		ui.Row(c).Height(40).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
@@ -2197,6 +2536,7 @@ func renderResponseCookies(c *ui.Context, cookies []transport.ResponseCookie, tk
 
 	scroll.Children(func() {
 		ui.Column(c).Grow(1).MinWidth(700).Padding(0, 4).Children(func() {
+			allCopied := *copiedKey == "__all__"
 			ui.Row(c).Height(28).PaddingX(8).Gap(8).AlignItems(ui.Center).
 				Background(tk2.BgSubtle).
 				BorderWidth(0, 0, 1, 0).BorderColor(tk2.Border).Children(func() {
@@ -2206,13 +2546,37 @@ func renderResponseCookies(c *ui.Context, cookies []transport.ResponseCookie, tk
 				ui.Text(c, "PATH").FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Width(60).SingleLine()
 				ui.Text(c, "EXPIRES").FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Width(130).SingleLine()
 				ui.Text(c, "HTTPONLY").FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Width(65).SingleLine()
-				ui.Box(c).Width(60) // 操作列
+
+				copyAllBtn := ui.ButtonBase(c.Key("ck-copy-all")).
+					Height(20).PaddingX(6).Gap(4).Radius(m.RadiusSM).
+					AlignItems(ui.Center).Justify(ui.Center).
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).
+					Label("Copy All Cookies").Tooltip("Copy all cookies as name=value; ...")
+				if allCopied {
+					copyAllBtn.Background(tk2.AccentSoft)
+				} else if copyAllBtn.Hovered() {
+					copyAllBtn.Background(tk2.BgSelected)
+				}
+				if copyAllBtn.Clicked() {
+					c.Services().WriteClipboard(formatResponseCookies(cookies))
+					*copiedKey = "__all__"
+				}
+				copyAllBtn.Children(func() {
+					if allCopied {
+						ui.Icon(c, icons.Check).FontSize(10).TextColor(tk2.Success)
+						ui.Text(c, "Copied").FontSize(10).TextColor(tk2.Success).SingleLine()
+					} else {
+						ui.Icon(c, icons.Copy).FontSize(10).TextColor(tk2.TextSecondary)
+						ui.Text(c, "Copy All").FontSize(10).TextColor(tk2.TextSecondary).SingleLine()
+					}
+				})
 			})
 
-			for _, ck := range cookies {
-				ck := ck
-				isCopied := *copiedKey == ck.Name
-				row := ui.Row(c.Key("ck-row-" + ck.Name)).
+			for i, ck := range cookies {
+				i, ck := i, ck
+				rowID := fmt.Sprintf("ck-row-%d-%s", i, ck.Name)
+				isCopied := *copiedKey == rowID
+				row := ui.Row(c.Key(rowID)).
 					Height(30).PaddingX(8).Gap(8).AlignItems(ui.Center).
 					Radius(m.RadiusSM).
 					BorderWidth(0, 0, 1, 0).BorderColor(tk2.Border.Alpha(0.4))
@@ -2220,12 +2584,26 @@ func renderResponseCookies(c *ui.Context, cookies []transport.ResponseCookie, tk
 					row.Background(tk2.BgHover)
 				}
 				row.Children(func() {
-					// 1. NAME 单行展示，超出显示省略号，悬浮显示完整文本
-					ui.Text(c, ck.Name).FontSize(m.FontXS).FontWeight(500).
-						TextColor(tk2.TextPrimary).Width(130).SingleLine().Tooltip(ck.Name)
+					// 1. NAME 单行展示，点击复制 "name=value"
+					nameBtn := ui.ButtonBase(c.Key(rowID + "-name")).
+						Width(130).Height(24).PaddingX(4).Radius(m.RadiusSM).
+						AlignItems(ui.Center).Justify(ui.Start).
+						Cursor(ui.CursorPointer).Role(ui.RoleButton).
+						Label("Cookie name " + ck.Name).Tooltip("Click to copy " + ck.Name + "=" + ck.Value)
+					if nameBtn.Hovered() {
+						nameBtn.Background(tk2.BgSelected)
+					}
+					if nameBtn.Clicked() {
+						c.Services().WriteClipboard(ck.Name + "=" + ck.Value)
+						*copiedKey = rowID
+					}
+					nameBtn.Children(func() {
+						ui.Text(c, ck.Name).FontSize(m.FontXS).FontWeight(500).
+							TextColor(tk2.TextPrimary).SingleLine().Grow(1)
+					})
 
 					// 2. VALUE 单行展示，超出显示省略号，点击直接复制该值，悬浮显示完整文本
-					valBtn := ui.ButtonBase(c.Key("ck-val-" + ck.Name)).
+					valBtn := ui.ButtonBase(c.Key(rowID + "-val")).
 						Grow(1).MinWidth(150).Height(24).PaddingX(4).
 						Radius(m.RadiusSM).AlignItems(ui.Center).Justify(ui.Start).
 						Cursor(ui.CursorPointer).Role(ui.RoleButton).
@@ -2235,11 +2613,11 @@ func renderResponseCookies(c *ui.Context, cookies []transport.ResponseCookie, tk
 					}
 					if valBtn.Clicked() {
 						c.Services().WriteClipboard(ck.Value)
-						*copiedKey = ck.Name
+						*copiedKey = rowID
 					}
 					valBtn.Children(func() {
 						ui.Text(c, ck.Value).FontSize(m.FontXS).
-							TextColor(tk.Info).SingleLine().Grow(1)
+							TextColor(tk2.Info).SingleLine().Grow(1)
 					})
 
 					// 3. DOMAIN
@@ -2260,10 +2638,10 @@ func renderResponseCookies(c *ui.Context, cookies []transport.ResponseCookie, tk
 						httpOnlyStr = "✓"
 					}
 					ui.Text(c, httpOnlyStr).FontSize(m.FontXS).
-						TextColor(tk.Success).Width(65).SingleLine()
+						TextColor(tk2.Success).Width(65).SingleLine()
 
-					// 7. 复制按钮
-					copyBtn := ui.ButtonBase(c.Key("ck-copy-" + ck.Name)).
+					// 7. 复制按钮（复制 Cookie Value）
+					copyBtn := ui.ButtonBase(c.Key(rowID + "-copy")).
 						Height(22).PaddingX(6).Gap(4).Radius(m.RadiusSM).
 						AlignItems(ui.Center).Justify(ui.Center).
 						Cursor(ui.CursorPointer).Role(ui.RoleButton).
@@ -2275,12 +2653,12 @@ func renderResponseCookies(c *ui.Context, cookies []transport.ResponseCookie, tk
 					}
 					if copyBtn.Clicked() {
 						c.Services().WriteClipboard(ck.Value)
-						*copiedKey = ck.Name
+						*copiedKey = rowID
 					}
 					copyBtn.Children(func() {
 						if isCopied {
-							ui.Icon(c, icons.Check).FontSize(11).TextColor(tk.Success)
-							ui.Text(c, "Copied").FontSize(10).TextColor(tk.Success).SingleLine()
+							ui.Icon(c, icons.Check).FontSize(11).TextColor(tk2.Success)
+							ui.Text(c, "Copied").FontSize(10).TextColor(tk2.Success).SingleLine()
 						} else {
 							ui.Icon(c, icons.Copy).FontSize(11).TextColor(tk2.TextSecondary)
 							ui.Text(c, "Copy").FontSize(10).TextColor(tk2.TextSecondary).SingleLine()

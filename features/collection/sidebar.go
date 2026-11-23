@@ -21,11 +21,11 @@ func sidebar(c *ui.Context, props pageProps) {
 	moreOpen := ui.Local(col, "sb-more-open", func() bool { return false })
 
 	col.Children(func() {
-		// 1. 搜索（内嵌左侧筛选按钮下拉，对齐 Pixso 22-侧栏-搜索筛选）+ 新建「+」+ 更多「...」
+		// 1. 搜索（内嵌左侧筛选按钮下拉，对齐统一 34px 侧栏顶栏）+ 新建「+」+ 更多「...」
 		ui.Row(c).FillWidth().Height(34).Padding(0, m.Space3).Gap(6).
 			AlignItems(ui.Center).Children(func() {
-			searchBox := ui.Row(c.Key("sb-search-box")).Grow(1).Height(26).Padding(0, 10, 0, 6).Gap(6).
-				AlignItems(ui.Center).Radius(6).Background(tk.BgSubtle)
+			searchBox := ui.Row(c.Key("sb-search-box")).Grow(1).Height(26).Padding(0, 8, 0, 6).Gap(6).
+				AlignItems(ui.Center).Radius(m.RadiusMD).Background(tk.BgSubtle)
 			searchBox.Children(func() {
 				// 左侧筛选图标按钮（对齐 Pixso 22-侧栏-搜索筛选：89:9987 / 89:9988，三层阶梯漏斗 ListFilter）
 				filterActive := *filterOpen || !props.state.allFiltersEnabled()
@@ -35,8 +35,8 @@ func sidebar(c *ui.Context, props pageProps) {
 					Tooltip:      "Filter",
 					Icon:         icons.ListFilter,
 					Size:         18,
-					IconSize:     14,
-					Radius:       4,
+					IconSize:     13,
+					Radius:       m.RadiusSM,
 					Color:        tk.TextMuted,
 					ActiveAccent: filterActive,
 				})
@@ -64,8 +64,22 @@ func sidebar(c *ui.Context, props pageProps) {
 				})
 
 				ui.TextInputBase(c.Key("sb-search-input"), search).Grow(1).
-					FontSize(12).TextColor(tk.TextPrimary).
-					Placeholder("Search").PlaceholderColor(tk.TextMuted)
+					FontSize(m.FontSM).TextColor(tk.TextPrimary).
+					Placeholder("Search").PlaceholderColor(tk.TextMuted).
+					Label("Filter collections")
+				if *search != "" {
+					clr := v2.IconButton(c, v2.IconButtonOpts{
+						Key:      "sb-search-clear",
+						Label:    "Clear filter",
+						Icon:     icons.X,
+						Size:     18,
+						IconSize: 11,
+						Color:    tk.TextMuted,
+					})
+					if clr.Clicked() {
+						*search = ""
+					}
+				}
 			})
 
 			addMenuButton(c, props)
@@ -75,9 +89,9 @@ func sidebar(c *ui.Context, props pageProps) {
 				Label:    "more",
 				Tooltip:  "More actions",
 				Icon:     icons.Ellipsis,
-				Size:     26,
+				Size:     24,
 				IconSize: 14,
-				Radius:   4,
+				Radius:   m.RadiusSM,
 			})
 			if moreBtn.Clicked() {
 				*moreOpen = !*moreOpen
@@ -121,9 +135,7 @@ func sidebar(c *ui.Context, props pageProps) {
 			})
 		})
 
-		ui.Box(c).Height(8)
-
-		// 2. 可滚动分区：按筛选开关动态显示 COLLECTIONS → ENVIRONMENTS → 工具区
+		// 2. 可滚动集合树区
 		actions := treeActions{
 			create: func(row *treeNode, kind treeKind) {
 				domainKind := domain.KindFolder
@@ -133,7 +145,12 @@ func sidebar(c *ui.Context, props pageProps) {
 				props.actions.createNode(domain.ID(row.id), domainKind)
 			},
 			remove: func(row *treeNode) {
-				props.actions.deleteRow(row)
+				if row == nil {
+					return
+				}
+				rowCopy := *row
+				props.state.deletePending = &rowCopy
+				props.state.deleteConfirmOpen = true
 			},
 			open: func(row *treeNode) {
 				props.actions.openTab(row.id)
@@ -149,7 +166,7 @@ func sidebar(c *ui.Context, props pageProps) {
 		}
 
 		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
-			ui.Column(c).FillWidth().Padding(0, 8, 16, 8).Children(func() {
+			ui.Column(c).FillWidth().Padding(6, m.Space2, m.Space4, m.Space2).Gap(2).Children(func() {
 				// 树形结构最顶层直接就是 Collection 级别
 				if len(props.collections) == 0 {
 					emptySidebar(c, props)
@@ -165,21 +182,22 @@ func sidebar(c *ui.Context, props pageProps) {
 
 					// 底部行内 + New Collection：直接新建集合并以 Tab 打开编辑（不弹框）
 					newCollRow := ui.ButtonBase(c.Key("sb-inline-new-coll")).
-						FillWidth().Height(26).Padding(0, 12, 0, 24).Gap(6).
+						FillWidth().Height(m.RowHeight).Padding(0, 8, 0, 24).Gap(6).
 						Radius(m.RadiusSM).AlignItems(ui.Center).Justify(ui.Start).
-						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("New Collection")
+						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("New Collection").
+						Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 					switch {
 					case newCollRow.Pressed():
 						newCollRow.Background(tk.BgSelected)
 					case newCollRow.Hovered():
-						newCollRow.Background(tk.BgHover)
+						newCollRow.Background(tk.BgSubtle)
 					}
 					if newCollRow.Clicked() && props.actions.createCollectionTab != nil {
 						props.actions.createCollectionTab()
 					}
 					newCollRow.Children(func() {
-						ui.Icon(c, icons.Plus).FontSize(11).TextColor(tk.TextMuted)
-						ui.Text(c, "New Collection").FontSize(m.FontXS).TextColor(tk.TextSecondary).SingleLine()
+						ui.Icon(c, icons.Plus).FontSize(12).TextColor(tk.TextMuted)
+						ui.Text(c, "New Collection").FontSize(m.FontSM).TextColor(tk.TextSecondary).SingleLine()
 					})
 				}
 			})
