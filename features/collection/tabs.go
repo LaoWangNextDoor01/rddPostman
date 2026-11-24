@@ -11,12 +11,11 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// tabBar 是主区顶部的标签条（对齐 Pixso inst / row / tabs：34 高、BgApp 底色、底部 1px 分割线）。
+// tabBar 是主区顶部的标签条：纯白 BgBase 与主内容区融为一体、去底部冗余通栏线，视觉轻盈通透。
 func tabBar(c *ui.Context) ui.Element {
-	m, tk := thV2.Metrics, thV2.Of(c)
-	return ui.Row(c).FillWidth().Height(34).Padding(0, 12, 0, 10).Gap(6).
-		AlignItems(ui.Center).Background(tk.BgApp).
-		BorderWidth(0, 0, m.Border, 0).BorderColor(tk.Border)
+	tk := thV2.Of(c)
+	return ui.Row(c).FillWidth().Height(36).Padding(0, 16, 0, 12).Gap(6).
+		AlignItems(ui.Center).Background(tk.BgBase)
 }
 
 func findEnvironment(envs []domain.Environment, id domain.ID) *domain.Environment {
@@ -49,20 +48,18 @@ func tabsBar(c *ui.Context, props pageProps) {
 					}
 					tab := ui.ButtonBase(c.Key("tab-"+tabID)).Height(26).MinWidth(60).
 						Padding(0, 8, 0, 10).Gap(6).
-						Radius(4).AlignItems(ui.Center).
+						Radius(m.RadiusMD).AlignItems(ui.Center).
 						Cursor(ui.CursorPointer).Label(env.Name).Role(ui.RoleTab).
 						Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 					switch {
 					case selected:
-						tab.Background(tk.BgSurface).
-							Border(1, tk.Border).
-							Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.05))
+						tab.Background(tk.BgSelected)
 					case tab.Pressed():
-						tab.Background(tk.BgSelected).Border(1, ui.Transparent)
+						tab.Background(tk.BgHover)
 					case tab.Hovered():
-						tab.Background(tk.BgHover).Border(1, ui.Transparent)
+						tab.Background(tk.BgSubtle)
 					default:
-						tab.Background(ui.Transparent).Border(1, ui.Transparent)
+						tab.Background(ui.Transparent)
 					}
 					if tab.Clicked() {
 						props.actions.openTab(tabID)
@@ -88,20 +85,18 @@ func tabsBar(c *ui.Context, props pageProps) {
 					}
 					tab := ui.ButtonBase(c.Key("tab-"+tabID)).Height(26).MinWidth(60).
 						Padding(0, 8, 0, 10).Gap(6).
-						Radius(4).AlignItems(ui.Center).
+						Radius(m.RadiusMD).AlignItems(ui.Center).
 						Cursor(ui.CursorPointer).Label(label).Role(ui.RoleTab).
 						Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 					switch {
 					case selected:
-						tab.Background(tk.BgSurface).
-							Border(1, tk.Border).
-							Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.05))
+						tab.Background(tk.BgSelected)
 					case tab.Pressed():
-						tab.Background(tk.BgSelected).Border(1, ui.Transparent)
+						tab.Background(tk.BgHover)
 					case tab.Hovered():
-						tab.Background(tk.BgHover).Border(1, ui.Transparent)
+						tab.Background(tk.BgSubtle)
 					default:
-						tab.Background(ui.Transparent).Border(1, ui.Transparent)
+						tab.Background(ui.Transparent)
 					}
 					if tab.Clicked() {
 						props.actions.openTab(tabID)
@@ -127,20 +122,18 @@ func tabsBar(c *ui.Context, props pageProps) {
 				}
 				tab := ui.ButtonBase(c.Key("tab-"+tabID)).Height(26).MinWidth(60).
 					Padding(0, 8, 0, 10).Gap(6).
-					Radius(4).AlignItems(ui.Center).
+					Radius(m.RadiusMD).AlignItems(ui.Center).
 					Cursor(ui.CursorPointer).Label(tabLabel(coll, tabNode)).Role(ui.RoleTab).
 					Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 				switch {
 				case selected:
-					tab.Background(tk.BgSurface).
-						Border(1, tk.Border).
-						Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.05))
+					tab.Background(tk.BgSelected)
 				case tab.Pressed():
-					tab.Background(tk.BgSelected).Border(1, ui.Transparent)
+					tab.Background(tk.BgHover)
 				case tab.Hovered():
-					tab.Background(tk.BgHover).Border(1, ui.Transparent)
+					tab.Background(tk.BgSubtle)
 				default:
-					tab.Background(ui.Transparent).Border(1, ui.Transparent)
+					tab.Background(ui.Transparent)
 				}
 				if tab.Clicked() {
 					props.actions.openTab(tabID)
@@ -222,8 +215,8 @@ func tabBarEnvironmentSwitcher(c *ui.Context, props pageProps) {
 	}
 
 	btn := ui.ButtonBase(c.Key("tab-env-switcher")).
-		Height(24).Padding(0, 8).Gap(5).
-		Radius(m.RadiusSM).Background(tk.BgSurface).
+		Height(26).Padding(0, 8).Gap(5).
+		Radius(m.RadiusSM).
 		AlignItems(ui.Center).Justify(ui.Center).
 		Cursor(ui.CursorPointer).Role(ui.RoleButton).
 		Label(activeEnvName).Tooltip("Switch environment").
@@ -235,14 +228,12 @@ func tabBarEnvironmentSwitcher(c *ui.Context, props pageProps) {
 	}
 
 	switch {
-	case *open:
-		btn.Border(1, tk.Accent).Background(tk.BgHover)
-	case btn.Pressed():
+	case *open, btn.Pressed():
 		btn.Background(tk.BgSelected)
 	case btn.Hovered():
-		btn.Background(tk.BgHover).Border(1, tk.BorderStrong)
+		btn.Background(tk.BgHover)
 	default:
-		btn.Border(1, tk.Border)
+		btn.Background(ui.Transparent)
 	}
 
 	btn.Children(func() {

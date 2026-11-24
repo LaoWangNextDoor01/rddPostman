@@ -188,25 +188,23 @@ func segmentBar(c *ui.Context, props pageProps, coll *domain.Collection, node *d
 	}
 	active := props.state.segment(id)
 
-	ui.Row(c).Height(32).Padding(0, m.Space3).
+	ui.Row(c).Height(32).Padding(0, m.Space4).
 		AlignItems(ui.Center).Children(func() {
-		ui.Row(c).Height(28).Padding(2).Gap(2).Radius(6).
-			Background(tk2.BgSubtle).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Height(28).Gap(4).AlignItems(ui.Center).Children(func() {
 			for _, s := range segs {
 				s := s
 				isActive := s.key == active
-				btn := ui.ButtonBase(c.Key("seg-" + id + "-" + s.key)).Height(24).MinWidth(50).
-					PaddingX(10).Gap(5).AlignItems(ui.Center).Radius(4).
-					Label(s.label).Role(ui.RoleTab).
+				btn := ui.ButtonBase(c.Key("seg-" + id + "-" + s.key)).Height(26).
+					PaddingX(9).Gap(5).AlignItems(ui.Center).Radius(5).
+					Cursor(ui.CursorPointer).Label(s.label).Role(ui.RoleTab).
 					Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 				switch {
 				case isActive:
-					btn.Background(tk2.BgSurface).
-						Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.08))
+					btn.Background(tk2.BgHover)
 				case btn.Pressed():
 					btn.Background(tk2.BgSelected)
 				case btn.Hovered():
-					btn.Background(tk2.BgHover)
+					btn.Background(tk2.BgSubtle)
 				default:
 					btn.Background(ui.Transparent)
 				}

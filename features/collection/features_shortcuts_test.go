@@ -2,8 +2,10 @@ package collection
 
 import (
 	"context"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -470,5 +472,92 @@ func TestDeleteTreeRowRequiresConfirmation(t *testing.T) {
 				t.Fatalf("expected deleteRow called for id-1, got %+v", deleted)
 			}
 		})
+	}
+}
+
+func TestTreeEmptyNodeInlineLinks(t *testing.T) {
+	state := newWorkspace()
+	emptyColl := &domain.Collection{ID: "c-empty", Name: "Empty Collection"}
+	folderColl := &domain.Collection{
+		ID:   "c-folder",
+		Name: "Auth Service",
+		Items: []*domain.Node{
+			{ID: "f-empty", Kind: domain.KindFolder, Name: "OAuth2"},
+		},
+	}
+	var created []struct {
+		id   string
+		kind treeKind
+	}
+
+	view := func(c *ui.Context) {
+		props := pageProps{
+			workspaceID: "ws1",
+			collections: []*domain.Collection{emptyColl, folderColl},
+			state:       state,
+			actions: pageActions{
+				createNode: func(targetID domain.ID, kind domain.Kind) {
+					tk := treeFolder
+					if kind == domain.KindRequest {
+						tk = treeRequest
+					}
+					created = append(created, struct {
+						id   string
+						kind treeKind
+					}{id: string(targetID), kind: tk})
+				},
+			},
+		}
+		sidebar(c, props)
+	}
+
+	tt := ui.NewTester(view, 252, 460)
+	if !tt.HasText("Collection is empty") || !tt.HasText("Folder is empty") {
+		t.Fatalf("expected Postman-style empty hints; got %q", tt.Texts())
+	}
+
+	if snapDir := os.Getenv("LAYOUT_SNAPSHOT_DIR"); snapDir != "" {
+		_ = os.MkdirAll(snapDir, 0o755)
+		save := func(name string) {
+			f, err := os.Create(filepath.Join(snapDir, name))
+			if err != nil {
+				t.Fatalf("create %s: %v", name, err)
+			}
+			defer f.Close()
+			if err := png.Encode(f, tt.Image()); err != nil {
+				t.Fatalf("encode %s: %v", name, err)
+			}
+		}
+		save("tree-empty-light.png")
+		if r, ok := tt.Find("Collection is empty"); ok {
+			tt.Move(r.X+10, r.Y+4)
+			tt.Advance(200 * time.Millisecond)
+			save("tree-empty-light-hover.png")
+			tt.Move(0, 0)
+			tt.Advance(200 * time.Millisecond)
+		}
+		tt.SetDark(true)
+		tt.Advance(200 * time.Millisecond)
+		if r, ok := tt.Find("Collection is empty"); ok {
+			tt.Move(r.X+10, r.Y+4)
+			tt.Advance(200 * time.Millisecond)
+		}
+		save("tree-empty-dark.png")
+		tt.Move(0, 0)
+		tt.SetDark(false)
+		tt.Advance(200 * time.Millisecond)
+	}
+
+	if err := tt.Click("Add request"); err != nil {
+		t.Fatalf("Click Add request: %v", err)
+	}
+	tt.Frame()
+	if err := tt.Click("Add folder"); err != nil {
+		t.Fatalf("Click Add folder: %v", err)
+	}
+	tt.Frame()
+
+	if len(created) != 2 || created[0].kind != treeRequest || created[1].kind != treeFolder {
+		t.Fatalf("unexpected create calls: %+v", created)
 	}
 }

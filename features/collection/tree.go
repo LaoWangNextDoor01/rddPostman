@@ -141,7 +141,7 @@ func collectionTree(c *ui.Context, state *workspace, rows []*treeNode, actions t
 				}
 
 				weight := 400
-				if selected || n.kind == treeCollection {
+				if selected {
 					weight = 500
 				}
 				ui.Text(c, n.name).FontSize(m.FontSM).FontWeight(weight).
@@ -308,54 +308,77 @@ func filterTree(nodes []*treeNode, keyword string, state *workspace) []*treeNode
 	return out
 }
 
-// renderTreeEmptyNode 严格对齐 Pixso 画板 1-侧栏-集合无请求（32:73920）与 3-侧栏-目录无请求（32:75050）：
-// 当集合或目录展开且无子项时，在缩进位置呈现空态引导与快速添加按钮。
+// renderTreeEmptyNode 绘制空集合 / 空目录的紧凑引导区：
+// 柔和次级灰标题 + 简短说明 + 横排紧凑带图标小按钮，整块区域支持 Hover 背景高亮。
 func renderTreeEmptyNode(c *ui.Context, n *treeNode, depth int, actions treeActions) {
-	tk := thV2.Of(c)
+	m, tk := thV2.Metrics, thV2.Of(c)
 	title := "Collection is empty"
 	desc := "Add a request or folder to structure your API workflow."
 	if n.kind == treeFolder {
 		title = "Folder is empty"
 		desc = "Add a request, a folder, or drag items here to group them together."
 	}
-	ui.Column(c.Key("tree-empty-" + n.id)).FillWidth().
-		Padding(8, 8, 12, 8+14*float32(depth)).Gap(6).Children(func() {
-		ui.Text(c, title).FontSize(13).FontWeight(600).TextColor(tk.TextPrimary)
-		ui.Text(c, desc).FontSize(11).TextColor(tk.TextMuted)
-		ui.Row(c).Gap(6).Children(func() {
-			reqBtn := ui.ButtonBase(c.Key("tree-empty-add-req-" + n.id)).
-				Height(24).PaddingX(8).Radius(4).Border(1, tk.Border).
-				Background(tk.BgSurface).Center().Cursor(ui.CursorPointer).
-				Role(ui.RoleButton).Label("Add request")
-			switch {
-			case reqBtn.Pressed():
-				reqBtn.Background(tk.BgSelected)
-			case reqBtn.Hovered():
-				reqBtn.Background(tk.BgHover)
-			}
-			if reqBtn.Clicked() && actions.create != nil {
-				actions.create(n, treeRequest)
-			}
-			reqBtn.Children(func() {
-				ui.Text(c, "Add request").FontSize(11).FontWeight(500).TextColor(tk.TextPrimary)
-			})
+	// 容器左外边距留出 8px 内边距后，文字与父级图标左边缘（25 + 16*(depth-1)）精确对齐
+	indent := float32(17)
+	if depth > 1 {
+		indent += 16 * float32(depth-1)
+	}
 
-			fldBtn := ui.ButtonBase(c.Key("tree-empty-add-folder-" + n.id)).
-				Height(24).PaddingX(8).Radius(4).Border(1, tk.Border).
-				Background(tk.BgSurface).Center().Cursor(ui.CursorPointer).
-				Role(ui.RoleButton).Label("Add folder")
-			switch {
-			case fldBtn.Pressed():
-				fldBtn.Background(tk.BgSelected)
-			case fldBtn.Hovered():
-				fldBtn.Background(tk.BgHover)
-			}
-			if fldBtn.Clicked() && actions.create != nil {
-				actions.create(n, treeFolder)
-			}
-			fldBtn.Children(func() {
-				ui.Text(c, "Add folder").FontSize(11).FontWeight(500).TextColor(tk.TextPrimary)
+	ui.Box(c.Key("tree-empty-wrap-" + n.id)).FillWidth().Padding(2, 4, 6, indent).Children(func() {
+		box := ui.Column(c.Key("tree-empty-" + n.id)).FillWidth().
+			Padding(8, 8).Gap(4).AlignItems(ui.Start).
+			Radius(m.RadiusMD).
+			Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+		if box.Hovered() {
+			box.Background(tk.BgHover)
+		} else {
+			box.Background(ui.Transparent)
+		}
+
+		box.Children(func() {
+			ui.Text(c, title).FontSize(12).FontWeight(600).TextColor(tk.TextSecondary)
+			ui.Text(c, desc).FontSize(11).FixedLineHeight(16).TextColor(tk.TextMuted).FillWidth()
+
+			ui.Row(c).FillWidth().Padding(4, 0, 0, 0).Gap(6).AlignItems(ui.Center).Wrap().Children(func() {
+				treeEmptyOutlineBtn(c, "tree-empty-add-req-"+n.id, icons.Send, "Add request", func() {
+					if actions.create != nil {
+						actions.create(n, treeRequest)
+					}
+				})
+				treeEmptyOutlineBtn(c, "tree-empty-add-folder-"+n.id, icons.FolderPlus, "Add folder", func() {
+					if actions.create != nil {
+						actions.create(n, treeFolder)
+					}
+				})
 			})
 		})
+	})
+}
+
+func treeEmptyOutlineBtn(c *ui.Context, key string, icon *ui.SVG, label string, onClick func()) {
+	m, tk := thV2.Metrics, thV2.Of(c)
+	btn := ui.ButtonBase(c.Key(key)).
+		Height(22).PaddingX(7).Gap(4).Radius(m.RadiusSM).
+		AlignItems(ui.Center).Justify(ui.Start).
+		Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).
+		Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+	switch {
+	case btn.Pressed():
+		btn.Background(tk.BgSelected).Border(m.Border, tk.BorderStrong)
+	case btn.Hovered():
+		btn.Background(tk.BgSurface).Border(m.Border, tk.BorderStrong)
+	default:
+		btn.Background(ui.Transparent).Border(m.Border, tk.BorderPopover)
+	}
+	if btn.Clicked() && onClick != nil {
+		onClick()
+	}
+	btn.Children(func() {
+		icColor := tk.TextSecondary
+		if btn.Hovered() || btn.Pressed() {
+			icColor = tk.TextPrimary
+		}
+		ui.Icon(c, icon).FontSize(11).TextColor(icColor)
+		ui.Text(c, label).FontSize(11).FontWeight(400).TextColor(tk.TextPrimary).SingleLine()
 	})
 }

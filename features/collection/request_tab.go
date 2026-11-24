@@ -395,18 +395,18 @@ func requestTab(c *ui.Context, props pageProps, coll *domain.Collection, n *doma
 		ui.SplitVertical(c, &state.splitHeight, func() {
 			// 上半部：请求编辑区（顶部固定区域 + 下方内容独立滚动）
 			ui.Column(c).Fill().MinHeight(0).Background(thV2.Of(c).BgBase).Children(func() {
-				// 1. 顶部固定区域：面包屑导航 + URL 栏 + Tab 切换栏（固定在顶部，不随内容滚动）
-				ui.Column(c).FillWidth().Padding(10, 12, 0, 12).Children(func() {
+				// 1. 顶部固定区域：面包屑导航 + URL 栏 + Tab 切换栏（对齐 Postman 16px 呼吸边距与节奏）
+				ui.Column(c).FillWidth().Padding(8, 16, 0, 16).Children(func() {
 					reqBreadcrumb(c, props, n, activeID, title, triggerSave, tk, m)
-					ui.Box(c).Height(6)
-					reqLine(c, props, coll, n, activeID, state, triggerSend, tk, m)
 					ui.Box(c).Height(8)
+					reqLine(c, props, coll, n, activeID, state, triggerSend, tk, m)
+					ui.Box(c).Height(10)
 					reqConfigTabBar(c, state, thV2.Of(c))
 				})
 
 				// 2. Tab 下方具体配置面板内容（仅此处独立纵向滚动）
 				ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-					ui.Column(c).FillWidth().Padding(8, 12, 10, 12).Children(func() {
+					ui.Column(c).FillWidth().Padding(8, 16, 12, 16).Children(func() {
 						reqConfigTabContent(c, props, coll, n, activeID, state, tk, m)
 					})
 				})
@@ -425,8 +425,11 @@ func reqBreadcrumb(c *ui.Context, props pageProps, n *domain.Node, activeID stri
 	tk2 := thV2.Of(c)
 	crumbs := nodeTrailInWorkspace(props.collections, props.state, activeID)
 
-	ui.Row(c).FillWidth().Height(22).Gap(4).AlignItems(ui.Center).Children(func() {
-		ui.Icon(c, icons.Folder).FontSize(13).TextColor(tk2.TextSecondary)
+	ui.Row(c).FillWidth().Height(24).Gap(4).AlignItems(ui.Center).Children(func() {
+		ui.Box(c).Padding(1, 5).Radius(3).Background(tk2.AccentSoft).Center().Children(func() {
+			ui.Text(c, "HTTP").FontSize(9).FontWeight(700).LetterSpacing(0.3).TextColor(tk2.Accent).SingleLine()
+		})
+		ui.Box(c).Width(2)
 
 		for i, cr := range crumbs {
 			i, cr := i, cr
@@ -481,7 +484,7 @@ func reqBreadcrumb(c *ui.Context, props pageProps, n *domain.Node, activeID stri
 						title.draft = n.Name
 					}
 					btn.Children(func() {
-						ui.Text(c, n.Name).FontSize(12).FontWeight(600).
+						ui.Text(c, n.Name).FontSize(12).FontWeight(500).
 							TextColor(tk2.TextPrimary).SingleLine()
 					})
 				}
@@ -498,7 +501,7 @@ func reqBreadcrumb(c *ui.Context, props pageProps, n *domain.Node, activeID stri
 					props.actions.openTab(cr.ID)
 				}
 				btn.Children(func() {
-					textColor := tk2.TextSecondary
+					textColor := tk2.TextMuted
 					if btn.Hovered() {
 						textColor = tk2.TextPrimary
 					}
@@ -594,17 +597,18 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 	}
 
 	ui.Column(c).FillWidth().Gap(2).Children(func() {
-		ui.Row(c).FillWidth().Height(28).Gap(6).AlignItems(ui.Center).Children(func() {
-			// 一体化 URL 容器（高 28、圆角 4、1px 描边，左侧内嵌 Method 下拉）
-			urlBox := ui.Row(c.Key("req-url-box-" + activeID)).Grow(1).Height(28).AlignItems(ui.Center).
-				Radius(4).Background(tk2.BgSurface).Border(1, tk2.Border)
+		ui.Row(c).FillWidth().Height(34).Gap(8).AlignItems(ui.Center).Children(func() {
+			// 一体化 URL 容器（高 34、圆角 6、清晰克制的 1px BorderPopover 描边，左侧内嵌 Method 下拉）
+			urlBox := ui.Row(c.Key("req-url-box-" + activeID)).Grow(1).Height(34).AlignItems(ui.Center).
+				Radius(6).Background(tk2.BgSurface).Border(1, tk2.BorderPopover).
+				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 			var urlFocused bool
 
 			urlBox.Children(func() {
 				methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
 				methodBtn := ui.ButtonBase(c.Key("req-method-btn-"+activeID)).
-					Height(26).Padding(0, 8, 0, 10).Gap(4).AlignItems(ui.Center).
-					Radius(3).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(req.Method)
+					Height(30).Padding(0, 10, 0, 12).Gap(5).AlignItems(ui.Center).
+					Radius(4).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(req.Method)
 				switch {
 				case methodBtn.Pressed():
 					methodBtn.Background(tk2.BgSelected)
@@ -615,7 +619,7 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 					state.methodOpen = !state.methodOpen
 				}
 				methodBtn.Children(func() {
-					ui.Text(c, req.Method).FontSize(12).Bold().
+					ui.Text(c, req.Method).FontSize(12).FontWeight(600).
 						TextColor(methodColor(tk, req.Method)).SingleLine()
 					ui.Icon(c, icons.ChevronDown).FontSize(10).TextColor(tk2.TextMuted)
 				})
@@ -648,7 +652,7 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 				})
 
 				// 细竖分隔线
-				ui.Box(c).Width(1).Height(16).Background(tk2.Border)
+				ui.Box(c).Width(1).Height(18).Background(tk2.Border)
 
 				// URL 编辑区：非聚焦且含完整变量时使用行内交互胶囊（画板 47/48/49），聚焦、正在输入未闭合变量或无变量时直接输入
 				prefix, hasUnclosed := detectUnclosedVariable(state.urlDraft)
@@ -737,6 +741,8 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 			})
 			if urlFocused {
 				urlBox.Border(1, tk2.Focus).Shadow(0, 0, 0, 2, tk2.FocusRing)
+			} else if urlBox.Hovered() {
+				urlBox.Border(1, tk2.BorderStrong)
 			}
 
 			// 如果正处于自动补全态，呼出画板 50 补全下拉浮层
@@ -749,10 +755,10 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 				})
 			}
 
-			// 发送分裂主按钮（高 28、圆角 4、#336FFF 主色 + 30% 白叠主色分裂线 + 下拉箭头）
+			// 发送分裂主按钮（高 34、圆角 6，与 URL 栏严格等高同圆角）
 			if state.sending {
 				cancelBtn := ui.ButtonBase(c.Key("req-cancel-btn")).
-					Height(28).PaddingX(14).Radius(4).Center().
+					Height(34).PaddingX(16).Radius(6).Center().
 					Background(tk2.DangerSoft).Border(1, tk2.Danger).
 					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Cancel")
 				if cancelBtn.Clicked() {
@@ -765,13 +771,13 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 					ui.Text(c, "Cancel").FontSize(12).FontWeight(500).TextColor(tk2.Danger).SingleLine()
 				})
 			} else {
-				splitWrap := ui.Row(c.Key("req-send-split")).Height(28).Radius(4).Clip().
+				splitWrap := ui.Row(c.Key("req-send-split")).Height(34).Radius(6).Clip().
 					Background(tk2.Accent).AlignItems(ui.Center)
 				menuOpen := ui.Local(splitWrap, "send-menu-open", func() bool { return false })
 
 				splitWrap.Children(func() {
 					sendBtn := ui.ButtonBase(c.Key("req-send-btn")).
-						Height(28).PaddingX(16).Center().
+						Height(34).PaddingX(18).Center().
 						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Send").
 						Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 					switch {
@@ -790,10 +796,10 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 					})
 
 					// 30% 白叠主色分裂线（对齐 Pixso 组件库 · Button 06）
-					ui.Box(c).Width(1).Height(28).Background(tk2.OnAccent.Alpha(0.3))
+					ui.Box(c).Width(1).Height(34).Background(tk2.OnAccent.Alpha(0.3))
 
 					dropBtn := ui.ButtonBase(c.Key("req-send-more")).
-						Width(24).Height(28).Center().
+						Width(26).Height(34).Center().
 						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Send options").
 						Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 					switch {
@@ -1104,22 +1110,26 @@ func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 		*items = []domain.KV{{ID: domain.NewID(), Enabled: true}}
 	}
 
-	col := ui.Column(c.Key("kv-editor-" + keyPrefix)).FillWidth().Radius(4).
+	col := ui.Column(c.Key("kv-editor-" + keyPrefix)).FillWidth().Radius(6).
 		Border(1, tk2.Border).Background(tk2.BgBase).Clip()
 	bulkMode := ui.Local(col, "bulk-mode", func() bool { return false })
 	bulkText := ui.Local(col, "bulk-text", func() string { return kvListToBulk(*items) })
 
 	col.Children(func() {
-		// 表头（对齐 Pixso：Key | Value | Description + 右侧 Bulk Edit 切换）
-		ui.Row(c).FillWidth().Height(28).AlignItems(ui.Center).
+		// 表头（浅灰 BgApp 栏头 + 1px 底分割线，与数据行清晰分层）
+		ui.Row(c).FillWidth().Height(30).AlignItems(ui.Center).
+			Background(tk2.BgApp).
 			BorderWidth(0, 0, 1, 0).BorderColor(tk2.Border).
 			Children(func() {
 				if *bulkMode {
-					ui.Row(c).FillWidth().FillHeight().Padding(0, 8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+					ui.Row(c).FillWidth().FillHeight().Padding(0, 10).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 						ui.Text(c, "Rows (Key: Value)").FontSize(11).FontWeight(500).TextColor(tk2.TextSecondary)
 						toggleBtn := ui.ButtonBase(c.Key(keyPrefix + "-toggle-kv")).
 							Height(22).PaddingX(6).Radius(4).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 							Role(ui.RoleButton).Label("Key-Value Edit")
+						if toggleBtn.Hovered() {
+							toggleBtn.Background(tk2.BgHover)
+						}
 						if toggleBtn.Clicked() {
 							*items = bulkToKVList(*bulkText)
 							*bulkMode = false
@@ -1146,6 +1156,9 @@ func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 								resetBtn := ui.ButtonBase(c.Key(keyPrefix + "-reset-defaults")).
 									Height(22).PaddingX(6).Radius(4).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 									Role(ui.RoleButton).Label("Reset Defaults")
+								if resetBtn.Hovered() {
+									resetBtn.Background(tk2.BgHover)
+								}
 								if resetBtn.Clicked() {
 									*items = append(domain.DefaultRequestHeaders(), domain.KV{ID: domain.NewID(), Enabled: true})
 									onPersist(*items)
@@ -1157,6 +1170,9 @@ func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 							toggleBtn := ui.ButtonBase(c.Key(keyPrefix + "-toggle-bulk")).
 								Height(22).PaddingX(6).Radius(4).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 								Role(ui.RoleButton).Label("Bulk Edit")
+							if toggleBtn.Hovered() {
+								toggleBtn.Background(tk2.BgHover)
+							}
 							if toggleBtn.Clicked() {
 								*bulkText = kvListToBulk(*items)
 								*bulkMode = true
@@ -1682,8 +1698,8 @@ func renderBodyEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 				}
 			}
 
-			// 使用与底部 response body 一致的 code editor 组件
-			ui.Box(c.Key("req-body-raw-editor-"+string(n.ID))).FillWidth().Height(240).Radius(4).
+			// 统一 6px 圆角 + 1px 柔和边框代码编辑器容器（对齐 Postman 包裹感）
+			ui.Box(c.Key("req-body-raw-editor-"+string(n.ID))).FillWidth().Height(240).Radius(6).
 				Border(1, tk2.Border).Background(tk2.BgSurface).Clip().Children(func() {
 				editor.View(c, state.bodyEditor).Fill()
 			})
@@ -2159,8 +2175,8 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 			testTabLabel = fmt.Sprintf("Test Results (%d/%d)", passedTests, totalTests)
 		}
 
-		// 响应头行：左侧胶囊 Tab + 右侧状态码 / 耗时 / 体积 / 复制（对齐 Pixso row / response header）
-		ui.Row(c).FillWidth().Padding(8, 12, 6, 12).AlignItems(ui.Center).Children(func() {
+		// 响应头行：左侧轻量化 Tab + 右侧状态码 / 耗时 / 体积 / 复制（16px 统一边距）
+		ui.Row(c).FillWidth().Padding(8, 16, 6, 16).AlignItems(ui.Center).Children(func() {
 			respTabs := []string{
 				"Body",
 				headersTabLabel,
@@ -2186,9 +2202,18 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 						} else if state.respStatus != 200 {
 							statusLabel = fmt.Sprintf("%d", state.respStatus)
 						}
-						ui.Text(c, statusLabel).FontSize(11).FontWeight(600).TextColor(statusColor).SingleLine()
-						ui.Text(c, state.respDuration).FontSize(11).TextColor(tk2.TextMuted).SingleLine()
-						ui.Text(c, state.respSize).FontSize(11).TextColor(tk2.TextMuted).SingleLine()
+						// Postman 风格浅绿/语义底胶囊状态码 + 圆点分隔耗时与体积
+						ui.Box(c).Padding(2, 8).Radius(4).Background(statusColor.Alpha(0.12)).Center().Children(func() {
+							ui.Text(c, statusLabel).FontSize(11).FontWeight(600).TextColor(statusColor).SingleLine()
+						})
+						if state.respDuration != "" {
+							ui.Text(c, "·").FontSize(11).TextColor(tk2.TextMuted)
+							ui.Text(c, state.respDuration).FontSize(11).TextColor(tk2.TextSecondary).SingleLine()
+						}
+						if state.respSize != "" {
+							ui.Text(c, "·").FontSize(11).TextColor(tk2.TextMuted)
+							ui.Text(c, state.respSize).FontSize(11).TextColor(tk2.TextSecondary).SingleLine()
+						}
 
 						copyPayload, copyTooltip := responseTabCopyPayload(state)
 						if copyPayload != "" {
@@ -2224,8 +2249,8 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 			})
 		})
 
-		// 响应面板内容（自适应剩余高度并支持内部滚动）
-		ui.Column(c).Grow(1).MinHeight(0).Padding(4, 12, 8, 12).Children(func() {
+		// 响应面板内容（统一 16px 左右边距，自适应剩余高度并支持内部滚动）
+		ui.Column(c).Grow(1).MinHeight(0).Padding(4, 16, 12, 16).Children(func() {
 			if state.sending {
 				ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Center).Justify(ui.Center).Gap(8).Children(func() {
 					ui.Icon(c, icons.Clock).Size(15, 15).TextColor(tk2.Accent)
@@ -2235,9 +2260,15 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 			}
 
 			if !state.hasResponse {
-				ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+				ui.Column(c).Grow(1).MinHeight(0).AlignItems(ui.Center).Justify(ui.Center).Gap(8).Children(func() {
+					ui.Box(c).Size(40, 40).Radius(10).Background(tk2.BgApp).
+						Border(1, tk2.Border).Center().Children(func() {
+						ui.Icon(c, icons.Send).FontSize(16).TextColor(tk2.TextMuted)
+					})
 					ui.Text(c, "Click Send to get a response").
-						FontSize(12).TextColor(tk2.TextMuted)
+						FontSize(12).FontWeight(500).TextColor(tk2.TextSecondary)
+					ui.Text(c, "Enter a URL and press Send (Ctrl+Enter) to inspect response body, headers, and cookies.").
+						FontSize(11).TextColor(tk2.TextMuted)
 				})
 				return
 			}
@@ -2317,8 +2348,9 @@ func renderTestResults(c *ui.Context, results []domain.TestResult, tk theme.Toke
 	})
 }
 
-// 使用 MyGo 原生内置的 code editor 组件展示响应体
+// 使用 MyGo 原生内置的 code editor 组件展示响应体（带 6px 圆角细边框容器包裹）
 func renderResponseBody(c *ui.Context, state *reqSessionState, tk theme.Tokens, m theme.Metric) {
+	tk2 := thV2.Of(c)
 	if state.respEditor == nil {
 		buf := editor.NewBuffer(state.respBody)
 		buf.SetLanguage(editor.LanguageNamed("JSON"))
@@ -2332,7 +2364,10 @@ func renderResponseBody(c *ui.Context, state *reqSessionState, tk theme.Tokens, 
 		state.respEditor.Buffer.Reset(state.respBody)
 	}
 
-	editor.View(c, state.respEditor).Grow(1).MinHeight(0)
+	ui.Box(c).FillWidth().Grow(1).MinHeight(0).Radius(6).
+		Border(1, tk2.Border).Background(tk2.BgSurface).Clip().Children(func() {
+		editor.View(c, state.respEditor).Fill()
+	})
 }
 
 func formatResponseHeaders(headers []domain.KV) string {
@@ -2670,30 +2705,29 @@ func renderResponseCookies(c *ui.Context, cookies []transport.ResponseCookie, tk
 	})
 }
 
-// tabsRowWithAction 是对齐 Pixso 的胶囊分段式 Tab 行（灰底轨道 + 选中白底卡片 + 右侧可选动作）
+// tabsRowWithAction 是对齐 Postman 轻量化风格的子 Tab 行：
+// 去掉外层厚重灰轨道，激活项呈现单颗柔和浅灰圆角胶囊（无阴影），带计数数字的项自动弱化数字并点缀绿色有值小圆点。
 func tabsRowWithAction(c *ui.Context, labels []string, active int,
 	onSelect func(int), trailing func(),
 ) {
 	tk2 := thV2.Of(c)
 	ui.Row(c).FillWidth().Height(28).AlignItems(ui.Center).Children(func() {
-		ui.Row(c).Height(28).Padding(2).Gap(2).Radius(6).
-			Background(tk2.BgSubtle).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Height(28).Gap(4).AlignItems(ui.Center).Children(func() {
 			for i, label := range labels {
 				i := i
 				isActive := i == active
 				tab := ui.ButtonBase(c.Key(fmt.Sprintf("tab-btn-%s-%d", label, i))).
-					Height(24).MinWidth(50).PaddingX(10).Radius(4).
+					Height(26).PaddingX(9).Radius(5).Gap(4).
 					Justify(ui.Center).AlignItems(ui.Center).
 					Cursor(ui.CursorPointer).Role(ui.RoleTab).Label(label).
 					Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 				switch {
 				case isActive:
-					tab.Background(tk2.BgSurface).
-						Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.08))
+					tab.Background(tk2.BgHover)
 				case tab.Pressed():
 					tab.Background(tk2.BgSelected)
 				case tab.Hovered():
-					tab.Background(tk2.BgHover)
+					tab.Background(tk2.BgSubtle)
 				default:
 					tab.Background(ui.Transparent)
 				}
@@ -2705,8 +2739,13 @@ func tabsRowWithAction(c *ui.Context, labels []string, active int,
 					if isActive {
 						color = tk2.TextPrimary
 					}
-					// 统一使用 Medium (500) 字重，避免在选中与未选切换时因字形加粗导致文字宽度变化引起排版跳动（Layout Shift）
-					ui.Text(c, label).FontSize(12).FontWeight(500).TextColor(color).SingleLine()
+					// 拆分 "Headers 4" / "Params 2" 尾随计数，数字弱化为 TextMuted 并配 5px 绿色有值圆点
+					baseLbl, countSuffix, hasCount := splitTabCountSuffix(label)
+					ui.Text(c, baseLbl).FontSize(12).FontWeight(500).TextColor(color).SingleLine()
+					if hasCount {
+						ui.Text(c, countSuffix).FontSize(11).FontWeight(400).TextColor(tk2.TextMuted).SingleLine()
+						ui.Box(c).Size(5, 5).Radius(3).Background(tk2.Success)
+					}
 				})
 			}
 		})
@@ -2715,6 +2754,26 @@ func tabsRowWithAction(c *ui.Context, labels []string, active int,
 			trailing()
 		}
 	})
+}
+
+func splitTabCountSuffix(label string) (base, suffix string, ok bool) {
+	idx := strings.LastIndexByte(label, ' ')
+	if idx <= 0 || idx >= len(label)-1 {
+		return label, "", false
+	}
+	tail := label[idx+1:]
+	// 仅识别纯数字计数（如 "Headers 4"）或 "(1/1)" 测试统计
+	allDigits := true
+	for _, r := range tail {
+		if r < '0' || r > '9' {
+			allDigits = false
+			break
+		}
+	}
+	if allDigits {
+		return label[:idx], tail, true
+	}
+	return label, "", false
 }
 
 // syncQueryToURL 将 Query 键值列表同步格式化回 URL 的 query string

@@ -25,7 +25,16 @@ func sidebar(c *ui.Context, props pageProps) {
 		ui.Row(c).FillWidth().Height(34).Padding(0, m.Space3).Gap(6).
 			AlignItems(ui.Center).Children(func() {
 			searchBox := ui.Row(c.Key("sb-search-box")).Grow(1).Height(26).Padding(0, 8, 0, 6).Gap(6).
-				AlignItems(ui.Center).Radius(m.RadiusMD).Background(tk.BgSubtle)
+				AlignItems(ui.Center).Radius(m.RadiusMD).Background(tk.BgSurface).
+				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+			switch {
+			case searchBox.FocusWithin():
+				searchBox.Border(m.Border, tk.Focus)
+			case searchBox.Hovered():
+				searchBox.Border(m.Border, tk.BorderStrong)
+			default:
+				searchBox.Border(m.Border, tk.BorderPopover)
+			}
 			searchBox.Children(func() {
 				// 左侧筛选图标按钮（对齐 Pixso 22-侧栏-搜索筛选：89:9987 / 89:9988，三层阶梯漏斗 ListFilter）
 				filterActive := *filterOpen || !props.state.allFiltersEnabled()

@@ -33,7 +33,16 @@ func SidebarView(c *ui.Context, activeToolID string, openTool func(toolID string
 			AlignItems(ui.Center).Children(func() {
 			searchBox := ui.Row(c.Key("tools-sb-search-box")).Grow(1).Height(26).
 				Padding(0, 8, 0, 6).Gap(6).AlignItems(ui.Center).
-				Radius(m.RadiusMD).Background(tk.BgSubtle)
+				Radius(m.RadiusMD).Background(tk.BgSurface).
+				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+			switch {
+			case searchBox.FocusWithin():
+				searchBox.Border(m.Border, tk.Focus)
+			case searchBox.Hovered():
+				searchBox.Border(m.Border, tk.BorderStrong)
+			default:
+				searchBox.Border(m.Border, tk.BorderPopover)
+			}
 			searchBox.Children(func() {
 				ui.Icon(c, icons.ListFilter).FontSize(13).TextColor(tk.TextMuted)
 				ui.TextInputBase(c.Key("tools-sb-search-input"), search).Grow(1).
