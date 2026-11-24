@@ -9,6 +9,7 @@ import (
 	"rddpostman/components/v1/icons"
 	v2 "rddpostman/components/v2"
 	"rddpostman/internal/devtools"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
@@ -89,13 +90,13 @@ func renderJWTTool(c *ui.Context) {
 
 	root.Children(func() {
 		// 1. Header (48px)
-		toolHeader(c, icons.Eye, "JWT 令牌解析器", "自动剥离 Bearer 前缀 · 三段着色 · Claims 时间换算 · 本地验签", func() {
-			if toolBtn(c, toolBtnOpts{Key: "jwt-sample", Label: "载入示例 JWT", Icon: icons.Sparkles, Variant: btnGhost, Height: 26}).Clicked() {
+		toolHeader(c, icons.Eye, locales.ToolJWTTitle(), locales.ToolJWTDesc(), func() {
+			if toolBtn(c, toolBtnOpts{Key: "jwt-sample", Label: locales.JwtLoadSample(), Icon: icons.Sparkles, Variant: btnGhost, Height: 26}).Clicked() {
 				st.token = makeSampleJWT()
 				st.secret = sampleJWTSecret
 				st.copiedKey = ""
 			}
-			if toolBtn(c, toolBtnOpts{Key: "jwt-clear", Label: "清空", Icon: icons.Trash, Variant: btnGhost, Height: 26}).Clicked() {
+			if toolBtn(c, toolBtnOpts{Key: "jwt-clear", Label: locales.Clear(), Icon: icons.Trash, Variant: btnGhost, Height: 26}).Clicked() {
 				st.token = ""
 				st.secret = ""
 				st.copiedKey = ""
@@ -120,34 +121,31 @@ func renderJWTTool(c *ui.Context) {
 				}, func() {
 					switch {
 					case trimmed == "":
-						toolPill(c, "等待输入", pillNeutral, false)
+						toolPill(c, locales.WaitingForInput(), pillNeutral, false)
 					case decodeErr != "":
-						toolPill(c, "格式无效", pillDanger, true)
+						toolPill(c, locales.JwtInvalidFormat(), pillDanger, true)
 					case decoded.HasExp && decoded.Expired:
 						toolPill(c, decoded.ExpiresRel, pillDanger, true)
 					case sigChecked && sigVerified:
-						toolPill(c, decoded.Alg+" · 验签通过", pillSuccess, true)
+						toolPill(c, locales.JwtVerifiedPill(decoded.Alg), pillSuccess, true)
 					default:
 						if decoded.Alg != "" {
 							toolPill(c, decoded.Alg, pillNeutral, false)
 						}
 						if decoded.HasExp {
-							toolPill(c, "有效 · "+decoded.ExpiresRel, pillSuccess, true)
+							toolPill(c, locales.JwtValidPill(decoded.ExpiresRel), pillSuccess, true)
 						} else {
-							toolPill(c, "解析成功", pillSuccess, true)
+							toolPill(c, locales.JwtDecodedPill(), pillSuccess, true)
 						}
 					}
 				}, func() {
-					ui.Column(c).FillWidth().Padding(10, 14).Gap(6).Children(func() {
-						in := ui.TextInputBase(c.Key("jwt-input"), &st.token).
-							FillWidth().Height(32).Padding(0, 8).Radius(m.RadiusSM).
-							Background(tk.BgSubtle).Font("monospace").FontSize(m.FontSM).TextColor(tk.TextPrimary).
-							Placeholder("粘贴 JWT 或 Authorization: Bearer eyJhbGci... 字符串，将自动剥离前缀并实时解析").
+					ui.Column(c).FillWidth().Padding(8, 12).Gap(8).Children(func() {
+						in := ui.TextAreaBase(c.Key("jwt-input"), &st.token).
+							FillWidth().MinHeight(72).MaxHeight(160).Padding(4, 4).
+							Font("monospace").FontSize(m.FontSM).FixedLineHeight(19).TextColor(tk.TextPrimary).
+							Placeholder(locales.JwtInputPlaceholder()).
 							PlaceholderColor(tk.TextMuted).
 							Label("JWT token input")
-						if in.Focused() {
-							in.Border(m.Border, tk.Focus)
-						}
 						if in.Changed() {
 							st.copiedKey = ""
 						}
@@ -175,17 +173,17 @@ func renderJWTTool(c *ui.Context) {
 						ui.Box(c).Size(48, 48).Radius(12).Background(tk.AccentSoft).Border(m.Border, tk.Accent.Alpha(0.25)).Center().Children(func() {
 							ui.Icon(c, icons.EyeBoldDuotone).FontSize(24).TextColor(tk.Accent)
 						})
-						ui.Text(c, "粘贴任意 JWT Token 开始离线解析").FontSize(m.FontMD).FontWeight(600).TextColor(tk.TextPrimary)
-						ui.Text(c, "完整保留隐私：所有 Header / Payload 解码与 HS256 验签均在本地完成，不上传任何服务器").
+						ui.Text(c, locales.JwtEmptyTitle()).FontSize(m.FontMD).FontWeight(600).TextColor(tk.TextPrimary)
+						ui.Text(c, locales.JwtEmptyDesc()).
 							FontSize(m.FontSM).TextColor(tk.TextMuted)
 						ui.Row(c).Gap(12).Padding(4, 0).Children(func() {
 							for _, seg := range []struct {
 								n, d string
 								v    pillVariant
 							}{
-								{"1. Header", "算法与密钥标识", pillAccent},
-								{"2. Payload", "业务载荷与时间声明", pillPurple},
-								{"3. Signature", "本地密钥防篡改校验", pillSuccess},
+								{"1. Header", locales.JwtSeg1Desc(), pillAccent},
+								{"2. Payload", locales.JwtSeg2Desc(), pillPurple},
+								{"3. Signature", locales.JwtSeg3Desc(), pillSuccess},
 							} {
 								ui.Column(c).Width(190).Padding(12, 14).Gap(6).Radius(m.RadiusMD).
 									Background(tk.BgBase).Border(m.Border, tk.Border).Children(func() {
@@ -195,12 +193,12 @@ func renderJWTTool(c *ui.Context) {
 							}
 						})
 						ui.Row(c).Gap(8).Padding(4, 0, 0, 0).Children(func() {
-							if toolBtn(c, toolBtnOpts{Key: "jwt-empty-paste", Label: "从剪贴板粘贴", Icon: icons.Copy, Variant: btnPrimary, Height: 30}).Clicked() {
+							if toolBtn(c, toolBtnOpts{Key: "jwt-empty-paste", Label: locales.PasteFromClipboard(), Icon: icons.Copy, Variant: btnPrimary, Height: 30}).Clicked() {
 								if clip := c.Services().ReadClipboard(); strings.TrimSpace(clip) != "" {
 									st.token = clip
 								}
 							}
-							if toolBtn(c, toolBtnOpts{Key: "jwt-empty-sample", Label: "载入示例 JWT", Icon: icons.Sparkles, Variant: btnSecondary, Height: 30}).Clicked() {
+							if toolBtn(c, toolBtnOpts{Key: "jwt-empty-sample", Label: locales.JwtLoadSample(), Icon: icons.Sparkles, Variant: btnSecondary, Height: 30}).Clicked() {
 								st.token = makeSampleJWT()
 								st.secret = sampleJWTSecret
 							}
@@ -211,7 +209,7 @@ func renderJWTTool(c *ui.Context) {
 
 				// 损坏/非法格式诊断视图
 				if decodeErr != "" {
-					toolInlineErrorCard(c, "jwt-err-banner", "JWT 格式损坏 · 无法完成完整解析", decodeErr, "替换为示例 JWT", func() {
+					toolInlineErrorCard(c, "jwt-err-banner", locales.JwtErrBannerTitle(), decodeErr, locales.JwtReplaceSample(), func() {
 						st.token = makeSampleJWT()
 						st.secret = sampleJWTSecret
 					})
@@ -260,8 +258,7 @@ func renderJWTTool(c *ui.Context) {
 						Radius(m.RadiusMD).Background(tk.DangerSoft).Border(m.Border, tk.Danger.Alpha(0.38)).Children(func() {
 						ui.Row(c).Grow(1).Gap(8).AlignItems(ui.Center).Children(func() {
 							ui.Icon(c, icons.TriangleAlert).FontSize(14).TextColor(tk.Danger)
-							ui.Text(c, fmt.Sprintf("令牌已过期：exp (%s) 早于当前时间（%s），服务端鉴权将返回 401 Unauthorized",
-								decoded.ExpiresAt, decoded.ExpiresRel)).
+							ui.Text(c, locales.JwtExpiredBanner(decoded.ExpiresAt, decoded.ExpiresRel)).
 								FontSize(m.FontSM).FontWeight(500).TextColor(tk.Danger)
 						})
 						toolPill(c, "EXPIRED", pillDanger, false)
@@ -275,13 +272,13 @@ func renderJWTTool(c *ui.Context) {
 						// HEADER 卡片
 						toolCard(c, "jwt-hdr-card", tk.Border, tk.BgApp, func() {
 							ui.Box(c).Size(7, 7).Radius(4).Background(tk.Accent)
-							ui.Text(c, "HEADER · 算法与类型").FontSize(m.FontXS).FontWeight(600).TextColor(tk.TextSecondary)
+							ui.Text(c, locales.JwtHeaderCardTitle()).FontSize(m.FontXS).FontWeight(600).TextColor(tk.TextSecondary)
 						}, func() {
 							cVar := btnGhost
-							cLbl := "复制"
+							cLbl := locales.Copy()
 							if st.copiedKey == "jwt-hdr" {
 								cVar = btnSuccess
-								cLbl = "已复制"
+								cLbl = locales.Copied()
 							}
 							if toolBtn(c, toolBtnOpts{Key: "jwt-copy-hdr", Label: cLbl, Icon: icons.Copy, Variant: cVar, Height: 22, PadX: 6}).Clicked() {
 								c.Services().WriteClipboard(decoded.HeaderJSON)
@@ -299,9 +296,9 @@ func renderJWTTool(c *ui.Context) {
 							tcBorder = tk.Danger.Alpha(0.4)
 						}
 						toolCard(c, "jwt-claims-card", tcBorder, tk.BgApp, func() {
-							ui.Text(c, "TIME CLAIMS · 时间声明换算").FontSize(m.FontXS).FontWeight(600).TextColor(tk.TextSecondary)
+							ui.Text(c, locales.JwtClaimsCardTitle()).FontSize(m.FontXS).FontWeight(600).TextColor(tk.TextSecondary)
 						}, func() {
-							ui.Text(c, "本地时区").FontSize(m.FontXS).TextColor(tk.TextMuted)
+							ui.Text(c, locales.JwtLocalTZ()).FontSize(m.FontXS).TextColor(tk.TextMuted)
 						}, func() {
 							type claimRow struct {
 								k, label, date string
@@ -312,9 +309,9 @@ func renderJWTTool(c *ui.Context) {
 								present        bool
 							}
 							rows := []claimRow{
-								{"iat", "签发时间", decoded.IssuedAt, decoded.IssuedAtUnix, decoded.IssuedRel, pillNeutral, false, decoded.HasIat},
-								{"nbf", "生效时间", decoded.NotBefore, decoded.NotBeforeUnix, "已生效", pillNeutral, false, decoded.HasNbf},
-								{"exp", "过期时间", decoded.ExpiresAt, decoded.ExpiresAtUnix, decoded.ExpiresRel, map[bool]pillVariant{true: pillDanger, false: pillSuccess}[decoded.Expired], decoded.Expired, decoded.HasExp},
+								{"iat", locales.JwtClaimIat(), decoded.IssuedAt, decoded.IssuedAtUnix, decoded.IssuedRel, pillNeutral, false, decoded.HasIat},
+								{"nbf", locales.JwtClaimNbf(), decoded.NotBefore, decoded.NotBeforeUnix, locales.JwtClaimNbfActive(), pillNeutral, false, decoded.HasNbf},
+								{"exp", locales.JwtClaimExp(), decoded.ExpiresAt, decoded.ExpiresAtUnix, decoded.ExpiresRel, map[bool]pillVariant{true: pillDanger, false: pillSuccess}[decoded.Expired], decoded.Expired, decoded.HasExp},
 							}
 							shown := 0
 							for _, cr := range rows {
@@ -351,7 +348,7 @@ func renderJWTTool(c *ui.Context) {
 							}
 							if shown == 0 {
 								ui.Box(c).FillWidth().Padding(16).Center().Children(func() {
-									ui.Text(c, "载荷中未包含 iat / nbf / exp 标准时间声明").FontSize(m.FontXS).TextColor(tk.TextMuted)
+									ui.Text(c, locales.JwtNoTimeClaims()).FontSize(m.FontXS).TextColor(tk.TextMuted)
 								})
 							}
 						})
@@ -362,9 +359,9 @@ func renderJWTTool(c *ui.Context) {
 						// PAYLOAD 卡片（附 RFC 7519 字段说明浮层）
 						toolCard(c, "jwt-pay-card", tk.Border, tk.BgApp, func() {
 							ui.Box(c).Size(7, 7).Radius(4).Background(tk.MethodPatch)
-							ui.Text(c, "PAYLOAD · 业务载荷").FontSize(m.FontXS).FontWeight(600).TextColor(tk.TextSecondary)
+							ui.Text(c, locales.JwtPayloadCardTitle()).FontSize(m.FontXS).FontWeight(600).TextColor(tk.TextSecondary)
 						}, func() {
-							infoBtn := toolBtn(c, toolBtnOpts{Key: "jwt-claims-info", Label: "字段说明", Icon: icons.Info, Variant: btnGhost, Height: 22, PadX: 6})
+							infoBtn := toolBtn(c, toolBtnOpts{Key: "jwt-claims-info", Label: locales.JwtClaimsInfoBtn(), Icon: icons.Info, Variant: btnGhost, Height: 22, PadX: 6})
 							infoOpen := ui.Local(infoBtn, "jwt-info-open", func() bool { return false })
 							if infoBtn.Clicked() {
 								*infoOpen = !*infoOpen
@@ -373,14 +370,14 @@ func renderJWTTool(c *ui.Context) {
 								ui.Column(c).Padding(12).Gap(8).Children(func() {
 									ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 										ui.Icon(c, icons.Info).FontSize(13).TextColor(tk.Accent)
-										ui.Text(c, "RFC 7519 标准声明说明").FontSize(m.FontSM).FontWeight(600).TextColor(tk.TextPrimary)
+										ui.Text(c, locales.JwtClaimsInfoTitle()).FontSize(m.FontSM).FontWeight(600).TextColor(tk.TextPrimary)
 									})
 									for _, item := range [][2]string{
-										{"sub", "Subject — 令牌面向的用户唯一标识"},
-										{"iss", "Issuer — 签发方服务标识"},
-										{"aud", "Audience — 接收方受众标识"},
-										{"exp / iat", "Expiration / Issued At — 过期与签发秒级时间戳"},
-										{"jti", "JWT ID — 唯一编号，用于防重放校验"},
+										{"sub", locales.JwtClaimSubDesc()},
+										{"iss", locales.JwtClaimIssDesc()},
+										{"aud", locales.JwtClaimAudDesc()},
+										{"exp / iat", locales.JwtClaimExpIatDesc()},
+										{"jti", locales.JwtClaimJtiDesc()},
 									} {
 										ui.Row(c).Gap(8).AlignItems(ui.Start).Children(func() {
 											ui.Text(c, item[0]).Font("monospace").FontSize(m.FontXS).FontWeight(600).TextColor(tk.Accent).Width(60)
@@ -391,11 +388,11 @@ func renderJWTTool(c *ui.Context) {
 							})
 
 							cVar := btnGhost
-							cLbl := "复制 Payload"
+							cLbl := locales.JwtCopyPayload()
 							cIc := icons.Copy
 							if st.copiedKey == "jwt-pay" {
 								cVar = btnSuccess
-								cLbl = "已复制 Payload"
+								cLbl = locales.JwtCopiedPayload()
 								cIc = icons.Check
 							}
 							if toolBtn(c, toolBtnOpts{Key: "jwt-copy-payload", Label: cLbl, Icon: cIc, Variant: cVar, Height: 22, PadX: 8}).Clicked() {
@@ -420,19 +417,19 @@ func renderJWTTool(c *ui.Context) {
 						}
 						toolCard(c, "jwt-sig-card", sigBorder, sigHdrBg, func() {
 							ui.Box(c).Size(7, 7).Radius(4).Background(tk.Success)
-							lbl := "SIGNATURE · 签名摘要"
+							lbl := locales.JwtSigCardTitle()
 							if st.verifyOpen {
-								lbl = "VERIFY SIGNATURE · 签名校验"
+								lbl = locales.JwtVerifyCardTitle()
 							}
 							ui.Text(c, lbl).FontSize(m.FontXS).FontWeight(600).TextColor(tk.TextSecondary)
 						}, func() {
 							switch {
 							case sigChecked && sigVerified:
-								toolPill(c, "Signature Verified ✓", pillSuccess, true)
+								toolPill(c, locales.JwtSigVerified(), pillSuccess, true)
 							case sigChecked && !sigVerified:
-								toolPill(c, "Invalid Signature", pillDanger, true)
+								toolPill(c, locales.JwtSigInvalid(), pillDanger, true)
 							default:
-								toolPill(c, "未验签 (仅解码)", pillNeutral, false)
+								toolPill(c, locales.JwtSigUnverified(), pillNeutral, false)
 							}
 						}, func() {
 							ui.Column(c).FillWidth().Padding(12, 14).Gap(10).Children(func() {
@@ -440,7 +437,7 @@ func renderJWTTool(c *ui.Context) {
 									ui.Text(c, `HMACSHA256(base64UrlEncode(header) + "." + base64UrlEncode(payload), secret)`).
 										Font("monospace").FontSize(m.FontXS).TextColor(tk.TextSecondary)
 									ui.Row(c).Children(func() {
-										if toolBtn(c, toolBtnOpts{Key: "jwt-open-verify", Label: "输入密钥验证签名", Icon: icons.Lock, Variant: btnSecondary, Height: 26}).Clicked() {
+										if toolBtn(c, toolBtnOpts{Key: "jwt-open-verify", Label: locales.JwtOpenVerify(), Icon: icons.Lock, Variant: btnSecondary, Height: 26}).Clicked() {
 											st.verifyOpen = true
 										}
 									})
@@ -450,13 +447,13 @@ func renderJWTTool(c *ui.Context) {
 											Grow(1).Height(32).Padding(0, 10).Radius(m.RadiusSM).
 											Background(tk.BgBase).Border(m.Border, sigBorder).
 											Font("monospace").FontSize(m.FontSM).TextColor(tk.TextPrimary).
-											Placeholder("输入 HS256 / HS384 / HS512 Secret 密钥...").
+											Placeholder(locales.JwtSecretPlaceholder()).
 											PlaceholderColor(tk.TextMuted).
 											Label("JWT verify secret")
 										if secIn.Focused() {
 											secIn.Border(m.Border, tk.Focus)
 										}
-										toolCheckboxChip(c, "jwt-sec-b64", "Base64 密钥", st.secretBase64, func() {
+										toolCheckboxChip(c, "jwt-sec-b64", locales.JwtBase64Secret(), st.secretBase64, func() {
 											st.secretBase64 = !st.secretBase64
 										})
 									})
@@ -465,11 +462,11 @@ func renderJWTTool(c *ui.Context) {
 									} else if sigChecked {
 										bg := tk.DangerSoft
 										fg := tk.Danger
-										msg := "签名不匹配 · 请检查 Secret 密钥或确认载荷未被篡改"
+										msg := locales.JwtSigMismatchMsg()
 										if sigVerified {
 											bg = tk.Success.Alpha(0.12)
 											fg = tk.Success
-											msg = "签名完全匹配 · Header 与 Payload 完整性已通过本地校验"
+											msg = locales.JwtSigMatchMsg()
 										}
 										ui.Row(c).FillWidth().Padding(8, 10).Gap(8).AlignItems(ui.Center).Radius(m.RadiusSM).Background(bg).Children(func() {
 											ui.Icon(c, map[bool]*ui.SVG{true: icons.Check, false: icons.TriangleAlert}[sigVerified]).FontSize(13).TextColor(fg)
@@ -485,23 +482,23 @@ func renderJWTTool(c *ui.Context) {
 		})
 
 		// 3. Footer (26px)
-		fTxt := "就绪 · 支持自动去除 Bearer 前缀"
+		fTxt := locales.JwtFooterReady()
 		fCol := tk.TextMuted
 		switch {
 		case decodeErr != "":
-			fTxt = "解析失败 · Token 格式不符合 JWT 规范"
+			fTxt = locales.JwtFooterErr()
 			fCol = tk.Danger
 		case decoded != nil && decoded.HasExp && decoded.Expired:
-			fTxt = "注意：该 Token " + decoded.ExpiresRel
+			fTxt = locales.JwtFooterExpired(decoded.ExpiresRel)
 			fCol = tk.Danger
 		case sigChecked && sigVerified:
-			fTxt = decoded.Alg + " 签名验证通过 · 令牌有效"
+			fTxt = locales.JwtFooterVerified(decoded.Alg)
 			fCol = tk.Success
 		case st.copiedKey == "jwt-pay":
-			fTxt = "已复制格式化 Payload JSON 到剪贴板"
+			fTxt = locales.JwtFooterCopiedPay()
 			fCol = tk.Success
 		case decoded != nil:
-			fTxt = "解析成功 · 本地离线解码"
+			fTxt = locales.JwtFooterDecoded()
 			fCol = tk.Success
 		}
 		toolFooter(c, fTxt, fCol, "RFC 7519 · Local Decode")

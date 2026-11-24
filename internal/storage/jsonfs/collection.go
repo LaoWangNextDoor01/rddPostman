@@ -250,7 +250,13 @@ func (f *FS) SaveCollection(ctx context.Context, ref storage.Ref, c *domain.Coll
 	}
 	metaCopy := *c
 	metaCopy.Description = ""
-	return writeJSON(filepath.Join(dir, collectionFile), &metaCopy, 0o644)
+	if err := writeJSON(filepath.Join(dir, collectionFile), &metaCopy, 0o644); err != nil {
+		return err
+	}
+	if c.Order > idx.maxCollOrder {
+		idx.maxCollOrder = c.Order
+	}
+	return nil
 }
 
 // SaveNode 新建或更新目录/请求；改名时对应的文件或目录一起改。
@@ -374,6 +380,107 @@ func (f *FS) saveExistingNodeLocked(idx *wsIndex, collID domain.ID, existing nod
 	}
 	idx.nodes[n.ID] = nodeEntry{path: target, kind: domain.KindRequest,
 		collID: collID, parentID: existing.parentID}
+	return nil
+}
+
+// MoveNode 将节点（目录连同子树，或单个请求）移动到目标集合与目标父目录下，
+// 并更新磁盘上的文件/目录位置与节点元数据（如 Order、UpdatedAt）。
+func (f *FS) MoveNode(ctx context.Context, ref storage.Ref,
+	srcCollID, nodeID, dstCollID, dstParentID domain.ID, n *domain.Node) error {
+	if n == nil {
+		return errors.New("节点为空")
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	idx := f.index[ref.ID]
+	if idx == nil {
+		return storage.ErrNotFound
+	}
+	existing, ok := idx.nodes[nodeID]
+	if !ok || existing.collID != srcCollID {
+		return storage.ErrNotFound
+	}
+	dstCollDir, ok := idx.collections[dstCollID]
+	if !ok {
+		return storage.ErrNotFound
+	}
+
+	dstContainer := dstCollDir
+	if dstParentID != "" {
+		parent, ok := idx.nodes[dstParentID]
+		if !ok || parent.collID != dstCollID {
+			return storage.ErrNotFound
+		}
+		if parent.kind != domain.KindFolder {
+			return storage.ErrInvalidMove
+		}
+		if existing.kind == domain.KindFolder {
+			// 防止目录移入自身或任意子孙目录造成循环。
+			for cur := dstParentID; cur != ""; {
+				if cur == nodeID {
+					return storage.ErrInvalidMove
+				}
+				e, found := idx.nodes[cur]
+				if !found {
+					break
+				}
+				cur = e.parentID
+			}
+		}
+		dstContainer = parent.path
+	}
+
+	n.ID = nodeID
+	n.Kind = existing.kind
+	n.Schema = schemaOf(existing.kind)
+	n.Version = domain.Version
+	if n.Name = strings.TrimSpace(n.Name); n.Name == "" {
+		n.Name = "未命名"
+	}
+	if n.Kind == domain.KindFolder {
+		n.Request = nil
+	}
+
+	srcContainer := filepath.Dir(existing.path)
+	movedOnDisk := false
+	target := existing.path
+	if existing.kind == domain.KindFolder {
+		if dstContainer != srcContainer {
+			base := uniqueDirBase(dstContainer, safeName(n.Name), existing.path)
+			target = filepath.Join(dstContainer, base)
+			if err := os.Rename(existing.path, target); err != nil {
+				return err
+			}
+			movedOnDisk = true
+		}
+		if err := writeNode(filepath.Join(target, folderFile), n); err != nil {
+			if movedOnDisk {
+				_ = os.Rename(target, existing.path)
+			}
+			return err
+		}
+	} else {
+		if dstContainer != srcContainer {
+			base := uniqueFileBase(dstContainer, safeName(n.Name), requestSuffix, existing.path)
+			target = filepath.Join(dstContainer, base+requestSuffix)
+			if err := os.Rename(existing.path, target); err != nil {
+				return err
+			}
+			movedOnDisk = true
+		}
+		if err := writeNode(target, n); err != nil {
+			if movedOnDisk {
+				_ = os.Rename(target, existing.path)
+			}
+			return err
+		}
+	}
+
+	f.rebuildCollectionLocked(idx, srcCollID)
+	if dstCollID != srcCollID {
+		f.rebuildCollectionLocked(idx, dstCollID)
+	}
 	return nil
 }
 

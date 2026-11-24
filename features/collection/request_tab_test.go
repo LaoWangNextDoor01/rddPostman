@@ -10,6 +10,7 @@ import (
 	"rddpostman/components/theme"
 	"rddpostman/internal/domain"
 	"rddpostman/internal/transport"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -685,9 +686,9 @@ func TestTabsBarHorizontalScrollAndEnvSwitcher(t *testing.T) {
 		t.Fatalf("tabsBar must render active tab, got: %q", tt.Texts())
 	}
 
-	// 2. 验证最右侧环境切换下拉按钮（无生效环境时显示 No Environment）
-	if !tt.HasText("No Environment") {
-		t.Fatalf("tabsBar should contain environment switcher 'No Environment', got texts: %q", tt.Texts())
+	// 2. 验证最右侧环境切换下拉按钮（无生效环境时显示 locales.NoEnvironment()）
+	if !tt.HasText(locales.NoEnvironment()) {
+		t.Fatalf("tabsBar should contain environment switcher %q, got texts: %q", locales.NoEnvironment(), tt.Texts())
 	}
 
 	// 3. 验证指定生效环境时显示环境名称
@@ -723,12 +724,12 @@ func TestEmptyWorkspaceWhiteActionCards(t *testing.T) {
 	if !tt.HasText("API Workspace") {
 		t.Fatalf("mainPane should render empty workspace welcome title, got: %q", tt.Texts())
 	}
-	if !tt.HasText("New request") || !tt.HasText("New collection") || !tt.HasText("导入接口 (cURL)") {
+	if !tt.HasText(locales.NewRequest()) || !tt.HasText(locales.NewCollection()) || !tt.HasText(locales.EmptyCardImportCurlTitle()) {
 		t.Fatalf("mainPane should render four action cards, got: %q", tt.Texts())
 	}
 
 	// 当没有打开任何 Tab 时，Tab 栏的新建「+」按钮不显示
-	if _, ok := tt.Find("tab add"); ok {
+	if _, ok := tt.Find(locales.TabAddLabel()); ok {
 		t.Fatal("when tabs are empty, tab-add button should not be rendered")
 	}
 
@@ -738,8 +739,45 @@ func TestEmptyWorkspaceWhiteActionCards(t *testing.T) {
 		tabsBar(c, props)
 	}, 900, 40)
 	tt2.Frame()
-	if _, ok := tt2.Find("tab add"); !ok {
+	if _, ok := tt2.Find(locales.TabAddLabel()); !ok {
 		t.Fatal("when tabs are open, tab-add button should be rendered")
+	}
+
+	// 验证较宽较高画布下，空工作区内容同时水平和垂直居中
+	wsEmpty := newWorkspace()
+	propsEmpty := pageProps{
+		workspaceID:   "ws-1",
+		workspaceName: "API Workspace",
+		collections:   []*domain.Collection{coll},
+		state:         wsEmpty,
+	}
+	ttTall := ui.NewTester(func(c *ui.Context) {
+		mainPane(c, propsEmpty)
+	}, 1200, 960)
+	ttTall.Frame()
+	ttTall.Frame()
+
+	titleRect, ok := ttTall.Find("API Workspace")
+	if !ok {
+		t.Fatal("API Workspace title not found")
+	}
+	tipRect, ok := ttTall.Find(locales.EmptyWorkspaceTip(keycap("", "K")))
+	if !ok {
+		t.Fatal("empty workspace tip not found")
+	}
+	// 水平居中校验：标题中心应接近画布水平中心 600
+	titleCenterX := titleRect.X + titleRect.W/2
+	if titleCenterX < 580 || titleCenterX > 620 {
+		t.Fatalf("empty workspace title not horizontally centered: centerX=%.1f (want ~600)", titleCenterX)
+	}
+	// 垂直居中校验：顶部留白（tabBar 高度 36 之下到标题顶部附近）应明显大于固定 48px，说明内容已垂直居中
+	contentTop := titleRect.Y - 72 // 约徽标 + 间距高度
+	contentBottom := tipRect.Y + tipRect.H
+	scrollTop := float32(36)
+	scrollCenterY := scrollTop + (960-scrollTop)/2
+	contentCenterY := (contentTop + contentBottom) / 2
+	if contentCenterY < scrollCenterY-40 || contentCenterY > scrollCenterY+40 {
+		t.Fatalf("empty workspace not vertically centered: contentCenterY=%.1f, viewportCenterY=%.1f", contentCenterY, scrollCenterY)
 	}
 }
 

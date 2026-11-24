@@ -1,66 +1,79 @@
-# 一行一个 Lucide 图标名（不含 .svg）。
-# 这里是唯一清单：只有列出的图标会被下载和打包；
-# 从清单删掉一行再运行 scripts/sync-icons.sh，对应文件会被删除。
-send
-plus
-trash
-copy
-search
-settings
-chevron-down
-x
-folder
-file
-house
-layers
-globe
-clock
-server
-network
-circle-help
-bug
-sliders-horizontal
-ellipsis
-square-terminal
-code
-triangle-alert
-library-big
-folder-plus
-library
-book-open
-play
-eye
-file-pen
-bold
-italic
-heading
-quote
-list
-list-filter
-list-ordered
-link
-strikethrough
-table
-check
-user-round
-bell
-upload
-download
-settings-2
-circle-question-mark
-info
-log-out
+# 图标清单：本地变量名 = Solar 图标名（来自 Iconify @iconify-json/solar）。
+# - 省略「= ...」时表示本地名与 Solar 图标名相同。
+# - 这里是唯一清单：只有列出的图标会被同步和打包；
+#   从清单删掉一行再运行 scripts/sync-icons.ps1 或 scripts/sync-icons.sh，对应 .svg 会被删除。
+# - Solar 图标集浏览：https://icon-sets.iconify.design/solar/
+
+# 通用操作与基础导航（Solar Outline / Linear）
+send = plain-linear
+plus = add-outline
+trash = trash-bin-trash-outline
+copy = copy-outline
+search = magnifier-outline
+settings = settings-outline
+chevron-down = alt-arrow-down-outline
+x = close-outline
+folder = folder-outline
+file = document-outline
+house = home-2-outline
+layers = layers-outline
+globe = global-outline
+clock = clock-circle-outline
+server = server-outline
+network = share-circle-outline
+circle-help = question-circle-outline
+bug = bug-outline
+sliders-horizontal = tuning-2-outline
+ellipsis = menu-dots-bold
+square-terminal = programming-outline
+code = code-outline
+triangle-alert = danger-triangle-outline
+library-big = library-outline
+folder-plus = add-folder-outline
+library = book-2-outline
+book-open = book-bookmark-outline
+play = play-outline
+eye = eye-outline
+file-pen = file-pen-outline
+bold = text-bold-outline
+italic = text-italic-outline
+heading = text-heading-outline
+quote = quote-outline
+list = list-down-minimalistic-outline
+list-filter = sort-from-top-to-bottom-outline
+list-ordered = sort-alphabetically-outline
+link = link-round-outline
+strikethrough = text-cross-outline
+table = table-outline
+check = check-outline
+user-round = user-rounded-outline
+bell = bell-outline
+upload = upload-minimalistic-outline
+download = download-minimalistic-outline
+settings-2 = tuning-outline
+circle-question-mark = question-circle-outline
+info = info-circle-outline
+log-out = logout-2-outline
 
 # Hub 导航菜单（Home 菜单按钮，02 §7 映射表）
-layout-grid
-boxes
-lock
-sparkles
-plug
-chart-column
-users
-arrow-left
-arrow-right
-star
-file-plus
-menu
+layout-grid = widget-2-outline
+boxes = box-outline
+lock = lock-keyhole-minimalistic-outline
+sparkles = stars-minimalistic-outline
+plug = plug-circle-outline
+chart-column = chart-2-outline
+users = users-group-rounded-outline
+arrow-left = arrow-left-outline
+arrow-right = arrow-right-outline
+star = star-outline
+file-plus = document-add-outline
+menu = hamburger-menu-outline
+
+# 大尺寸入口 / 空态徽标（Solar Bold Duotone 混搭）
+code-bold-duotone = programming-bold-duotone
+eye-bold-duotone = key-bold-duotone
+globe-bold-duotone = global-bold-duotone
+layers-bold-duotone = layers-bold-duotone
+library-bold-duotone = folder-with-files-bold-duotone
+link-bold-duotone = link-round-bold-duotone
+send-bold-duotone = plain-bold-duotone

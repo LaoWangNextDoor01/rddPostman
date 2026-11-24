@@ -11,6 +11,7 @@ import (
 	"rddpostman/features/tools"
 	"rddpostman/internal/domain"
 	"rddpostman/internal/routes"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -82,9 +83,9 @@ func (a *App) globalSearchDialog(
 					in := ui.TextInputBase(c.Key(keyGlobalSearchInput), query).
 						Grow(1).FillHeight().
 						FontSize(m.FontMD).TextColor(tk.TextPrimary).
-						Placeholder("Search requests, collections, workspaces, or type > for commands...").
+						Placeholder(locales.SearchDialogPlaceholder()).
 						PlaceholderColor(tk.TextMuted).
-						Label("Global search input")
+						Label(locales.SearchDialogInputLabel())
 					if focusInput != nil && *focusInput {
 						in.Focus()
 						*focusInput = false
@@ -115,9 +116,9 @@ func (a *App) globalSearchDialog(
 					ui.Column(c).FillWidth().Padding(m.Space2).Gap(2).Children(func() {
 						if len(items) == 0 {
 							ui.Column(c).FillWidth().Padding(28, m.Space4).Center().Gap(m.Space1).Children(func() {
-								ui.Text(c, "No matching results").FontSize(m.FontSM).FontWeight(500).
+								ui.Text(c, locales.SearchNoResults()).FontSize(m.FontSM).FontWeight(500).
 									TextColor(tk.TextSecondary)
-								ui.Text(c, "Try searching by request name, URL, workspace, or prefix with > for commands.").
+								ui.Text(c, locales.SearchNoResultsDesc()).
 									FontSize(m.FontXS).TextColor(tk.TextMuted)
 							})
 							return
@@ -168,11 +169,11 @@ func (a *App) globalSearchDialog(
 				ui.Row(c).FillWidth().Height(28).Padding(0, m.Space4).Gap(m.Space3).
 					AlignItems(ui.Center).Background(tk.BgApp).
 					BorderWidth(m.Border, 0, 0, 0).BorderColor(tk.Border).Children(func() {
-					ui.Text(c, "↑↓ Navigate").FontSize(10).TextColor(tk.TextMuted)
-					ui.Text(c, "↵ Open").FontSize(10).TextColor(tk.TextMuted)
-					ui.Text(c, "> Commands").FontSize(10).TextColor(tk.TextMuted)
+					ui.Text(c, locales.SearchHintNavigate()).FontSize(10).TextColor(tk.TextMuted)
+					ui.Text(c, locales.SearchHintOpen()).FontSize(10).TextColor(tk.TextMuted)
+					ui.Text(c, locales.SearchHintCommands()).FontSize(10).TextColor(tk.TextMuted)
 					ui.Spacer(c)
-					ui.Text(c, fmt.Sprintf("%d results", len(items))).FontSize(10).TextColor(tk.TextMuted)
+					ui.Text(c, locales.SearchResultCount(len(items))).FontSize(10).TextColor(tk.TextMuted)
 				})
 			})
 		})
@@ -201,7 +202,7 @@ func (a *App) buildSearchItems(
 	commands := []searchResultItem{
 		{
 			key: "cmd-new-req", kind: "command", icon: icons.Send,
-			title: "New Request", subtitle: "Create a draft HTTP request in the active workspace",
+			title: locales.MenuNewRequest(), subtitle: locales.CmdNewReqDesc(),
 			shortcut: shortcutLabel(ui.KeyN),
 			run: func() {
 				*open = false
@@ -210,7 +211,7 @@ func (a *App) buildSearchItems(
 		},
 		{
 			key: "cmd-new-coll", kind: "command", icon: icons.FolderPlus,
-			title: "New Collection", subtitle: "Create a new collection tab in the active workspace",
+			title: locales.MenuNewCollection(), subtitle: locales.CmdNewCollDesc(),
 			shortcut: shortcutLabel(ui.KeyB),
 			run: func() {
 				*open = false
@@ -219,7 +220,7 @@ func (a *App) buildSearchItems(
 		},
 		{
 			key: "cmd-new-ws", kind: "command", icon: icons.LayoutGrid,
-			title: "New Workspace", subtitle: "Create a new workspace",
+			title: locales.MenuNewWorkspace(), subtitle: locales.CmdNewWsDesc(),
 			run: func() {
 				*open = false
 				a.router.Push(routes.HubWorkspaceNew)
@@ -227,7 +228,7 @@ func (a *App) buildSearchItems(
 		},
 		{
 			key: "cmd-import", kind: "command", icon: icons.Upload,
-			title: "Import Postman Collection", subtitle: "Import Postman v2.0/v2.1 JSON",
+			title: locales.CmdImportPostmanTitle(), subtitle: locales.CmdImportPostmanDesc(),
 			shortcut: shortcutLabel(ui.KeyO),
 			run: func() {
 				*open = false
@@ -236,7 +237,7 @@ func (a *App) buildSearchItems(
 		},
 		{
 			key: "cmd-import-curl", kind: "command", icon: icons.Code,
-			title: "Import cURL", subtitle: "Parse a cURL command into a request",
+			title: locales.CmdImportCurlTitle(), subtitle: locales.CmdImportCurlDesc(),
 			run: func() {
 				*open = false
 				a.triggerImportCurl()
@@ -244,7 +245,7 @@ func (a *App) buildSearchItems(
 		},
 		{
 			key: "cmd-export", kind: "command", icon: icons.Download,
-			title: "Export Postman JSON", subtitle: "Export a collection or environment as JSON",
+			title: locales.CmdExportTitle(), subtitle: locales.CmdExportDesc(),
 			run: func() {
 				*open = false
 				if exportOpen != nil {
@@ -254,7 +255,7 @@ func (a *App) buildSearchItems(
 		},
 		{
 			key: "cmd-globals", kind: "command", icon: icons.Globe,
-			title: "Edit Globals", subtitle: "Manage global variables across all workspaces",
+			title: locales.CmdEditGlobalsTitle(), subtitle: locales.CmdEditGlobalsDesc(),
 			run: func() {
 				*open = false
 				if globalsOpen != nil {
@@ -264,7 +265,7 @@ func (a *App) buildSearchItems(
 		},
 		{
 			key: "cmd-settings", kind: "command", icon: icons.Settings,
-			title: "Open Settings", subtitle: "Appearance, language, shortcuts, and data settings",
+			title: locales.CmdOpenSettingsTitle(), subtitle: locales.CmdOpenSettingsDesc(),
 			shortcut: shortcutLabel(ui.KeyComma),
 			run: func() {
 				*open = false
@@ -275,7 +276,7 @@ func (a *App) buildSearchItems(
 		},
 		{
 			key: "cmd-toggle-theme", kind: "command", icon: icons.Sparkles,
-			title: "Toggle Dark / Light Theme", subtitle: "Switch application appearance immediately",
+			title: locales.CmdToggleThemeTitle(), subtitle: locales.CmdToggleThemeDesc(),
 			run: func() {
 				*open = false
 				if a.ThemeMode() == settings.ThemeDark {
@@ -287,7 +288,7 @@ func (a *App) buildSearchItems(
 		},
 		{
 			key: "cmd-workspaces", kind: "command", icon: icons.LayoutGrid,
-			title: "View All Workspaces", subtitle: "Go to Hub workspaces management",
+			title: locales.CmdViewWorkspacesTitle(), subtitle: locales.CmdViewWorkspacesDesc(),
 			run: func() {
 				*open = false
 				a.router.Push(routes.HubWorkspaces)
@@ -346,7 +347,7 @@ func (a *App) buildSearchItems(
 						kind:     "collection",
 						icon:     icons.Layers,
 						title:    collCopy.Name,
-						subtitle: "Collection · " + wsCopy.Name,
+						subtitle: locales.SearchKindCollection(wsCopy.Name),
 						run: func() {
 							*open = false
 							a.openWorkbenchTarget(wsCopy.ID, routes.SectionCollections, collection.WorkbenchCommand{
@@ -367,7 +368,7 @@ func (a *App) buildSearchItems(
 						kind:     "environment",
 						icon:     icons.Globe,
 						title:    envCopy.Name,
-						subtitle: "Environment · " + wsCopy.Name,
+						subtitle: locales.SearchKindEnvironment(wsCopy.Name),
 						run: func() {
 							*open = false
 							a.openWorkbenchTarget(wsCopy.ID, routes.SectionEnvironments, collection.WorkbenchCommand{
@@ -386,7 +387,7 @@ func (a *App) buildSearchItems(
 					kind:     "workspace",
 					icon:     icons.LayoutGrid,
 					title:    wsCopy.Name,
-					subtitle: "Workspace",
+					subtitle: locales.SearchKindWorkspace(),
 					run: func() {
 						*open = false
 						_ = a.store.SetActiveWorkspace(wsCopy.ID)
@@ -406,7 +407,7 @@ func (a *App) buildSearchItems(
 				kind:     "tool",
 				icon:     td.Icon,
 				title:    td.Name,
-				subtitle: "Dev Tool · " + td.Description,
+				subtitle: locales.SearchKindDevTool(td.Description),
 				run: func() {
 					*open = false
 					a.openWorkbenchTarget("", routes.SectionTools, collection.WorkbenchCommand{

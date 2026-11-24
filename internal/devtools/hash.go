@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"hash"
 	"strings"
+
+	"rddpostman/locales"
 )
 
 // HashSummary 汇总输入文本的常用摘要结果。
@@ -51,9 +53,9 @@ func MatchHash(summary HashSummary, expected string) (string, bool) {
 	}
 	switch exp {
 	case strings.ToLower(summary.MD5Lower):
-		return "MD5 (32位)", true
+		return locales.HashMD532(), true
 	case strings.ToLower(summary.MD516):
-		return "MD5 (16位)", true
+		return locales.HashMD516(), true
 	case strings.ToLower(summary.SHA1):
 		return "SHA-1", true
 	case strings.ToLower(summary.SHA256):
@@ -78,7 +80,7 @@ func ComputeHMAC(algo, secret, message, format string) (string, error) {
 	case "sha512", "sha-512":
 		fn = sha512.New
 	default:
-		return "", fmt.Errorf("不支持的 HMAC 算法: %s", algo)
+		return "", fmt.Errorf("unsupported HMAC algorithm: %s", algo)
 	}
 
 	mac := hmac.New(fn, []byte(secret))

@@ -3,6 +3,7 @@ package collection
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"rddpostman/components/v1/icons"
 	"rddpostman/internal/domain"
 	"rddpostman/internal/transport"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -178,9 +180,9 @@ func renderCollectionRunner(c *ui.Context, props pageProps, coll *domain.Collect
 		ui.Row(c).FillWidth().Justify(ui.Center).Children(func() {
 			ui.Column(c).Width(docWidth).Padding(32, 0, 40, 0).Gap(20).Children(func() {
 				ui.Column(c).Gap(4).Children(func() {
-					ui.Text(c, "批量运行 (Collection Runner)").FontSize(18).FontWeight(600).
+					ui.Text(c, locales.RunnerTitle()).FontSize(18).FontWeight(600).
 						TextColor(tk.TextPrimary)
-					ui.Text(c, "自动化按序执行该集合下的所有请求，验证 API 契约与断言测试。").
+					ui.Text(c, locales.RunnerDesc()).
 						FontSize(13).TextColor(tk.TextMuted)
 				})
 
@@ -208,12 +210,12 @@ func renderCollectionRunner(c *ui.Context, props pageProps, coll *domain.Collect
 				}
 
 				ui.Row(c).Gap(12).Children(func() {
-					runnerStatCard(c, "包含请求数", fmt.Sprintf("%d", reqTotal), tk.TextPrimary)
-					runnerStatCard(c, "包含子目录", fmt.Sprintf("%d", folderTot), tk.TextPrimary)
+					runnerStatCard(c, locales.RunnerStatRequests(), fmt.Sprintf("%d", reqTotal), tk.TextPrimary)
+					runnerStatCard(c, locales.RunnerStatFolders(), fmt.Sprintf("%d", folderTot), tk.TextPrimary)
 					if snap.running || snap.done {
-						runnerStatCard(c, "已通过", fmt.Sprintf("%d", passedCount), tk.Success)
-						runnerStatCard(c, "失败 / 错误", fmt.Sprintf("%d", failedCount), tk.Danger)
-						runnerStatCard(c, "总耗时", transport.FormatDuration(snap.elapsed), tk.TextSecondary)
+						runnerStatCard(c, locales.RunnerStatPassed(), fmt.Sprintf("%d", passedCount), tk.Success)
+						runnerStatCard(c, locales.RunnerStatFailed(), fmt.Sprintf("%d", failedCount), tk.Danger)
+						runnerStatCard(c, locales.RunnerStatDuration(), transport.FormatDuration(snap.elapsed), tk.TextSecondary)
 					}
 				})
 
@@ -224,14 +226,14 @@ func renderCollectionRunner(c *ui.Context, props pageProps, coll *domain.Collect
 							Height(34).Padding(0, 20).Radius(6).
 							Background(tk.DangerSoft).Border(1, tk.Danger).
 							AlignItems(ui.Center).Justify(ui.Center).Cursor(ui.CursorPointer).
-							Role(ui.RoleButton).Label("Stop Run")
+							Role(ui.RoleButton).Label(locales.RunnerStopLabel())
 						if stopBtn.Clicked() {
 							runner.stop()
 						}
 						stopBtn.Children(func() {
 							ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 								ui.Icon(c, icons.X).FontSize(13).TextColor(tk.Danger)
-								ui.Text(c, fmt.Sprintf("Stop (%d/%d)", snap.completed, snap.total)).
+								ui.Text(c, locales.RunnerStopProgress(strconv.Itoa(snap.completed), strconv.Itoa(snap.total))).
 									FontSize(13).FontWeight(500).TextColor(tk.Danger)
 							})
 						})
@@ -239,7 +241,7 @@ func renderCollectionRunner(c *ui.Context, props pageProps, coll *domain.Collect
 						runBtn := ui.ButtonBase(c.Key("coll-run-start")).
 							Height(34).Padding(0, 20).Radius(6).
 							AlignItems(ui.Center).Justify(ui.Center).
-							Role(ui.RoleButton).Label("Run Collection").
+							Role(ui.RoleButton).Label(locales.RunnerRunBtn()).
 							Disabled(reqTotal == 0).
 							Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 						if reqTotal == 0 {
@@ -265,18 +267,18 @@ func renderCollectionRunner(c *ui.Context, props pageProps, coll *domain.Collect
 							}
 							ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 								ui.Icon(c, icons.Play).FontSize(13).TextColor(fg)
-								ui.Text(c, "Run Collection").FontSize(13).FontWeight(500).TextColor(fg)
+								ui.Text(c, locales.RunnerRunBtn()).FontSize(13).FontWeight(500).TextColor(fg)
 							})
 						})
 					}
 
 					if reqTotal == 0 {
-						ui.Text(c, "当前范围暂无可执行的请求").FontSize(m.FontXS).TextColor(tk.TextMuted)
+						ui.Text(c, locales.RunnerEmptyHint()).FontSize(m.FontXS).TextColor(tk.TextMuted)
 					} else if snap.running {
-						ui.Text(c, fmt.Sprintf("正在按序执行第 %d / %d 个请求...", snap.completed+1, snap.total)).
+						ui.Text(c, locales.RunnerRunningHint(strconv.Itoa(snap.completed+1), strconv.Itoa(snap.total))).
 							FontSize(m.FontXS).TextColor(tk.TextSecondary)
 					} else if snap.done {
-						ui.Text(c, fmt.Sprintf("执行完成：共 %d 个请求", len(snap.results))).
+						ui.Text(c, locales.RunnerDoneHint(len(snap.results))).
 							FontSize(m.FontXS).TextColor(tk.TextSecondary)
 					}
 				})
@@ -322,7 +324,7 @@ func renderCollectionRunner(c *ui.Context, props pageProps, coll *domain.Collect
 										if passed < len(r.TestResults) {
 											clr = tk.Danger
 										}
-										ui.Text(c, fmt.Sprintf("Tests: %d/%d passed", passed, len(r.TestResults))).
+										ui.Text(c, locales.RunnerTestsRatio(strconv.Itoa(passed), strconv.Itoa(len(r.TestResults)))).
 											FontSize(11).TextColor(clr).SingleLine()
 									}
 								})

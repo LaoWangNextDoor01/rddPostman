@@ -240,13 +240,13 @@ func TestWorkspaceDropdownLayoutGeometry(t *testing.T) {
 	}
 	tt.Frame()
 
-	createRect, ok := tt.Find("创建")
+	createRect, ok := tt.Find(locales.Create())
 	if !ok {
-		t.Fatalf("could not find 创建 button; texts=%q", tt.Texts())
+		t.Fatalf("could not find Create button; texts=%q", tt.Texts())
 	}
-	viewAllRect, ok := tt.Find("查看所有")
+	viewAllRect, ok := tt.Find(locales.ViewAll())
 	if !ok {
-		t.Fatalf("could not find 查看所有 button; texts=%q", tt.Texts())
+		t.Fatalf("could not find View all button; texts=%q", tt.Texts())
 	}
 
 	if math.Abs(float64(createRect.W-viewAllRect.W)) > 2 {
@@ -270,12 +270,12 @@ func TestWorkbenchToolsSidebarAndTabs(t *testing.T) {
 	if got := a.Router().Path(); got != routes.WorkbenchToolsOf(string(ws.ID)) {
 		t.Fatalf("Cmd+4 path = %q, want %q", got, routes.WorkbenchToolsOf(string(ws.ID)))
 	}
-	if !tt.HasText("数据处理") || !tt.HasText("JSON 格式化 / 转义") || !tt.HasText("哈希与 HMAC 签名") {
+	if !tt.HasText(locales.ToolsCatData()) || !tt.HasText(locales.ToolJSONName()) || !tt.HasText(locales.ToolHashName()) {
 		t.Fatalf("expected tools list in workbench sidebar; got %q", tt.Texts())
 	}
 
-	// 2. 点击侧栏中的 哈希与 HMAC 签名，右侧打开工具 Tab 并可实时计算
-	if err := tt.Click("哈希与 HMAC 签名"); err != nil {
+	// 2. 点击侧栏中的哈希工具，右侧打开工具 Tab 并可实时计算
+	if err := tt.Click(locales.ToolHashName()); err != nil {
 		t.Fatalf("Click Hash tool: %v", err)
 	}
 	tt.Frame()

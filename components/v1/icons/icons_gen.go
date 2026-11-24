@@ -3,7 +3,7 @@
 package icons
 
 // 类型化图标变量：kebab-case → PascalCase，IDE 可补全；新图标在清单加行并同步后自动出现。
-// 与包内函数冲突的图标自动加 Icon 后缀（如 Lucide "get" → GetIcon）。
+// 与包内函数冲突的图标自动加 Icon 后缀（如 "get" → GetIcon）。
 var (
 	ArrowLeft = Get("arrow-left")
 	ArrowRight = Get("arrow-right")

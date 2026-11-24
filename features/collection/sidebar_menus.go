@@ -54,7 +54,7 @@ func addMenuButton(c *ui.Context, props pageProps) {
 			v2.PopoverDivider(c)
 
 			if v2.MenuButton(c, v2.MenuButtonProps{
-				Icon: icons.Code, Key: "add-import-curl", Label: "Import cURL",
+				Icon: icons.Code, Key: "add-import-curl", Label: locales.CmdImportCurlTitle(),
 			}).Clicked() {
 				props.state.importCurlOpen = true
 				props.state.importCurlText = ""
@@ -62,7 +62,7 @@ func addMenuButton(c *ui.Context, props pageProps) {
 				props.state.addOpen = false
 			}
 			if v2.MenuButton(c, v2.MenuButtonProps{
-				Icon: icons.File, Key: "add-import-postman", Label: "Import Postman Collection",
+				Icon: icons.File, Key: "add-import-postman", Label: locales.CmdImportPostmanTitle(),
 			}).Clicked() {
 				props.state.importPostmanOpen = true
 				props.state.importPostmanText = ""

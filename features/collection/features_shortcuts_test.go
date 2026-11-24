@@ -14,6 +14,7 @@ import (
 	"rddpostman/internal/domain"
 	"rddpostman/internal/store"
 	"rddpostman/internal/transport"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -291,15 +292,17 @@ func TestCollectionRunnerExecutesAllRequests(t *testing.T) {
 		t.Fatalf("Click Run Collection: %v", err)
 	}
 
+	wantDone := locales.RunnerDoneHint(2)
+	wantTests := locales.RunnerTestsRatio("1", "1")
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		tt.Frame()
-		if tt.HasText("执行完成：共 2 个请求") && tt.HasText("Tests: 1/1 passed") {
+		if tt.HasText(wantDone) && tt.HasText(wantTests) {
 			break
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
-	if !tt.HasText("执行完成：共 2 个请求") || !tt.HasText("Health Check") || !tt.HasText("Status Check") {
+	if !tt.HasText(wantDone) || !tt.HasText("Health Check") || !tt.HasText("Status Check") {
 		t.Fatalf("Collection Runner did not finish with expected results; got %q", tt.Texts())
 	}
 
@@ -418,9 +421,9 @@ func TestDeleteTreeRowRequiresConfirmation(t *testing.T) {
 		kind      treeKind
 		wantTitle string
 	}{
-		{name: "Payments Collection", kind: treeCollection, wantTitle: "删除集合"},
-		{name: "Auth Folder", kind: treeFolder, wantTitle: "删除目录"},
-		{name: "Get Token", kind: treeRequest, wantTitle: "删除请求"},
+		{name: "Payments Collection", kind: treeCollection, wantTitle: locales.DeleteCollectionTitle()},
+		{name: "Auth Folder", kind: treeFolder, wantTitle: locales.DeleteFolderTitle()},
+		{name: "Get Token", kind: treeRequest, wantTitle: locales.DeleteRequestTitle()},
 	}
 
 	for _, tc := range cases {
@@ -452,8 +455,8 @@ func TestDeleteTreeRowRequiresConfirmation(t *testing.T) {
 			}
 
 			// 1. 点击取消：不删除且弹窗关闭
-			if err := tt.Click("取消"); err != nil {
-				t.Fatalf("Click 取消: %v", err)
+			if err := tt.Click(locales.Cancel()); err != nil {
+				t.Fatalf("Click Cancel: %v", err)
 			}
 			tt.Frame()
 			if deleted != nil || state.deleteConfirmOpen {
@@ -464,8 +467,8 @@ func TestDeleteTreeRowRequiresConfirmation(t *testing.T) {
 			state.deletePending = &treeNode{id: "id-1", name: tc.name, kind: tc.kind}
 			state.deleteConfirmOpen = true
 			tt.Frame()
-			if err := tt.Click("确认删除"); err != nil {
-				t.Fatalf("Click 确认删除: %v", err)
+			if err := tt.Click(locales.ConfirmDelete()); err != nil {
+				t.Fatalf("Click ConfirmDelete: %v", err)
 			}
 			tt.Frame()
 			if deleted == nil || deleted.id != "id-1" {

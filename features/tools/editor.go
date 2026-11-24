@@ -3,6 +3,7 @@ package tools
 import (
 	thV2 "rddpostman/components/theme/v2"
 	"rddpostman/components/v1/icons"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -15,7 +16,7 @@ func EditorView(c *ui.Context, toolID string) {
 	if def == nil {
 		ui.Column(c).Fill().Center().Background(tk.BgBase).Gap(m.Space2).Children(func() {
 			ui.Icon(c, icons.Code).FontSize(24).TextColor(tk.TextMuted)
-			ui.Text(c, "Tool not found").FontSize(m.FontMD).TextColor(tk.TextSecondary)
+			ui.Text(c, locales.ToolNotFound()).FontSize(m.FontMD).TextColor(tk.TextSecondary)
 		})
 		return
 	}

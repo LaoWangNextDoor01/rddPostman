@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"rddpostman/internal/platform"
+	"rddpostman/locales"
 )
 
 const (
@@ -73,7 +74,7 @@ func (r *folderScanResult) drain() ([]localFolderItem, bool) {
 
 // openFolderPicker 弹出系统目录选择器；测试中可替换以避免阻塞系统弹窗。
 var openFolderPicker = func(defaultPath string) (string, error) {
-	return platform.PickDirectory("Open local folder", defaultPath)
+	return platform.PickDirectory(locales.WsPickFolderTitle(), defaultPath)
 }
 
 // loadLocalFolders 获取创建页展示的本地目录候选列表；测试中可替换。

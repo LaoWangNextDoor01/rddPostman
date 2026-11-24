@@ -15,6 +15,7 @@ import (
 	"rddpostman/internal/nav"
 	"rddpostman/internal/store"
 	"rddpostman/internal/transport"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -74,7 +75,7 @@ func WorkbenchView(
 	environments := ws.Environments
 	selectedEnv := ws.SelectedEnvironmentID
 	state.pruneMissingEnvs(environments)
-	shortcutsDisabled := slots.ModalOpen || state.importCurlOpen || state.importPostmanOpen
+	shortcutsDisabled := slots.ModalOpen || state.importCurlOpen || state.importPostmanOpen || state.deleteConfirmOpen || state.moveDialogOpen
 	props := pageProps{
 		workspaceID:       workspaceID,
 		workspaceName:     workspaceName,
@@ -111,6 +112,36 @@ func WorkbenchView(
 			state.openTab(string(cloned.ID))
 			state.selected = string(cloned.ID)
 		},
+		moveNode: func(srcCollID, nodeID, dstCollID, dstParentID domain.ID, dstIndex int) {
+			var movedSubtree *domain.Node
+			if srcCollID != dstCollID {
+				if _, n := findNode(collections, string(nodeID)); n != nil {
+					movedSubtree = n
+				}
+			}
+			if err := db.MoveNode(srcCollID, nodeID, dstCollID, dstParentID, dstIndex); err != nil {
+				return
+			}
+			// 若跨集合移动了目录，同步更新挂载在该子树下的未保存草稿所属集合 ID。
+			if movedSubtree != nil && len(state.drafts) > 0 {
+				for _, draft := range state.drafts {
+					if draft.collID == srcCollID && draft.parentID != "" && movedSubtree.Find(draft.parentID) != nil {
+						draft.collID = dstCollID
+					}
+				}
+			}
+			*state.openFlag(string(dstCollID)) = true
+			if dstParentID != "" {
+				*state.openFlag(string(dstParentID)) = true
+			}
+			state.selected = string(nodeID)
+		},
+		moveCollection: func(collID domain.ID, dstIndex int) {
+			if err := db.MoveCollection(collID, dstIndex); err != nil {
+				return
+			}
+			state.selected = string(collID)
+		},
 		importCurl: func(targetID domain.ID, curlCmd string) error {
 			req, parsedAuth, err := curl.FromCurl(curlCmd)
 			if err != nil {
@@ -122,7 +153,7 @@ func WorkbenchView(
 					coll = collections[0]
 				} else {
 					var createErr error
-					coll, createErr = db.CreateCollection(workspaceID, "默认集合", "")
+					coll, createErr = db.CreateCollection(workspaceID, locales.DefaultCollectionName(), "")
 					if createErr != nil {
 						return createErr
 					}
@@ -399,6 +430,7 @@ func WorkbenchView(
 	importCurlDialog(c, props)
 	importPostmanDialog(c, props)
 	deleteTreeRowDialog(c, props)
+	moveNodeDialog(c, props)
 }
 
 func deleteTreeRowDialog(c *ui.Context, props pageProps) {
@@ -407,22 +439,22 @@ func deleteTreeRowDialog(c *ui.Context, props pageProps) {
 		return
 	}
 	target := state.deletePending
-	title := "删除请求"
-	desc := fmt.Sprintf("确定要删除请求「%s」吗？此操作不可撤销。", target.name)
+	title := locales.DeleteRequestTitle()
+	desc := locales.DeleteRequestDesc(target.name)
 	switch target.kind {
 	case treeCollection:
-		title = "删除集合"
-		desc = fmt.Sprintf("确定要删除集合「%s」吗？该集合下的所有目录和请求也将一并删除，此操作不可撤销。", target.name)
+		title = locales.DeleteCollectionTitle()
+		desc = locales.DeleteCollectionDesc(target.name)
 	case treeFolder:
-		title = "删除目录"
-		desc = fmt.Sprintf("确定要删除目录「%s」吗？该目录下的所有子目录和请求也将一并删除，此操作不可撤销。", target.name)
+		title = locales.DeleteFolderTitle()
+		desc = locales.DeleteFolderDesc(target.name)
 	}
 	v2.ConfirmDialog(c, &state.deleteConfirmOpen, v2.ConfirmDialogOpts{
 		Key:          "coll-del-confirm",
 		Title:        title,
 		Description:  desc,
-		ConfirmLabel: "确认删除",
-		CancelLabel:  "取消",
+		ConfirmLabel: locales.ConfirmDelete(),
+		CancelLabel:  locales.Cancel(),
 		Danger:       true,
 		OnConfirm: func() {
 			row := state.deletePending
@@ -465,7 +497,7 @@ func executeRequestSync(
 		return &transport.Response{
 			StatusCode: 0,
 			StatusText: "Error",
-			Error:      "准备请求参数失败: " + err.Error(),
+			Error:      locales.PrepareRequestErr(err.Error()),
 			Timestamp:  time.Now(),
 		}
 	}

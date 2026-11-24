@@ -65,7 +65,7 @@ func (a *App) navButtons(c *ui.Context) {
 	ui.Row(c).AlignItems(ui.Center).Gap(2).Padding(0, m.Space1).FillHeight().Children(func() {
 		backBtn := ui.ButtonBase(c.Key(keyTitlebarBack)).
 			Size(24, 24).Radius(m.RadiusSM).Center().
-			Role(ui.RoleButton).Label("Back").Tooltip("Back").
+			Role(ui.RoleButton).Label(locales.Back()).Tooltip(locales.Back()).
 			Disabled(!canBack)
 		if canBack {
 			backBtn.Cursor(ui.CursorPointer)
@@ -89,7 +89,7 @@ func (a *App) navButtons(c *ui.Context) {
 
 		fwdBtn := ui.ButtonBase(c.Key(keyTitlebarForward)).
 			Size(24, 24).Radius(m.RadiusSM).Center().
-			Role(ui.RoleButton).Label("Forward").Tooltip("Forward").
+			Role(ui.RoleButton).Label(locales.Forward()).Tooltip(locales.Forward()).
 			Disabled(!canFwd)
 		if canFwd {
 			fwdBtn.Cursor(ui.CursorPointer)
@@ -123,8 +123,8 @@ func (a *App) menuButton(c *ui.Context, settingsOpen, exportOpen *bool) {
 		Center().
 		Margin(0, m.Space1, 0, m.Space2).
 		Role(ui.RoleButton).
-		Label("App Menu").
-		Tooltip("App Menu").
+		Label(locales.AppMenu()).
+		Tooltip(locales.AppMenu()).
 		Cursor(ui.CursorPointer).
 		Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Base})
 
@@ -154,8 +154,8 @@ func (a *App) menuButton(c *ui.Context, settingsOpen, exportOpen *bool) {
 			// 分组 1：创建相关（对齐 Pixso 52:20244 - 52:20270）
 			if v2.MenuButton(c, v2.MenuButtonProps{
 				Icon:     icons.Send,
-				Key:      "New Request",
-				Label:    "New Request",
+				Key:      "menu-new-request",
+				Label:    locales.MenuNewRequest(),
 				Shortcut: "Ctrl+N",
 				Height:   32,
 			}).Clicked() {
@@ -165,8 +165,8 @@ func (a *App) menuButton(c *ui.Context, settingsOpen, exportOpen *bool) {
 
 			if v2.MenuButton(c, v2.MenuButtonProps{
 				Icon:     icons.FolderPlus,
-				Key:      "New Collection",
-				Label:    "New Collection",
+				Key:      "menu-new-collection",
+				Label:    locales.MenuNewCollection(),
 				Shortcut: "Ctrl+Shift+N",
 				Height:   32,
 			}).Clicked() {
@@ -176,8 +176,8 @@ func (a *App) menuButton(c *ui.Context, settingsOpen, exportOpen *bool) {
 
 			if v2.MenuButton(c, v2.MenuButtonProps{
 				Icon:   icons.LayoutGrid,
-				Key:    "New Workspace",
-				Label:  "New Workspace",
+				Key:    "menu-new-workspace",
+				Label:  locales.MenuNewWorkspace(),
 				Height: 32,
 			}).Clicked() {
 				a.router.Push(routes.HubWorkspaceNew)
@@ -192,8 +192,8 @@ func (a *App) menuButton(c *ui.Context, settingsOpen, exportOpen *bool) {
 			// 分组 2：导入导出（对齐 Pixso 52:20273 - 52:20289）
 			if v2.MenuButton(c, v2.MenuButtonProps{
 				Icon:     icons.Upload,
-				Key:      "Import...",
-				Label:    "Import...",
+				Key:      "menu-import",
+				Label:    locales.MenuImport(),
 				Shortcut: "Ctrl+O",
 				Height:   32,
 			}).Clicked() {
@@ -203,8 +203,8 @@ func (a *App) menuButton(c *ui.Context, settingsOpen, exportOpen *bool) {
 
 			if v2.MenuButton(c, v2.MenuButtonProps{
 				Icon:   icons.Download,
-				Key:    "Export...",
-				Label:  "Export...",
+				Key:    "menu-export",
+				Label:  locales.MenuExport(),
 				Height: 32,
 			}).Clicked() {
 				if exportOpen != nil {
@@ -221,8 +221,8 @@ func (a *App) menuButton(c *ui.Context, settingsOpen, exportOpen *bool) {
 			// 分组 3：设置与帮助（对齐 Pixso 52:20292 - 52:20316）
 			if v2.MenuButton(c, v2.MenuButtonProps{
 				Icon:     icons.Settings,
-				Key:      "Settings...",
-				Label:    "Settings...",
+				Key:      "menu-settings",
+				Label:    locales.MenuSettings(),
 				Shortcut: "Ctrl+,",
 				Height:   32,
 			}).Clicked() {
@@ -234,8 +234,8 @@ func (a *App) menuButton(c *ui.Context, settingsOpen, exportOpen *bool) {
 
 			if v2.MenuButton(c, v2.MenuButtonProps{
 				Icon:   icons.CircleHelp,
-				Key:    "Help",
-				Label:  "Help",
+				Key:    "menu-help",
+				Label:  locales.MenuHelp(),
 				Height: 32,
 			}).Clicked() {
 				a.OpenSettings("shortcuts")
@@ -244,8 +244,8 @@ func (a *App) menuButton(c *ui.Context, settingsOpen, exportOpen *bool) {
 
 			if v2.MenuButton(c, v2.MenuButtonProps{
 				Icon:   icons.Info,
-				Key:    "About Postman",
-				Label:  "About Postman",
+				Key:    "menu-about",
+				Label:  locales.MenuAbout(),
 				Height: 32,
 			}).Clicked() {
 				a.OpenSettings("about")
@@ -260,8 +260,8 @@ func (a *App) menuButton(c *ui.Context, settingsOpen, exportOpen *bool) {
 			// 分组 4：退出应用（对齐 Pixso 52:20319，默认态与普通菜单项一致，仅 hover/press 为危险红底红字 + Alt+F4）
 			if v2.MenuButton(c, v2.MenuButtonProps{
 				Icon:     icons.LogOut,
-				Key:      "Quit",
-				Label:    "Quit",
+				Key:      "menu-quit",
+				Label:    locales.MenuQuit(),
 				Shortcut: "Alt+F4",
 				Danger:   true,
 				Height:   32,
@@ -319,7 +319,7 @@ func (a *App) searchInput(c *ui.Context, searchOpen *bool, searchQuery *string, 
 // 提醒消息
 func (a *App) bellButton(c *ui.Context) {
 	if v2.IconButton(c, v2.IconButtonOpts{
-		Key: keyTitlebarBell, Label: "通知", Icon: icons.Bell, Tooltip: "通知",
+		Key: keyTitlebarBell, Label: locales.Notifications(), Icon: icons.Bell, Tooltip: locales.Notifications(),
 	}).Clicked() {
 		// TODO: 打开通知中心 Popover
 	}
@@ -328,7 +328,7 @@ func (a *App) bellButton(c *ui.Context) {
 // 设置（在 RootLayout 层打开全局设置弹窗，不改变当前路由）
 func (a *App) settingButton(c *ui.Context, settingsOpen *bool) {
 	if v2.IconButton(c, v2.IconButtonOpts{
-		Key: keyTitlebarSettings, Label: "设置", Icon: icons.Settings, Tooltip: "设置",
+		Key: keyTitlebarSettings, Label: locales.SettingsTitle(), Icon: icons.Settings, Tooltip: locales.SettingsTitle(),
 	}).Clicked() {
 		if settingsOpen != nil {
 			*settingsOpen = true
@@ -339,8 +339,8 @@ func (a *App) settingButton(c *ui.Context, settingsOpen *bool) {
 // 用户头像按钮
 func (a *App) userAvatar(c *ui.Context) {
 	if v2.IconButton(c, v2.IconButtonOpts{
-		Key: keyTitlebarAvatar, Label: "账号", Icon: icons.UserRound,
-		Tooltip: "账号", Radius: thV2.Metrics.RadiusFull,
+		Key: keyTitlebarAvatar, Label: locales.Account(), Icon: icons.UserRound,
+		Tooltip: locales.Account(), Radius: thV2.Metrics.RadiusFull,
 	}).Clicked() {
 		// TODO: 打开账号菜单
 	}
@@ -409,8 +409,8 @@ func (a *App) workspaceSelector(c *ui.Context) {
 					Height(m.SizeLG).Padding(0, m.Space2).Radius(m.RadiusMD).
 					Background(tk.BgSurface).
 					FontSize(m.FontSM).TextColor(tk.TextPrimary).
-					Placeholder("Search workspaces...").PlaceholderColor(tk.TextMuted).
-					Label("Search dropdown workspaces")
+					Placeholder(locales.SearchWorkspaces()).PlaceholderColor(tk.TextMuted).
+					Label(locales.SearchDropdownWorkspaces())
 				switch {
 				case in.Focused():
 					in.Border(m.Border, tk.Focus).Shadow(0, 0, 0, 2, tk.FocusRing)
@@ -462,7 +462,7 @@ func (a *App) workspaceSelector(c *ui.Context) {
 					}
 					if matched == 0 {
 						ui.Box(c).FillWidth().Height(72).Center().Children(func() {
-							ui.Text(c, "No matching workspaces").FontSize(m.FontXS).TextColor(tk.TextMuted)
+							ui.Text(c, locales.NoWorkspaceMatches()).FontSize(m.FontXS).TextColor(tk.TextMuted)
 						})
 					}
 				})
@@ -475,7 +475,7 @@ func (a *App) workspaceSelector(c *ui.Context) {
 			ui.Row(c).FillWidth().Height(36).AlignItems(ui.Stretch).Children(func() {
 				createBtn := ui.ButtonBase(c.Key("ws-create")).Grow(1).Basis(0).FillHeight().
 					AlignItems(ui.Center).Justify(ui.Center).Gap(m.Space15).
-					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("创建").
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.Create()).
 					Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 				switch {
 				case createBtn.Pressed():
@@ -493,7 +493,7 @@ func (a *App) workspaceSelector(c *ui.Context) {
 						icColor = tk.TextPrimary
 					}
 					ui.Icon(c, icons.Plus).FontSize(13).TextColor(icColor)
-					ui.Text(c, "创建").FontSize(m.FontSM).FontWeight(500).
+					ui.Text(c, locales.Create()).FontSize(m.FontSM).FontWeight(500).
 						TextColor(tk.TextPrimary).SingleLine()
 				})
 
@@ -501,7 +501,7 @@ func (a *App) workspaceSelector(c *ui.Context) {
 
 				viewAllBtn := ui.ButtonBase(c.Key("ws-view-all")).Grow(1).Basis(0).FillHeight().
 					AlignItems(ui.Center).Justify(ui.Center).Gap(m.Space15).
-					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("查看所有").
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.ViewAll()).
 					Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 				switch {
 				case viewAllBtn.Pressed():
@@ -519,7 +519,7 @@ func (a *App) workspaceSelector(c *ui.Context) {
 						icColor = tk.TextPrimary
 					}
 					ui.Icon(c, icons.LayoutGrid).FontSize(13).TextColor(icColor)
-					ui.Text(c, "查看所有").FontSize(m.FontSM).FontWeight(500).
+					ui.Text(c, locales.ViewAll()).FontSize(m.FontSM).FontWeight(500).
 						TextColor(tk.TextPrimary).SingleLine()
 				})
 			})
@@ -562,17 +562,17 @@ func (a *App) statusBar(c *ui.Context, globalsOpen *bool) {
 		// 左侧：Local mode · Terminal · Console（点击 Console 打开日志弹窗）
 		ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
 			ui.Icon(c, icons.TriangleAlert).FontSize(11).TextColor(tk.TextMuted)
-			ui.Text(c, "Local mode").FontSize(11).TextColor(tk.TextSecondary).SingleLine()
+			ui.Text(c, locales.StatusLocalMode()).FontSize(11).TextColor(tk.TextSecondary).SingleLine()
 		})
 
 		ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
 			ui.Icon(c, icons.SquareTerminal).FontSize(11).TextColor(tk.TextMuted)
-			ui.Text(c, "Terminal").FontSize(11).TextColor(tk.TextSecondary).SingleLine()
+			ui.Text(c, locales.StatusTerminal()).FontSize(11).TextColor(tk.TextSecondary).SingleLine()
 		})
 
 		logBtn := ui.ButtonBase(c.Key(keyStatusBarLogBtn)).
 			Height(18).PaddingX(6).Gap(4).AlignItems(ui.Center).Radius(4).
-			Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Console")
+			Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.StatusConsole())
 		switch {
 		case logBtn.Pressed():
 			logBtn.Background(tk.BgSelected)
@@ -585,24 +585,24 @@ func (a *App) statusBar(c *ui.Context, globalsOpen *bool) {
 		logBtn.Children(func() {
 			if errCount > 0 {
 				ui.Icon(c, icons.TriangleAlert).FontSize(11).TextColor(tk.Danger)
-				ui.Text(c, fmt.Sprintf("Console (%d)", errCount)).FontSize(11).TextColor(tk.Danger).SingleLine()
+				ui.Text(c, locales.StatusConsoleCount(strconv.Itoa(errCount))).FontSize(11).TextColor(tk.Danger).SingleLine()
 			} else {
-				ui.Text(c, "Console").FontSize(11).TextColor(tk.TextSecondary).SingleLine()
+				ui.Text(c, locales.StatusConsole()).FontSize(11).TextColor(tk.TextSecondary).SingleLine()
 			}
 		})
 
 		ui.Spacer(c)
 
 		// 右侧：Globals（可点击打开全局变量弹窗） · Vault · Tools · 版本号
-		globalsLabel := "Globals"
+		globalsLabel := locales.Globals()
 		if a.store != nil {
 			if n := len(a.store.Snapshot().Globals); n > 0 {
-				globalsLabel = fmt.Sprintf("Globals (%d)", n)
+				globalsLabel = locales.StatusGlobalsCount(strconv.Itoa(n))
 			}
 		}
 		globalsBtn := ui.ButtonBase(c.Key(keyStatusBarGlobalsBtn)).
 			Height(18).PaddingX(6).AlignItems(ui.Center).Radius(4).
-			Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Globals")
+			Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.Globals())
 		switch {
 		case globalsBtn.Pressed():
 			globalsBtn.Background(tk.BgSelected)
@@ -616,11 +616,11 @@ func (a *App) statusBar(c *ui.Context, globalsOpen *bool) {
 			ui.Text(c, globalsLabel).FontSize(11).TextColor(tk.TextSecondary).SingleLine()
 		})
 
-		ui.Text(c, "Vault").FontSize(11).TextColor(tk.TextSecondary).SingleLine()
+		ui.Text(c, locales.StatusVault()).FontSize(11).TextColor(tk.TextSecondary).SingleLine()
 
 		toolsBtn := ui.ButtonBase(c.Key(keyStatusBarToolsBtn)).
 			Height(18).PaddingX(6).AlignItems(ui.Center).Radius(4).
-			Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Status Tools")
+			Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.StatusTools())
 		switch {
 		case toolsBtn.Pressed():
 			toolsBtn.Background(tk.BgSelected)
@@ -631,7 +631,7 @@ func (a *App) statusBar(c *ui.Context, globalsOpen *bool) {
 			a.router.Push(a.activeWorkbenchRoute(routes.SectionTools))
 		}
 		toolsBtn.Children(func() {
-			ui.Text(c, "Tools").FontSize(11).TextColor(tk.TextSecondary).SingleLine()
+			ui.Text(c, locales.StatusTools()).FontSize(11).TextColor(tk.TextSecondary).SingleLine()
 		})
 
 		ui.Text(c, fmt.Sprintf("v%s", config.Version)).FontSize(11).TextColor(tk.TextMuted).SingleLine()
@@ -657,11 +657,11 @@ func (a *App) errorLogDialog(c *ui.Context, open *bool) {
 			// 1. 顶部标题栏与快捷操作
 			ui.Row(c).AlignItems(ui.Center).Gap(m.Space2).Children(func() {
 				ui.Icon(c, icons.SquareTerminal).FontSize(m.IconMD).TextColor(tk.Accent)
-				ui.Text(c, "系统与错误日志").FontSize(m.FontMD).Bold().TextColor(tk.TextPrimary)
+				ui.Text(c, locales.LogDialogTitle()).FontSize(m.FontMD).Bold().TextColor(tk.TextPrimary)
 				if errCount > 0 {
 					ui.Box(c).Padding(1, m.Space2).Radius(m.RadiusFull).
 						Background(tk.DangerSoft).Children(func() {
-						ui.Text(c, fmt.Sprintf("%d 个错误", errCount)).FontSize(m.FontXS).TextColor(tk.Danger)
+						ui.Text(c, locales.LogErrorCount(errCount)).FontSize(m.FontXS).TextColor(tk.Danger)
 					})
 				}
 				ui.Spacer(c)
@@ -670,7 +670,7 @@ func (a *App) errorLogDialog(c *ui.Context, open *bool) {
 				copyBtn := ui.ButtonBase(c.Key(keyLogCopyAll)).
 					Height(26).PaddingX(m.Space2).Gap(m.Space1).
 					Radius(m.RadiusSM).AlignItems(ui.Center).
-					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("复制全部")
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.CopyAll())
 				if copyBtn.Hovered() {
 					copyBtn.Background(tk.BgHover)
 				}
@@ -680,9 +680,9 @@ func (a *App) errorLogDialog(c *ui.Context, open *bool) {
 				}
 				copyBtn.Children(func() {
 					ui.Icon(c, icons.Copy).FontSize(m.IconXS).TextColor(tk.TextSecondary)
-					copyLabel := "复制全部"
+					copyLabel := locales.CopyAll()
 					if *copied {
-						copyLabel = "已复制"
+						copyLabel = locales.Copied()
 					}
 					ui.Text(c, copyLabel).FontSize(m.FontXS).TextColor(tk.TextSecondary)
 				})
@@ -691,7 +691,7 @@ func (a *App) errorLogDialog(c *ui.Context, open *bool) {
 				clearBtn := ui.ButtonBase(c.Key(keyLogClearAll)).
 					Height(26).PaddingX(m.Space2).Gap(m.Space1).
 					Radius(m.RadiusSM).AlignItems(ui.Center).
-					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("清空")
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.Clear())
 				if clearBtn.Hovered() {
 					clearBtn.Background(tk.BgHover)
 				}
@@ -701,13 +701,13 @@ func (a *App) errorLogDialog(c *ui.Context, open *bool) {
 				}
 				clearBtn.Children(func() {
 					ui.Icon(c, icons.Trash).FontSize(m.IconXS).TextColor(tk.TextMuted)
-					ui.Text(c, "清空").FontSize(m.FontXS).TextColor(tk.TextMuted)
+					ui.Text(c, locales.Clear()).FontSize(m.FontXS).TextColor(tk.TextMuted)
 				})
 
 				// 关闭按钮
 				closeBtn := ui.ButtonBase(c.Key(keyLogCloseBtn)).
 					Size(26, 26).Radius(m.RadiusSM).Center().
-					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("关闭日志")
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.LogClose())
 				if closeBtn.Hovered() {
 					closeBtn.Background(tk.BgHover)
 				}
@@ -727,7 +727,7 @@ func (a *App) errorLogDialog(c *ui.Context, open *bool) {
 					ui.Box(c).Fill().Center().Children(func() {
 						ui.Column(c).AlignItems(ui.Center).Gap(m.Space2).Children(func() {
 							ui.Icon(c, icons.SquareTerminal).FontSize(36).TextColor(tk.TextMuted)
-							ui.Text(c, "暂无错误与日志，系统运行正常").FontSize(m.FontSM).TextColor(tk.TextMuted)
+							ui.Text(c, locales.LogEmpty()).FontSize(m.FontSM).TextColor(tk.TextMuted)
 						})
 					})
 					return
@@ -757,10 +757,10 @@ func (a *App) errorLogDialog(c *ui.Context, open *bool) {
 
 			// 3. 底部信息行与关闭按钮
 			ui.Row(c).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, fmt.Sprintf("共记录 %d 条事件，自动捕获启动与运行时异常", len(logs))).
+				ui.Text(c, locales.LogFooterSummary(len(logs))).
 					FontSize(m.FontXS).TextColor(tk.TextMuted)
 				ui.Spacer(c)
-				if ui.Button(c, locales.Cancel()).Clicked() {
+				if ui.Button(c, locales.Close()).Clicked() {
 					*open = false
 					*copied = false
 				}

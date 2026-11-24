@@ -5,6 +5,7 @@ import (
 
 	"rddpostman/internal/domain"
 	"rddpostman/internal/store"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -119,12 +120,16 @@ func TestEnvironmentEditorDeleteConfirm(t *testing.T) {
 		EditorView(c, db, ws.ID, env.ID)
 	}, 900, 600)
 
-	// 点击 Delete 只弹出二次确认框，不直接删除
-	if err := tt.Click("Delete"); err != nil {
+	// 通过顶部「更多操作」菜单点击 Delete 只弹出二次确认框，不直接删除
+	if err := tt.Click(locales.MoreActions()); err != nil {
+		t.Fatalf("Click MoreActions: %v", err)
+	}
+	tt.Frame()
+	if err := tt.Click(locales.TreeDelete()); err != nil {
 		t.Fatalf("Click Delete: %v", err)
 	}
 	tt.Frame()
-	if !tt.HasText("删除环境") {
+	if !tt.HasText(locales.EnvDeleteTitle()) {
 		t.Fatalf("expected delete confirmation dialog; got %q", tt.Texts())
 	}
 	if len(db.Snapshot().Workspace(ws.ID).Environments) != 2 { // 默认环境 + Staging
@@ -132,20 +137,24 @@ func TestEnvironmentEditorDeleteConfirm(t *testing.T) {
 	}
 
 	// 点击取消后环境依然存在
-	if err := tt.Click("取消"); err != nil {
+	if err := tt.Click(locales.Cancel()); err != nil {
 		t.Fatalf("Click Cancel: %v", err)
 	}
 	tt.Frame()
-	if tt.HasText("删除环境") {
+	if tt.HasText(locales.EnvDeleteTitle()) {
 		t.Fatalf("confirm dialog should close after cancel")
 	}
 
-	// 再次点击 Delete -> 确认删除 -> 环境被移除
-	if err := tt.Click("Delete"); err != nil {
+	// 再次点击更多操作 -> Delete -> 确认删除 -> 环境被移除
+	if err := tt.Click(locales.MoreActions()); err != nil {
+		t.Fatalf("Click MoreActions again: %v", err)
+	}
+	tt.Frame()
+	if err := tt.Click(locales.TreeDelete()); err != nil {
 		t.Fatalf("Click Delete again: %v", err)
 	}
 	tt.Frame()
-	if err := tt.Click("确认删除"); err != nil {
+	if err := tt.Click(locales.ConfirmDelete()); err != nil {
 		t.Fatalf("Click confirm delete: %v", err)
 	}
 	tt.Frame()
@@ -153,5 +162,60 @@ func TestEnvironmentEditorDeleteConfirm(t *testing.T) {
 		if e.ID == env.ID {
 			t.Fatalf("environment %q still present after confirming delete", env.Name)
 		}
+	}
+}
+
+func TestEnvironmentEditorDeleteVariableRow(t *testing.T) {
+	db := newTestStore(t)
+	ws, err := db.CreateWorkspace("Test Workspace")
+	if err != nil {
+		t.Fatalf("CreateWorkspace failed: %v", err)
+	}
+	env, err := db.CreateEnvironment(ws.ID, "Staging")
+	if err != nil {
+		t.Fatalf("CreateEnvironment failed: %v", err)
+	}
+	env.Vars = []domain.KV{
+		{ID: domain.NewID(), Key: "baseUrl", Value: "https://staging.example.com", Enabled: true},
+		{ID: domain.NewID(), Key: "apiToken", Value: "secret-123", Enabled: true, Secret: true},
+	}
+	if err := db.SaveEnvironment(ws.ID, env); err != nil {
+		t.Fatalf("SaveEnvironment failed: %v", err)
+	}
+
+	tt := ui.NewTester(func(c *ui.Context) {
+		EditorView(c, db, ws.ID, env.ID)
+	}, 960, 600)
+	tt.Frame()
+
+	// 点击首行后面的删除按钮应立即移除 baseUrl 并标记为未保存
+	if err := tt.Click(locales.DeleteRowLabel()); err != nil {
+		t.Fatalf("Click delete row: %v", err)
+	}
+	tt.Frame()
+
+	if !tt.HasText(locales.EnvUnsaved()) {
+		t.Fatalf("expected unsaved badge after deleting variable row; got %q", tt.Texts())
+	}
+
+	// 保存后持久化结果应仅保留 apiToken
+	if err := tt.Click(locales.Save()); err != nil {
+		t.Fatalf("Click Save: %v", err)
+	}
+	tt.Frame()
+
+	var savedEnv *domain.Environment
+	for _, e := range db.Snapshot().Workspace(ws.ID).Environments {
+		if e.ID == env.ID {
+			cp := e
+			savedEnv = &cp
+			break
+		}
+	}
+	if savedEnv == nil {
+		t.Fatalf("saved environment not found")
+	}
+	if len(savedEnv.Vars) != 1 || savedEnv.Vars[0].Key != "apiToken" {
+		t.Fatalf("expected only apiToken to remain after row delete, got %+v", savedEnv.Vars)
 	}
 }

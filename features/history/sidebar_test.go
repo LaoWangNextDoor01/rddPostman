@@ -6,6 +6,7 @@ import (
 
 	"rddpostman/internal/domain"
 	"rddpostman/internal/store"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -57,18 +58,18 @@ func TestHistorySidebarGroupingOpenAndClear(t *testing.T) {
 		t.Fatalf("openedID = %q, want req-today", openedID)
 	}
 
-	if err := tt.Click("Clear history"); err != nil {
+	if err := tt.Click(locales.HistClear()); err != nil {
 		t.Fatalf("Click Clear history: %v", err)
 	}
 	tt.Frame()
-	if !tt.HasText("清空请求历史") || !tt.HasText("Today") {
+	if !tt.HasText(locales.HistClearTitle()) || !tt.HasText(locales.HistToday()) {
 		t.Fatalf("expected clear history confirm dialog before clearing; got %q", tt.Texts())
 	}
-	if err := tt.Click("确认清空"); err != nil {
+	if err := tt.Click(locales.ConfirmClear()); err != nil {
 		t.Fatalf("Click confirm clear history: %v", err)
 	}
 	tt.Frame()
-	if !tt.HasText("No request history yet") {
+	if !tt.HasText(locales.HistEmptyTitle()) {
 		t.Fatalf("expected empty history state after clearing; got %q", tt.Texts())
 	}
 }

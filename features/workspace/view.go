@@ -1,8 +1,8 @@
 package workspace
 
 import (
-	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,6 +13,7 @@ import (
 	"rddpostman/internal/nav"
 	"rddpostman/internal/routes"
 	"rddpostman/internal/store"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -117,30 +118,33 @@ type wsRowItem struct {
 	LastActivity string
 }
 
+func wsTypeLabel(wsType string) string {
+	switch wsType {
+	case "Partner":
+		return locales.WsTypePartner()
+	case "Public":
+		return locales.WsTypePublic()
+	default:
+		return locales.WsTypeInternal()
+	}
+}
+
 func formatRelativeActivity(t time.Time) string {
 	if t.IsZero() {
-		return "Just now"
+		return locales.WsJustNow()
 	}
 	d := time.Since(t)
 	switch {
 	case d < time.Minute:
-		return "Just now"
+		return locales.WsJustNow()
 	case d < time.Hour:
-		mins := int(d.Minutes())
-		if mins == 1 {
-			return "1 minute ago"
-		}
-		return fmt.Sprintf("%d minutes ago", mins)
+		return locales.RelativeMinutes(int(d.Minutes()))
 	case d < 24*time.Hour:
-		hrs := int(d.Hours())
-		if hrs == 1 {
-			return "1 hour ago"
-		}
-		return fmt.Sprintf("%d hours ago", hrs)
+		return locales.RelativeHours(int(d.Hours()))
 	case d < 48*time.Hour:
-		return "Yesterday"
+		return locales.WsYesterday()
 	case d < 7*24*time.Hour:
-		return fmt.Sprintf("%d days ago", int(d.Hours()/24))
+		return locales.RelativeDays(int(d.Hours() / 24))
 	default:
 		return t.Format("2006-01-02")
 	}
@@ -186,9 +190,9 @@ func workspacesListView(c *ui.Context, db *store.Store, r nav.Navigator, st *wsC
 	ui.Column(c).Fill().Padding(22, m.Space6).Background(tk.BgBase).Children(func() {
 		// 1. 顶部标题栏：Workspaces + Create workspace 主按钮（科技蓝 #336FFF）
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-			ui.Text(c, "Workspaces").FontSize(m.FontXXL).Bold().TextColor(tk.TextPrimary).SingleLine()
+			ui.Text(c, locales.HubWorkspaces()).FontSize(m.FontXXL).Bold().TextColor(tk.TextPrimary).SingleLine()
 
-			if wsPrimaryButton(c, "ws-create-btn", "Create workspace", false).Clicked() {
+			if wsPrimaryButton(c, "ws-create-btn", locales.CreateWorkspaceAction(), false).Clicked() {
 				if r != nil {
 					r.Push(routes.HubWorkspaceNew)
 				}
@@ -199,13 +203,13 @@ func workspacesListView(c *ui.Context, db *store.Store, r nav.Navigator, st *wsC
 
 		// 2. 筛选标签行：All / Project Workspaces / External
 		ui.Row(c).Gap(m.Space15).AlignItems(ui.Center).Children(func() {
-			wsFilterTab(c, "ws-tab-all", "All", st.tab == wsTabAll, func() {
+			wsFilterTab(c, "ws-tab-all", locales.All(), st.tab == wsTabAll, func() {
 				st.tab = wsTabAll
 			})
-			wsFilterTab(c, "ws-tab-project", "Project Workspaces", st.tab == wsTabProject, func() {
+			wsFilterTab(c, "ws-tab-project", locales.WsTabProject(), st.tab == wsTabProject, func() {
 				st.tab = wsTabProject
 			})
-			wsFilterTab(c, "ws-tab-external", "External", st.tab == wsTabExternal, func() {
+			wsFilterTab(c, "ws-tab-external", locales.WsTabExternal(), st.tab == wsTabExternal, func() {
 				st.tab = wsTabExternal
 			})
 		})
@@ -298,13 +302,13 @@ func wsToolbar(c *ui.Context, st *wsContentState) {
 			ui.Icon(c, icons.Search).FontSize(m.IconSM).TextColor(iconColor)
 			ui.TextInputBase(c.Key("ws-search-input"), &st.query).
 				Grow(1).FontSize(m.FontSM).TextColor(tk.TextPrimary).
-				Placeholder("Search workspaces").PlaceholderColor(tk.TextMuted).
-				Label("Search workspaces")
+				Placeholder(locales.WsSearchPlaceholder()).PlaceholderColor(tk.TextMuted).
+				Label(locales.WsSearchPlaceholder())
 
 			if st.query != "" {
 				clearBtn := ui.ButtonBase(c.Key("ws-search-clear")).
 					Size(18, 18).Center().Radius(m.RadiusSM).
-					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Clear search").
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.WsClearSearch()).
 					Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 				if clearBtn.Hovered() {
 					clearBtn.Background(tk.BgHover).TextColor(tk.TextPrimary)
@@ -324,7 +328,7 @@ func wsToolbar(c *ui.Context, st *wsContentState) {
 		filterBtn := ui.ButtonBase(c.Key("ws-filter-btn")).
 			Size(m.SizeXL, m.SizeXL).Center().
 			Radius(m.RadiusSM).Cursor(ui.CursorPointer).
-			Role(ui.RoleButton).Label("Filter workspaces").
+			Role(ui.RoleButton).Label(locales.WsFilterLabel()).
 			Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 
 		filterOpen := ui.Local(filterBtn, "open", func() bool { return false })
@@ -350,7 +354,7 @@ func wsToolbar(c *ui.Context, st *wsContentState) {
 
 		v2.Popover(c, filterBtn, filterOpen, v2.PopoverOpts{Width: 196}, func(panel ui.Element) {
 			ui.Column(c).FillWidth().Padding(m.Space15).Gap(m.Space05).Children(func() {
-				ui.Text(c, "Workspace type").FontSize(m.FontMicro).FontWeight(500).
+				ui.Text(c, locales.WsTypeHeader()).FontSize(m.FontMicro).FontWeight(500).
 					TextColor(tk.TextMuted).Padding(m.Space1, m.Space2)
 
 				typeOpt := func(key, label, val string) {
@@ -359,25 +363,25 @@ func wsToolbar(c *ui.Context, st *wsContentState) {
 						*filterOpen = false
 					})
 				}
-				typeOpt("ws-f-all", "All types", "")
-				typeOpt("ws-f-internal", "Internal", "Internal")
-				typeOpt("ws-f-partner", "Partner", "Partner")
-				typeOpt("ws-f-public", "Public", "Public")
+				typeOpt("ws-f-all", locales.WsAllTypes(), "")
+				typeOpt("ws-f-internal", locales.WsTypeInternal(), "Internal")
+				typeOpt("ws-f-partner", locales.WsTypePartner(), "Partner")
+				typeOpt("ws-f-public", locales.WsTypePublic(), "Public")
 
 				v2.PopoverDivider(c).MarginY(m.Space1)
 
-				ui.Text(c, "Sort by name").FontSize(m.FontMicro).FontWeight(500).
+				ui.Text(c, locales.WsSortByName()).FontSize(m.FontMicro).FontWeight(500).
 					TextColor(tk.TextMuted).Padding(m.Space1, m.Space2)
 
-				wsPopoverOption(c, "ws-s-none", "Default order", st.sortOrder == wsSortNone, func() {
+				wsPopoverOption(c, "ws-s-none", locales.WsSortDefault(), st.sortOrder == wsSortNone, func() {
 					st.sortOrder = wsSortNone
 					*filterOpen = false
 				})
-				wsPopoverOption(c, "ws-s-asc", "Name (A–Z)", st.sortOrder == wsSortAsc, func() {
+				wsPopoverOption(c, "ws-s-asc", locales.WsSortAsc(), st.sortOrder == wsSortAsc, func() {
 					st.sortOrder = wsSortAsc
 					*filterOpen = false
 				})
-				wsPopoverOption(c, "ws-s-desc", "Name (Z–A)", st.sortOrder == wsSortDesc, func() {
+				wsPopoverOption(c, "ws-s-desc", locales.WsSortDesc(), st.sortOrder == wsSortDesc, func() {
 					st.sortOrder = wsSortDesc
 					*filterOpen = false
 				})
@@ -440,7 +444,7 @@ func wsTableHeader(c *ui.Context, st *wsContentState, items []wsRowItem) {
 			// 全选复选框
 			ui.Row(c).Width(wsColCheckW).AlignItems(ui.Center).Children(func() {
 				cb := ui.CheckboxStateBase(c.Key("ws-select-all"), &allState).
-					Cursor(ui.CursorPointer).Label("Select all workspaces")
+					Cursor(ui.CursorPointer).Label(locales.WsSelectAll())
 				cb.OnClick(func() {
 					want := allState == ui.CheckOn
 					for _, it := range items {
@@ -460,7 +464,7 @@ func wsTableHeader(c *ui.Context, st *wsContentState, items []wsRowItem) {
 			ui.Row(c).Grow(1).MinWidth(240).AlignItems(ui.Center).Children(func() {
 				nameHdr := ui.ButtonBase(c.Key("ws-hdr-name")).
 					Gap(m.Space1).AlignItems(ui.Center).Justify(ui.Start).
-					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Sort by Name").
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.WsSortByName()).
 					Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 				if nameHdr.Hovered() {
 					nameHdr.TextColor(tk.TextPrimary)
@@ -478,7 +482,7 @@ func wsTableHeader(c *ui.Context, st *wsContentState, items []wsRowItem) {
 					}
 				}
 				nameHdr.Children(func() {
-					ui.Text(c, "Name").FontSize(m.FontXS).FontWeight(500).SingleLine()
+					ui.Text(c, locales.WsColName()).FontSize(m.FontXS).FontWeight(500).SingleLine()
 					switch st.sortOrder {
 					case wsSortAsc:
 						ui.Text(c, "↑").FontSize(m.FontXS).TextColor(tk.Focus).SingleLine()
@@ -488,8 +492,8 @@ func wsTableHeader(c *ui.Context, st *wsContentState, items []wsRowItem) {
 				})
 			})
 
-			wsHeaderCell(c, "Creator", wsColCreatorW)
-			wsHeaderCell(c, "Last activity", wsColActiveW)
+			wsHeaderCell(c, locales.WsColCreator(), wsColCreatorW)
+			wsHeaderCell(c, locales.WsColLastActivity(), wsColActiveW)
 
 			// 右侧操作列占位
 			ui.Box(c).Width(wsColActionW)
@@ -569,7 +573,7 @@ func wsTableRow(c *ui.Context, db *store.Store, r nav.Navigator, st *wsContentSt
 				ui.Column(c).Gap(1).Grow(1).Children(func() {
 					ui.Text(c, item.Name).FontSize(m.FontSM).FontWeight(600).
 						TextColor(tk.TextPrimary).SingleLine()
-					ui.Text(c, item.Type).FontSize(m.FontXS).
+					ui.Text(c, wsTypeLabel(item.Type)).FontSize(m.FontXS).
 						TextColor(tk.TextMuted).SingleLine()
 				})
 			})
@@ -640,7 +644,7 @@ func wsTableRow(c *ui.Context, db *store.Store, r nav.Navigator, st *wsContentSt
 				ui.Column(c).FillWidth().Padding(m.Space15).Gap(m.Space05).Children(func() {
 					if v2.MenuButton(c, v2.MenuButtonProps{
 						Key:   "ws-act-open-" + string(item.ID),
-						Label: "Open workspace",
+						Label: locales.WsOpenAction(),
 						Icon:  icons.ArrowRight,
 					}).Clicked() {
 						*moreOpen = false
@@ -649,7 +653,7 @@ func wsTableRow(c *ui.Context, db *store.Store, r nav.Navigator, st *wsContentSt
 
 					if v2.MenuButton(c, v2.MenuButtonProps{
 						Key:   "ws-act-rename-" + string(item.ID),
-						Label: "Rename",
+						Label: locales.Rename(),
 						Icon:  icons.FilePen,
 					}).Clicked() {
 						*moreOpen = false
@@ -664,7 +668,7 @@ func wsTableRow(c *ui.Context, db *store.Store, r nav.Navigator, st *wsContentSt
 						delBtn := ui.ButtonBase(c.Key("ws-act-del-"+string(item.ID))).
 							FillWidth().Height(30).PaddingX(8).Radius(m.RadiusSM).
 							AlignItems(ui.Center).Justify(ui.Start).Gap(m.Space2).
-							Cursor(ui.CursorPointer).Role(ui.RoleMenuItem).Label("Delete").
+							Cursor(ui.CursorPointer).Role(ui.RoleMenuItem).Label(locales.TreeDelete()).
 							Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 						if delBtn.Hovered() {
 							delBtn.Background(tk.DangerSoft)
@@ -678,7 +682,7 @@ func wsTableRow(c *ui.Context, db *store.Store, r nav.Navigator, st *wsContentSt
 						}
 						delBtn.Children(func() {
 							ui.Icon(c, icons.Trash).FontSize(m.IconSM).TextColor(tk.Danger)
-							ui.Text(c, "Delete").FontSize(m.FontSM).FontWeight(500).
+							ui.Text(c, locales.TreeDelete()).FontSize(m.FontSM).FontWeight(500).
 								TextColor(tk.Danger).SingleLine()
 						})
 					}
@@ -716,10 +720,7 @@ func wsCheckboxVisual(c *ui.Context, state ui.CheckState, hovered bool) {
 func wsTableFooter(c *ui.Context, st *wsContentState, items []wsRowItem) {
 	m, tk := thV2.Metrics, thV2.Of(c)
 
-	countLabel := fmt.Sprintf("%d workspaces", len(items))
-	if len(items) == 1 {
-		countLabel = "1 workspace"
-	}
+	countLabel := locales.WsCount(len(items))
 
 	checkedCount := 0
 	for _, it := range items {
@@ -732,11 +733,11 @@ func wsTableFooter(c *ui.Context, st *wsContentState, items []wsRowItem) {
 		ui.Text(c, countLabel).FontSize(m.FontXS).TextColor(tk.TextMuted).SingleLine()
 
 		if checkedCount > 0 {
-			ui.Text(c, fmt.Sprintf("· %d selected", checkedCount)).
+			ui.Text(c, locales.WsSelectedCount(strconv.Itoa(checkedCount))).
 				FontSize(m.FontXS).FontWeight(500).TextColor(tk.TextSecondary).SingleLine()
 
 			clr := ui.ButtonBase(c.Key("ws-clear-sel")).
-				Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Clear selection")
+				Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.WsClearSelection())
 			if clr.Hovered() {
 				clr.TextColor(tk.AccentHover)
 			} else {
@@ -746,7 +747,7 @@ func wsTableFooter(c *ui.Context, st *wsContentState, items []wsRowItem) {
 				clear(st.checked)
 			}
 			clr.Children(func() {
-				ui.Text(c, "Clear selection").FontSize(m.FontXS).FontWeight(500).SingleLine()
+				ui.Text(c, locales.WsClearSelection()).FontSize(m.FontXS).FontWeight(500).SingleLine()
 			})
 		}
 	})
@@ -756,11 +757,11 @@ func wsEmptyState(c *ui.Context, st *wsContentState) {
 	m, tk := thV2.Metrics, thV2.Of(c)
 
 	hasFilter := st.query != "" || st.typeFilter != "" || st.tab != wsTabAll
-	title := "No workspaces yet"
-	desc := "Create a workspace to organize your collections, environments, and APIs."
+	title := locales.WsEmptyTitle()
+	desc := locales.WsEmptyDesc()
 	if hasFilter {
-		title = "No matching workspaces"
-		desc = "Try adjusting your search keyword or active filters."
+		title = locales.NoWorkspaceMatches()
+		desc = locales.WsEmptyFilteredDesc()
 	}
 
 	ui.Column(c).FillWidth().Padding(48, m.Space4).AlignItems(ui.Center).Gap(m.Space2).Children(func() {
@@ -778,7 +779,7 @@ func wsEmptyState(c *ui.Context, st *wsContentState) {
 			resetBtn := ui.ButtonBase(c.Key("ws-reset-filters")).
 				Margin(m.Space2, 0, 0, 0).Height(m.ButtonHeight).PaddingX(m.Space3).
 				Radius(m.RadiusSM).Border(m.Border, tk.BorderPopover).
-				Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Clear filters").
+				Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.WsClearFilters()).
 				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 			if resetBtn.Hovered() {
 				resetBtn.Background(tk.BgHover)
@@ -791,7 +792,7 @@ func wsEmptyState(c *ui.Context, st *wsContentState) {
 				st.typeFilter = ""
 			}
 			resetBtn.Children(func() {
-				ui.Text(c, "Clear filters").FontSize(m.FontSM).TextColor(tk.TextPrimary).SingleLine()
+				ui.Text(c, locales.WsClearFilters()).FontSize(m.FontSM).TextColor(tk.TextPrimary).SingleLine()
 			})
 		}
 	})
@@ -807,14 +808,14 @@ func wsRenameDialog(c *ui.Context, db *store.Store, st *wsContentState) {
 			Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.18))
 
 		panel.Children(func() {
-			ui.Text(c, "Rename workspace").FontSize(m.FontLG).FontWeight(600).TextColor(tk.TextPrimary)
+			ui.Text(c, locales.WsRenameTitle()).FontSize(m.FontLG).FontWeight(600).TextColor(tk.TextPrimary)
 
 			in := ui.TextInputBase(c.Key("ws-rename-input"), &st.renameName).
 				FillWidth().Height(m.ButtonLarge).PaddingX(m.Space3).
 				Radius(m.RadiusSM).Background(tk.BgSurface).
 				FontSize(m.FontSM).TextColor(tk.TextPrimary).
-				Placeholder("Workspace name").PlaceholderColor(tk.TextMuted).
-				Label("Workspace name")
+				Placeholder(locales.WorkspaceName()).PlaceholderColor(tk.TextMuted).
+				Label(locales.WorkspaceName())
 			switch {
 			case st.renameErr != "":
 				in.Border(m.Border, tk.Danger)
@@ -831,7 +832,7 @@ func wsRenameDialog(c *ui.Context, db *store.Store, st *wsContentState) {
 			submit := func() {
 				name := strings.TrimSpace(st.renameName)
 				if name == "" {
-					st.renameErr = "Workspace name cannot be empty."
+					st.renameErr = locales.WsNameEmptyErr()
 					return
 				}
 				if db != nil {
@@ -848,12 +849,12 @@ func wsRenameDialog(c *ui.Context, db *store.Store, st *wsContentState) {
 			}
 
 			ui.Row(c).FillWidth().Justify(ui.End).Gap(m.Space2).Margin(m.Space1, 0, 0, 0).Children(func() {
-				cancelBtn := wsSecondaryButton(c, "ws-rename-cancel", "Cancel")
+				cancelBtn := wsSecondaryButton(c, "ws-rename-cancel", locales.Cancel())
 				if cancelBtn.Clicked() {
 					st.renameOpen = false
 					st.renameErr = ""
 				}
-				saveBtn := wsPrimaryButton(c, "ws-rename-save", "Save", strings.TrimSpace(st.renameName) == "")
+				saveBtn := wsPrimaryButton(c, "ws-rename-save", locales.Save(), strings.TrimSpace(st.renameName) == "")
 				if saveBtn.Clicked() {
 					submit()
 				}
@@ -872,8 +873,8 @@ func wsDeleteDialog(c *ui.Context, db *store.Store, st *wsContentState) {
 			Shadow(0, 12, 32, 0, ui.RGBA(0, 0, 0, 0.18))
 
 		panel.Children(func() {
-			ui.Text(c, "Delete workspace").FontSize(m.FontLG).FontWeight(600).TextColor(tk.TextPrimary)
-			ui.Text(c, fmt.Sprintf("Remove \"%s\" from your workspace list? Files on disk remain untouched.", st.deleteName)).
+			ui.Text(c, locales.WsDeleteTitle()).FontSize(m.FontLG).FontWeight(600).TextColor(tk.TextPrimary)
+			ui.Text(c, locales.WsDeleteConfirmDesc(st.deleteName)).
 				FontSize(m.FontSM).TextColor(tk.TextSecondary)
 
 			if st.deleteErr != "" {
@@ -881,7 +882,7 @@ func wsDeleteDialog(c *ui.Context, db *store.Store, st *wsContentState) {
 			}
 
 			ui.Row(c).FillWidth().Justify(ui.End).Gap(m.Space2).Margin(m.Space1, 0, 0, 0).Children(func() {
-				cancelBtn := wsSecondaryButton(c, "ws-del-cancel", "Cancel")
+				cancelBtn := wsSecondaryButton(c, "ws-del-cancel", locales.Cancel())
 				if cancelBtn.Clicked() {
 					st.deleteOpen = false
 					st.deleteErr = ""
@@ -889,7 +890,7 @@ func wsDeleteDialog(c *ui.Context, db *store.Store, st *wsContentState) {
 				delBtn := ui.ButtonBase(c.Key("ws-del-confirm")).
 					Height(m.ButtonLarge).PaddingX(m.Space4).Center().
 					Radius(m.RadiusSM).Cursor(ui.CursorPointer).
-					Role(ui.RoleButton).Label("Delete").
+					Role(ui.RoleButton).Label(locales.TreeDelete()).
 					Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 				if delBtn.Hovered() {
 					delBtn.Background(tk.Danger.Alpha(0.88))
@@ -908,7 +909,7 @@ func wsDeleteDialog(c *ui.Context, db *store.Store, st *wsContentState) {
 					st.deleteOpen = false
 				}
 				delBtn.Children(func() {
-					ui.Text(c, "Delete").FontSize(m.FontSM).FontWeight(600).
+					ui.Text(c, locales.TreeDelete()).FontSize(m.FontSM).FontWeight(600).
 						TextColor(tk.OnAccent).SingleLine()
 				})
 			})
@@ -1014,7 +1015,7 @@ func filteredWorkspaces(db *store.Store, st *wsContentState) []wsRowItem {
 			Type:         wsType,
 			Icon:         w.Icon,
 			Starred:      w.Starred,
-			Creator:      "You",
+			Creator:      locales.WsCreatorYou(),
 			LastActivity: formatRelativeActivity(w.UpdatedAt),
 		})
 	}

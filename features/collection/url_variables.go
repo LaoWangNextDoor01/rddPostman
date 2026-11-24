@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"rddpostman/components/v1/icons"
 	v2 "rddpostman/components/v2"
 	"rddpostman/internal/domain"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -243,11 +245,11 @@ func allAvailableVariables(vars map[string]domain.Variable) []URLVarInfo {
 		name string
 		desc string
 	}{
-		{"$guid", "Random UUID v4"},
-		{"$timestamp", "Current Unix timestamp"},
-		{"$isoTimestamp", "Current ISO-8601 UTC timestamp"},
-		{"$randomInt", "Random integer (0-65535)"},
-		{"$randomEmail", "Random example email"},
+		{"$guid", locales.DynVarGuid()},
+		{"$timestamp", locales.DynVarTimestamp()},
+		{"$isoTimestamp", locales.DynVarIsoTimestamp()},
+		{"$randomInt", locales.DynVarRandomInt()},
+		{"$randomEmail", locales.DynVarRandomEmail()},
 	}
 	for _, b := range builtin {
 		if !seen[b.name] {
@@ -391,7 +393,7 @@ func renderVariableTooltip(c *ui.Context, info URLVarInfo, activeEnvName string)
 
 			// 2. 当前值预览
 			ui.Column(c).FillWidth().Gap(3).Children(func() {
-				ui.Text(c, "CURRENT VALUE:").FontSize(10).FontWeight(600).
+				ui.Text(c, locales.UrlVarCurrentValue()).FontSize(10).FontWeight(600).
 					TextColor(tk2.TextMuted).SingleLine()
 
 				dispVal := info.Value
@@ -420,20 +422,20 @@ func renderVariableTooltip(c *ui.Context, info URLVarInfo, activeEnvName string)
 					TextColor(tk2.Danger).SingleLine()
 
 				ui.Box(c).Padding(2, 6).Radius(m.RadiusSM).Background(tk2.DangerSoft).Children(func() {
-					ui.Text(c, "UNRESOLVED").FontSize(10).FontWeight(600).
+					ui.Text(c, locales.UrlVarUnresolved()).FontSize(10).FontWeight(600).
 						TextColor(tk2.Danger).SingleLine()
 				})
 			})
 
 			ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
 				ui.Icon(c, icons.TriangleAlert).FontSize(12).TextColor(tk2.Warning)
-				ui.Text(c, "Variable not defined in active environment.").
+				ui.Text(c, locales.UrlVarNotDefined()).
 					FontSize(11).TextColor(tk2.TextSecondary)
 			})
 
 			ui.Box(c).Padding(4, 8).Radius(m.RadiusSM).Background(tk2.BgSubtle).
 				Border(1, tk2.Border).Children(func() {
-				ui.Text(c, "+ Set in "+activeEnvName).FontSize(11).FontWeight(500).
+				ui.Text(c, locales.UrlVarSetIn(activeEnvName)).FontSize(11).FontWeight(500).
 					TextColor(tk2.Accent).SingleLine()
 			})
 		}
@@ -553,7 +555,7 @@ func renderTokenizedURLBar(c *ui.Context, props pageProps, activeID string,
 
 		// 末尾点击空白区进入编辑态
 		blankArea := ui.ButtonBase(c.Key("url-token-blank-" + activeID)).
-			Grow(1).FillHeight().Cursor(ui.CursorText).Role(ui.RoleButton).Label("Edit URL")
+			Grow(1).FillHeight().Cursor(ui.CursorText).Role(ui.RoleButton).Label(locales.ReqEditURLLabel())
 		if blankArea.Clicked() {
 			state.urlEditing = true
 			state.urlFocusReq = true
@@ -587,10 +589,10 @@ func renderVariableAutocompleteDropdown(c *ui.Context, anchor ui.Element, state 
 		ui.Column(c).Padding(6).Gap(2).FillWidth().Children(func() {
 			// 1. 顶部标题栏
 			ui.Row(c).FillWidth().Height(20).PaddingX(8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(c, fmt.Sprintf("AVAILABLE VARIABLES (%d)", len(filtered))).
+				ui.Text(c, locales.UrlVarAvailHeader(strconv.Itoa(len(filtered)))).
 					FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).SingleLine()
 				if state.autocompletePrefix != "" {
-					ui.Text(c, "Filter: "+state.autocompletePrefix).FontSize(10).TextColor(tk2.Accent).SingleLine()
+					ui.Text(c, locales.UrlVarFilter(state.autocompletePrefix)).FontSize(10).TextColor(tk2.Accent).SingleLine()
 				}
 			})
 
@@ -662,8 +664,8 @@ func renderVariableAutocompleteDropdown(c *ui.Context, anchor ui.Element, state 
 
 			// 3. 底部导航提示条
 			ui.Row(c).FillWidth().Height(20).PaddingX(8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-				ui.Text(c, "↑ ↓ navigate  •  ↵ select").FontSize(10).TextColor(tk2.TextMuted).SingleLine()
-				ui.Text(c, "esc to dismiss").FontSize(10).TextColor(tk2.TextMuted).SingleLine()
+				ui.Text(c, locales.UrlVarNavHint()).FontSize(10).TextColor(tk2.TextMuted).SingleLine()
+				ui.Text(c, locales.UrlVarEscHint()).FontSize(10).TextColor(tk2.TextMuted).SingleLine()
 			})
 		})
 	})

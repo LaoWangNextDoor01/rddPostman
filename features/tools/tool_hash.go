@@ -7,6 +7,7 @@ import (
 	thV2 "rddpostman/components/theme/v2"
 	"rddpostman/components/v1/icons"
 	"rddpostman/internal/devtools"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -71,15 +72,15 @@ func renderHashTool(c *ui.Context) {
 
 	root.Children(func() {
 		// 1. Header (48px)
-		toolHeader(c, icons.Lock, "哈希与 HMAC 签名", "MD5 · SHA-1 / 256 / 512 实时摘要 · HMAC 签名 · 校验比对", func() {
-			if toolBtn(c, toolBtnOpts{Key: "hash-sample", Label: "载入示例", Icon: icons.Sparkles, Variant: btnGhost, Height: 26}).Clicked() {
+		toolHeader(c, icons.Lock, locales.ToolHashName(), locales.ToolHashDesc(), func() {
+			if toolBtn(c, toolBtnOpts{Key: "hash-sample", Label: locales.LoadSample(), Icon: icons.Sparkles, Variant: btnGhost, Height: 26}).Clicked() {
 				st.input = sampleHashInput
 				if isHmac && st.secret == "" {
 					st.secret = sampleHMACSecret
 				}
 				st.copiedKey = ""
 			}
-			if toolBtn(c, toolBtnOpts{Key: "hash-clear", Label: "清空", Icon: icons.Trash, Variant: btnGhost, Height: 26}).Clicked() {
+			if toolBtn(c, toolBtnOpts{Key: "hash-clear", Label: locales.Clear(), Icon: icons.Trash, Variant: btnGhost, Height: 26}).Clicked() {
 				st.input = ""
 				st.secret = ""
 				st.compareVal = ""
@@ -89,7 +90,7 @@ func renderHashTool(c *ui.Context) {
 
 		// 2. Toolbar (44px)
 		toolToolbar(c, func() {
-			toolSegmented(c, "hash-mode", []string{"摘要计算 Hash", "HMAC 签名"}, st.mode, func(idx int) {
+			toolSegmented(c, "hash-mode", []string{locales.HashModeDigest(), locales.HashModeHMAC()}, st.mode, func(idx int) {
 				st.mode = idx
 				st.copiedKey = ""
 			})
@@ -99,14 +100,14 @@ func renderHashTool(c *ui.Context) {
 				if st.upperHex {
 					caseIdx = 1
 				}
-				toolSegmented(c, "hash-case", []string{"小写 hex", "大写 HEX"}, caseIdx, func(idx int) {
+				toolSegmented(c, "hash-case", []string{locales.HashCaseLower(), locales.HashCaseUpper()}, caseIdx, func(idx int) {
 					st.upperHex = idx == 1
 				})
 				cmpVar := btnSecondary
 				if st.compareOpen {
 					cmpVar = btnActive
 				}
-				if toolBtn(c, toolBtnOpts{Key: "hash-cmp-toggle", Label: "摘要校验比对", Icon: icons.Check, Variant: cmpVar}).Clicked() {
+				if toolBtn(c, toolBtnOpts{Key: "hash-cmp-toggle", Label: locales.HashCompareToggle(), Icon: icons.Check, Variant: cmpVar}).Clicked() {
 					st.compareOpen = !st.compareOpen
 				}
 			} else {
@@ -127,11 +128,11 @@ func renderHashTool(c *ui.Context) {
 			if isHmac {
 				isCopied := st.copiedKey == "hmac-main"
 				v := btnPrimary
-				lbl := "复制签名"
+				lbl := locales.HashCopySig()
 				ic := icons.Copy
 				if isCopied {
 					v = btnSuccess
-					lbl = "已复制签名"
+					lbl = locales.HashCopiedSig()
 					ic = icons.Check
 				}
 				if toolBtn(c, toolBtnOpts{Key: "hmac-copy-top", Label: lbl, Icon: ic, Variant: v, Disabled: st.input == "" && st.secret == ""}).Clicked() {
@@ -141,11 +142,11 @@ func renderHashTool(c *ui.Context) {
 			} else {
 				allCopied := st.copiedKey == "hash-all"
 				v := btnSecondary
-				lbl := "复制全部结果"
+				lbl := locales.HashCopyAll()
 				ic := icons.Copy
 				if allCopied {
 					v = btnSuccess
-					lbl = "已复制全部"
+					lbl = locales.HashCopiedAll()
 					ic = icons.Check
 				}
 				if toolBtn(c, toolBtnOpts{Key: "hash-copy-all", Label: lbl, Icon: ic, Variant: v, Disabled: st.input == ""}).Clicked() {
@@ -166,9 +167,9 @@ func renderHashTool(c *ui.Context) {
 		ui.Scroll(c.Key("hash-scroll")).Grow(1).FillWidth().Children(func() {
 			ui.Column(c).FillWidth().Padding(18, 24).Gap(14).Children(func() {
 				// 输入明文卡片
-				inTitle := "INPUT 明文内容"
+				inTitle := locales.HashInputTitle()
 				if isHmac {
-					inTitle = "MESSAGE 明文内容"
+					inTitle = locales.HashMsgTitle()
 				}
 				inMeta := "0 B"
 				if st.input != "" {
@@ -179,18 +180,18 @@ func renderHashTool(c *ui.Context) {
 					ui.Text(c, inMeta).Font("monospace").FontSize(m.FontXS).TextColor(tk.TextMuted)
 				}, func() {
 					if st.input == "" {
-						toolPill(c, "等待输入", pillNeutral, false)
+						toolPill(c, locales.WaitingForInput(), pillNeutral, false)
 					} else {
-						toolPill(c, "实时联动计算", pillSuccess, true)
+						toolPill(c, locales.HashLiveCalc(), pillSuccess, true)
 					}
 				}, func() {
 					ui.Box(c).FillWidth().Padding(8, 12).Children(func() {
 						in := ui.TextAreaBase(c.Key("hash-input"), &st.input).
 							FillWidth().MinHeight(72).MaxHeight(220).Padding(4, 4).
 							Font("monospace").FontSize(13).FixedLineHeight(20).TextColor(tk.TextPrimary).
-							Placeholder("在此输入或粘贴待计算摘要的字符串（支持多行与自动换行），输入时将实时计算全部算法结果...").
+							Placeholder(locales.HashInputPlaceholder()).
 							PlaceholderColor(tk.TextMuted).
-							Label("Hash input text")
+							Label(locales.HashInputLabel())
 						if in.Changed() {
 							st.copiedKey = ""
 						}
@@ -220,21 +221,21 @@ func renderHashTool(c *ui.Context) {
 								icCol = tk.Danger
 							}
 							ui.Icon(c, icons.Check).FontSize(15).TextColor(icCol)
-							ui.Text(c, "期望摘要比对").FontSize(m.FontSM).FontWeight(600).TextColor(tk.TextPrimary).SingleLine()
+							ui.Text(c, locales.HashCompareLabel()).FontSize(m.FontSM).FontWeight(600).TextColor(tk.TextPrimary).SingleLine()
 							cmpIn := ui.TextInputBase(c.Key("hash-cmp-input"), &st.compareVal).
 								Grow(1).Height(28).Padding(0, 10).Radius(m.RadiusSM).
 								Background(tk.BgBase).Border(m.Border, cmpBorder).
 								Font("monospace").FontSize(m.FontXS).TextColor(tk.TextPrimary).
-								Placeholder("粘贴预期 MD5 / SHA 哈希值自动比对...").PlaceholderColor(tk.TextMuted).
-								Label("Expected hash compare")
+								Placeholder(locales.HashComparePlaceholder()).PlaceholderColor(tk.TextMuted).
+								Label(locales.HashCompareInputLabel())
 							if cmpIn.Focused() {
 								cmpIn.Border(m.Border, tk.Focus)
 							}
 							if strings.TrimSpace(st.compareVal) != "" && st.input != "" {
 								if hasMatch {
-									toolPill(c, "完全匹配 · "+matchedAlg, pillSuccess, true)
+									toolPill(c, locales.HashMatchExact(matchedAlg), pillSuccess, true)
 								} else {
-									toolPill(c, "不匹配", pillDanger, true)
+									toolPill(c, locales.HashMismatch(), pillDanger, true)
 								}
 							}
 						})
@@ -242,17 +243,17 @@ func renderHashTool(c *ui.Context) {
 
 					// 摘要结果表格卡片
 					toolCard(c, "hash-results-card", tk.Border, tk.BgApp, func() {
-						ui.Text(c, "摘要结果 (DIGEST RESULTS)").FontSize(m.FontXS).FontWeight(600).TextColor(tk.TextSecondary)
+						ui.Text(c, locales.HashResultsHeader()).FontSize(m.FontXS).FontWeight(600).TextColor(tk.TextSecondary)
 					}, func() {
-						ui.Text(c, "点击行尾按钮单独复制").FontSize(m.FontXS).TextColor(tk.TextMuted)
+						ui.Text(c, locales.HashClickRowCopy()).FontSize(m.FontXS).TextColor(tk.TextMuted)
 					}, func() {
 						rows := []struct {
 							alg  string
 							bits string
 							val  string
 						}{
-							{"MD5 (32位)", "128-bit", fmtHex(summary.MD5Lower)},
-							{"MD5 (16位)", "64-bit", fmtHex(summary.MD516)},
+							{locales.HashMD532(), "128-bit", fmtHex(summary.MD5Lower)},
+							{locales.HashMD516(), "64-bit", fmtHex(summary.MD516)},
 							{"SHA-1", "160-bit", fmtHex(summary.SHA1)},
 							{"SHA-256", "256-bit", fmtHex(summary.SHA256)},
 							{"SHA-512", "512-bit", fmtHex(summary.SHA512)},
@@ -281,7 +282,7 @@ func renderHashTool(c *ui.Context) {
 									ui.Text(c, item.bits).Font("monospace").FontSize(10).TextColor(tk.TextMuted).SingleLine()
 								})
 								if st.input == "" {
-									ui.Text(c, "— 等待输入明文后自动生成 —").FontSize(m.FontSM).TextColor(tk.TextDisabled).SingleLine().Grow(1)
+									ui.Text(c, locales.HashWaitingRow()).FontSize(m.FontSM).TextColor(tk.TextDisabled).SingleLine().Grow(1)
 								} else {
 									vc := tk.TextPrimary
 									if isMatch {
@@ -291,15 +292,15 @@ func renderHashTool(c *ui.Context) {
 										TextColor(vc).MinWidth(0).Grow(1)
 								}
 								if isMatch {
-									toolPill(c, "匹配", pillSuccess, true)
+									toolPill(c, locales.HashMatchBadge(), pillSuccess, true)
 								}
 								if st.input != "" {
 									bVar := btnGhost
-									bLbl := "复制"
+									bLbl := locales.Copy()
 									bIc := icons.Copy
 									if isCopied {
 										bVar = btnSuccess
-										bLbl = "已复制"
+										bLbl = locales.Copied()
 										bIc = icons.Check
 									}
 									if toolBtn(c, toolBtnOpts{Key: rowKey + "-copy", Label: bLbl, Icon: bIc, Variant: bVar, Height: 24, PadX: 8}).Clicked() {
@@ -321,7 +322,7 @@ func renderHashTool(c *ui.Context) {
 						secIn := ui.TextInputBase(c.Key("hash-hmac-secret"), &st.secret).
 							Grow(1).Height(30).Padding(0, 4).
 							Font("monospace").FontSize(13).TextColor(tk.TextPrimary).
-							Placeholder("输入 HMAC Secret Key...").PlaceholderColor(tk.TextMuted).
+							Placeholder(locales.HmacSecretPlaceholder()).PlaceholderColor(tk.TextMuted).
 							Label("HMAC secret")
 						if !st.showSecret {
 							secIn.Password()
@@ -330,9 +331,9 @@ func renderHashTool(c *ui.Context) {
 							st.copiedKey = ""
 						}
 						toolPill(c, fmt.Sprintf("UTF-8 · %d B", len([]byte(st.secret))), pillNeutral, false)
-						eyeLbl := "显示密钥"
+						eyeLbl := locales.HmacShowSecret()
 						if st.showSecret {
-							eyeLbl = "隐藏密钥"
+							eyeLbl = locales.HmacHideSecret()
 						}
 						if toolBtn(c, toolBtnOpts{Key: "hmac-toggle-vis", Label: eyeLbl, Icon: icons.Eye, Variant: btnGhost, Height: 26, PadX: 8}).Clicked() {
 							st.showSecret = !st.showSecret
@@ -345,21 +346,21 @@ func renderHashTool(c *ui.Context) {
 						fmtMeta = fmt.Sprintf("Base64 · %d chars", len(hmacOut))
 					}
 					toolCard(c, "hmac-out-card", tk.Border, tk.BgApp, func() {
-						ui.Text(c, "HMAC-"+algo.label+" 签名输出").FontSize(m.FontXS).FontWeight(600).TextColor(tk.TextSecondary)
+						ui.Text(c, locales.HmacOutHeader(algo.label)).FontSize(m.FontXS).FontWeight(600).TextColor(tk.TextSecondary)
 						if st.input != "" || st.secret != "" {
 							toolPill(c, fmtMeta, pillAccent, false)
 						}
 					}, func() {
 						if st.input != "" || st.secret != "" {
-							toolPill(c, "签名已生成", pillSuccess, true)
+							toolPill(c, locales.HmacGenerated(), pillSuccess, true)
 						} else {
-							toolPill(c, "等待输入", pillNeutral, false)
+							toolPill(c, locales.WaitingForInput(), pillNeutral, false)
 						}
 					}, func() {
 						ui.Column(c).FillWidth().Padding(16).Gap(14).Children(func() {
 							sigDisp := hmacOut
 							if st.input == "" && st.secret == "" {
-								sigDisp = "— 输入 Message 与 Secret Key 后自动生成 HMAC 签名 —"
+								sigDisp = locales.HmacWaitingOut()
 							}
 							ui.Row(c).FillWidth().MinHeight(54).Padding(12, 14).Gap(12).
 								AlignItems(ui.Center).Justify(ui.SpaceBetween).Radius(m.RadiusMD).
@@ -368,11 +369,11 @@ func renderHashTool(c *ui.Context) {
 									FixedLineHeight(21).TextColor(tk.Accent).MinWidth(0).Grow(1)
 								if st.input != "" || st.secret != "" {
 									cVar := btnSecondary
-									cLbl := "复制"
+									cLbl := locales.Copy()
 									cIc := icons.Copy
 									if st.copiedKey == "hmac-main" {
 										cVar = btnSuccess
-										cLbl = "已复制"
+										cLbl = locales.Copied()
 										cIc = icons.Check
 									}
 									if toolBtn(c, toolBtnOpts{Key: "hmac-copy-box", Label: cLbl, Icon: cIc, Variant: cVar, Height: 26}).Clicked() {
@@ -387,15 +388,15 @@ func renderHashTool(c *ui.Context) {
 								ui.Row(c).FillWidth().Padding(10, 14).Gap(10).AlignItems(ui.Center).Justify(ui.SpaceBetween).
 									Radius(m.RadiusMD).Background(tk.BgApp).Border(m.Border, tk.Border).Children(func() {
 									ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
-										ui.Text(c, "请求头快捷预览 (可直接粘贴至 Headers)").FontSize(m.FontXS).FontWeight(500).TextColor(tk.TextSecondary)
+										ui.Text(c, locales.HmacHeaderPreview()).FontSize(m.FontXS).FontWeight(500).TextColor(tk.TextSecondary)
 										ui.Text(c, hdrLine).Font("monospace").FontSize(m.FontSM).FixedLineHeight(19).
 											TextColor(tk.TextPrimary).FillWidth().MinWidth(0)
 									})
 									hVar := btnGhost
-									hLbl := "复制 Header"
+									hLbl := locales.HmacCopyHeader()
 									if st.copiedKey == "hmac-hdr" {
 										hVar = btnSuccess
-										hLbl = "已复制"
+										hLbl = locales.Copied()
 									}
 									if toolBtn(c, toolBtnOpts{Key: "hmac-copy-hdr", Label: hLbl, Icon: icons.Copy, Variant: hVar, Height: 24, PadX: 8}).Clicked() {
 										c.Services().WriteClipboard(hdrLine)
@@ -410,17 +411,17 @@ func renderHashTool(c *ui.Context) {
 		})
 
 		// 4. Footer (26px)
-		fTxt := "就绪 · 所有计算均在本地离线执行"
+		fTxt := locales.HashFooterReady()
 		fCol := tk.TextMuted
 		switch {
 		case hasMatch:
-			fTxt = "摘要校验通过 · 与 " + matchedAlg + " 完全一致"
+			fTxt = locales.HashFooterMatched(matchedAlg)
 			fCol = tk.Success
 		case st.copiedKey != "":
-			fTxt = "已复制到剪贴板"
+			fTxt = locales.HashFooterCopied()
 			fCol = tk.Success
 		case st.input != "":
-			fTxt = "本地离线计算完成 · 密钥与明文不会离开本机"
+			fTxt = locales.HashFooterDone()
 			fCol = tk.Success
 		}
 		toolFooter(c, fTxt, fCol, "Native Go Crypto")

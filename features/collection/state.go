@@ -25,8 +25,10 @@ type pageProps struct {
 type pageActions struct {
 	createCollectionTab func()
 	createNode          func(targetID domain.ID, kind domain.Kind)
-	duplicateNode     func(nodeID string)
-	importCurl        func(targetID domain.ID, curlCmd string) error
+	duplicateNode       func(nodeID string)
+	moveNode            func(srcCollID, nodeID, dstCollID, dstParentID domain.ID, dstIndex int)
+	moveCollection      func(collID domain.ID, dstIndex int)
+	importCurl          func(targetID domain.ID, curlCmd string) error
 	importCollection  func(jsonData string) error
 	deleteRow         func(row *treeNode)
 	selectEnvironment func(id domain.ID)

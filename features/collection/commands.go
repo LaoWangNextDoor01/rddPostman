@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"rddpostman/internal/domain"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo"
 )
@@ -79,7 +80,7 @@ var openBinaryFilePicker = defaultOpenBinaryFilePicker
 
 func defaultOpenBinaryFilePicker() (string, error) {
 	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
-		Title: "Select Binary File",
+		Title: locales.BodySelectBinaryTitle(),
 	})
 	if err != nil || len(paths) == 0 {
 		return "", err

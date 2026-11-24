@@ -10,6 +10,7 @@ import (
 	"rddpostman/internal/domain"
 	"rddpostman/internal/logger"
 	"rddpostman/internal/store"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -72,12 +73,12 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openEnv func(en
 				ui.Icon(c, icons.ListFilter).FontSize(13).TextColor(tk.TextMuted)
 				ui.TextInputBase(c.Key("env-sb-search-input"), search).Grow(1).
 					FontSize(m.FontSM).TextColor(tk.TextPrimary).
-					Placeholder("Search").PlaceholderColor(tk.TextMuted).
-					Label("Filter environments")
+					Placeholder(locales.Search()).PlaceholderColor(tk.TextMuted).
+					Label(locales.EnvFilterLabel())
 				if *search != "" {
 					clr := v2.IconButton(c, v2.IconButtonOpts{
 						Key:      "env-sb-search-clear",
-						Label:    "Clear filter",
+						Label:    locales.ClearFilter(),
 						Icon:     icons.X,
 						Size:     18,
 						IconSize: 11,
@@ -91,8 +92,8 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openEnv func(en
 
 			addBtn := v2.IconButton(c, v2.IconButtonOpts{
 				Key:      "wb-env-add",
-				Label:    "New environment",
-				Tooltip:  "New environment",
+				Label:    locales.NewEnvironment(),
+				Tooltip:  locales.NewEnvironment(),
 				Icon:     icons.Plus,
 				Size:     24,
 				IconSize: 14,
@@ -106,13 +107,13 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openEnv func(en
 
 			v2.Popover(c, addBtn, addOpen, v2.PopoverOpts{Width: 240}, func(panel ui.Element) {
 				ui.Column(c).Padding(m.Space3).Gap(m.Space2).Children(func() {
-					ui.Text(c, "New Environment").FontSize(m.FontSM).FontWeight(600).TextColor(tk.TextPrimary)
+					ui.Text(c, locales.EnvNewTitle()).FontSize(m.FontSM).FontWeight(600).TextColor(tk.TextPrimary)
 					in := ui.TextInputBase(c.Key("wb-env-name-input"), newName).
 						FillWidth().Height(28).Padding(0, m.Space2).Radius(m.RadiusSM).
 						Background(tk.BgSurface).Border(m.Border, tk.BorderPopover).
 						FontSize(m.FontXS).TextColor(tk.TextPrimary).
-						Placeholder("e.g. Local / Staging / Prod").
-						Label("Environment name")
+						Placeholder(locales.EnvNamePlaceholder()).
+						Label(locales.EnvNameLabel())
 					if in.Focused() {
 						in.Border(m.Border, tk.Focus)
 					}
@@ -123,7 +124,7 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openEnv func(en
 					submit := func() {
 						name := strings.TrimSpace(*newName)
 						if name == "" {
-							*newErr = "Please enter a name."
+							*newErr = locales.EnvNameRequired()
 							return
 						}
 						if db == nil {
@@ -149,7 +150,7 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openEnv func(en
 					ui.Row(c).FillWidth().Justify(ui.End).Gap(m.Space15).Children(func() {
 						cancelBtn := ui.ButtonBase(c.Key("wb-env-cancel")).
 							Height(24).PaddingX(8).Radius(m.RadiusSM).Center().
-							Border(m.Border, tk.BorderPopover).Label("Cancel")
+							Border(m.Border, tk.BorderPopover).Label(locales.Cancel())
 						if cancelBtn.Hovered() {
 							cancelBtn.Background(tk.BgHover)
 						}
@@ -157,12 +158,12 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openEnv func(en
 							*addOpen = false
 						}
 						cancelBtn.Children(func() {
-							ui.Text(c, "Cancel").FontSize(m.FontXS).TextColor(tk.TextSecondary)
+							ui.Text(c, locales.Cancel()).FontSize(m.FontXS).TextColor(tk.TextSecondary)
 						})
 
 						okBtn := ui.ButtonBase(c.Key("wb-env-submit")).
 							Height(24).PaddingX(10).Radius(m.RadiusSM).Center().
-							Background(tk.Accent).Label("Create")
+							Background(tk.Accent).Label(locales.Create())
 						if okBtn.Hovered() {
 							okBtn.Background(tk.AccentHover)
 						}
@@ -170,7 +171,7 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openEnv func(en
 							submit()
 						}
 						okBtn.Children(func() {
-							ui.Text(c, "Create").FontSize(m.FontXS).FontWeight(500).TextColor(tk.OnAccent)
+							ui.Text(c, locales.Create()).FontSize(m.FontXS).FontWeight(500).TextColor(tk.OnAccent)
 						})
 					})
 				})
@@ -180,8 +181,8 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openEnv func(en
 		if len(envs) == 0 {
 			ui.Column(c).Grow(1).FillWidth().Center().Padding(m.Space4).Gap(m.Space2).Children(func() {
 				ui.Icon(c, icons.Globe).FontSize(22).TextColor(tk.TextMuted)
-				ui.Text(c, "No environments").FontSize(m.FontSM).FontWeight(500).TextColor(tk.TextSecondary)
-				ui.Text(c, "Click + above to create an environment.").FontSize(m.FontXS).TextColor(tk.TextMuted)
+				ui.Text(c, locales.EnvEmptyTitle()).FontSize(m.FontSM).FontWeight(500).TextColor(tk.TextSecondary)
+				ui.Text(c, locales.EnvEmptyHint()).FontSize(m.FontXS).TextColor(tk.TextMuted)
 			})
 			return
 		}
@@ -202,7 +203,7 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openEnv func(en
 
 		if len(filtered) == 0 {
 			ui.Column(c).Grow(1).FillWidth().Center().Padding(m.Space4).Gap(m.Space1).Children(func() {
-				ui.Text(c, "No matching environments").FontSize(m.FontXS).TextColor(tk.TextMuted)
+				ui.Text(c, locales.EnvNoMatch()).FontSize(m.FontXS).TextColor(tk.TextMuted)
 			})
 			return
 		}
@@ -252,9 +253,9 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openEnv func(en
 						})
 
 						// 右侧独立按钮：一键切换激活环境（仅当前生效的环境显示高亮对钩，其余项不显示任何对号）
-						tipText := "Set active environment"
+						tipText := locales.EnvSetActive()
 						if isActive {
-							tipText = "Active environment"
+							tipText = locales.EnvActiveTooltip()
 						}
 						actBtn := ui.ButtonBase(c.Key("wb-env-act-"+string(env.ID))).
 							Size(20, 20).Radius(m.RadiusSM).Center().

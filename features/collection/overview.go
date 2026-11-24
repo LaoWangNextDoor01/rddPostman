@@ -300,7 +300,7 @@ func editableDescription(c *ui.Context, props pageProps, id, description string,
 			}
 			btn.Children(func() {
 				ui.Icon(c, icons.Get("plus")).FontSize(m.IconSM).TextColor(tk.TextMuted)
-				ui.Text(c, "添加描述（支持 Markdown 语法，点击开始编辑）…").
+				ui.Text(c, locales.OverviewAddDescPlaceholder()).
 					FontSize(m.FontSM).TextColor(tk.TextMuted)
 			})
 			return
@@ -328,7 +328,7 @@ func editableDescription(c *ui.Context, props pageProps, id, description string,
 				}
 				editBtn.Children(func() {
 					ui.Icon(c, icons.Get("file-pen")).FontSize(m.FontMD).TextColor(tk.TextSecondary)
-					ui.Text(c, "编辑").FontSize(m.FontSM).TextColor(tk.TextSecondary)
+					ui.Text(c, locales.Edit()).FontSize(m.FontSM).TextColor(tk.TextSecondary)
 				})
 			})
 
@@ -382,20 +382,20 @@ func editableDescription(c *ui.Context, props pageProps, id, description string,
 							ui.Box(c).Width(1).Height(14).Background(tk.Border).Margin(0, 3)
 						}
 
-						tool("bold", "bold", "**粗体**")
-						tool("italic", "italic", "*斜体*")
-						tool("strikethrough", "strikethrough", "~~删除线~~")
+						tool("bold", "bold", locales.MdBoldSample())
+						tool("italic", "italic", locales.MdItalicSample())
+						tool("strikethrough", "strikethrough", locales.MdStrikeSample())
 						sep()
-						tool("heading", "heading", "\n### 标题\n")
+						tool("heading", "heading", locales.MdHeadingSample())
 						sep()
-						tool("quote", "quote", "\n> 引用\n")
-						tool("code", "code", "`代码`")
+						tool("quote", "quote", locales.MdQuoteSample())
+						tool("code", "code", locales.MdCodeSample())
 						sep()
-						tool("list", "list", "\n- 列表项\n")
-						tool("list-ordered", "list-ordered", "\n1. 列表项\n")
+						tool("list", "list", locales.MdListSample())
+						tool("list-ordered", "list-ordered", locales.MdOrderedListSample())
 						sep()
-						tool("link", "link", "[链接文本](url)")
-						tool("table", "table", "\n| 列 1 | 列 2 |\n| --- | --- |\n| 内容 | 内容 |\n")
+						tool("link", "link", locales.MdLinkSample())
+						tool("table", "table", locales.MdTableSample())
 					})
 				}
 
@@ -417,7 +417,7 @@ func editableDescription(c *ui.Context, props pageProps, id, description string,
 					}
 
 					writeBtn.Children(func() {
-						ui.Text(c, "编辑").FontSize(m.FontXS)
+						ui.Text(c, locales.Edit()).FontSize(m.FontXS)
 					})
 
 					prevBtn := ui.ButtonBase(c.Key("desc-tab-prev")).Height(22).PaddingX(8).
@@ -434,7 +434,7 @@ func editableDescription(c *ui.Context, props pageProps, id, description string,
 						}
 					}
 					prevBtn.Children(func() {
-						ui.Text(c, "预览").FontSize(m.FontXS)
+						ui.Text(c, locales.Preview()).FontSize(m.FontXS)
 					})
 				})
 
@@ -448,7 +448,7 @@ func editableDescription(c *ui.Context, props pageProps, id, description string,
 					return
 				}
 				doneBtn.Children(func() {
-					ui.Text(c, "完成").FontSize(m.FontXS).TextColor(tk.TextSecondary)
+					ui.Text(c, locales.Done()).FontSize(m.FontXS).TextColor(tk.TextSecondary)
 				})
 			})
 
@@ -474,7 +474,7 @@ func editableDescription(c *ui.Context, props pageProps, id, description string,
 			ui.Scroll(c).FillWidth().MinHeight(180).MaxHeight(480).
 				Padding(14, 16).Children(func() {
 				if strings.TrimSpace(desc.draft) == "" {
-					ui.Text(c, "（无预览内容）").FontSize(m.FontSM).TextColor(tk.TextMuted)
+					ui.Text(c, locales.OverviewEmptyPreview()).FontSize(m.FontSM).TextColor(tk.TextMuted)
 				} else {
 					markdown.View(c, desc.draft)
 				}
@@ -751,26 +751,26 @@ func docAuth(c *ui.Context, props pageProps, coll *domain.Collection, node *doma
 		ui.Row(c).FillWidth().Justify(ui.Center).Children(func() {
 			ui.Column(c).Width(docWidth).Padding(32, 0, 40, 0).Gap(16).Children(func() {
 				ui.Column(c).Gap(4).Children(func() {
-					ui.Text(c, "集合认证 (Authorization)").FontSize(18).FontWeight(600).
+					ui.Text(c, locales.OverviewAuthTitle()).FontSize(18).FontWeight(600).
 						TextColor(tk.TextPrimary)
-					ui.Text(c, "配置集合级的默认认证凭据。集合下所有设为「继承父级」的子目录与请求将自动继承此配置。").
+					ui.Text(c, locales.OverviewAuthDesc()).
 						FontSize(13).TextColor(tk.TextMuted)
 				})
 
 				ui.Box(c).FillWidth().Height(1).Background(tk.Border)
 
 				ui.Row(c).Height(32).AlignItems(ui.Center).Gap(12).Children(func() {
-					ui.Text(c, "Type:").FontSize(12).FontWeight(500).TextColor(tk.TextSecondary)
+					ui.Text(c, locales.AuthTypeLabel()).FontSize(12).FontWeight(500).TextColor(tk.TextSecondary)
 
 					v2.Select(c, v2.SelectOpts{
 						Key:       "coll-auth-select-" + id,
-						Label:     "Auth Type",
+						Label:     locales.AuthTypeSelectLabel(),
 						Width:     240,
 						Height:    30,
 						MenuWidth: 240,
 						Value:     authType,
 						Options: []v2.SelectOption{
-							{Value: "none", Label: "No Auth (无认证)"},
+							{Value: "none", Label: locales.AuthNone()},
 							{Value: "bearer", Label: "Bearer Token"},
 							{Value: "basic", Label: "Basic Auth"},
 							{Value: "apikey", Label: "API Key"},
@@ -790,7 +790,7 @@ func docAuth(c *ui.Context, props pageProps, coll *domain.Collection, node *doma
 					ui.Row(c).Padding(12, 14).Radius(m.RadiusSM).Background(tk.BgSubtle).
 						AlignItems(ui.Center).Gap(8).Children(func() {
 						ui.Icon(c, icons.Info).FontSize(14).TextColor(tk.TextMuted)
-						ui.Text(c, "该集合未配置默认认证。所有设置为继承的子请求在发送时不会附带额外的授权头。").
+						ui.Text(c, locales.OverviewAuthNoneHint()).
 							FontSize(12).TextColor(tk.TextMuted)
 					})
 				case "bearer":
@@ -799,7 +799,7 @@ func docAuth(c *ui.Context, props pageProps, coll *domain.Collection, node *doma
 						in := ui.TextInputBase(c.Key("coll-bearer-token"), &state.token).
 							FillWidth().Height(32).Padding(0, 10).Radius(m.RadiusSM).
 							Border(1, tk.Border).FontSize(13).TextColor(tk.TextPrimary).
-							Placeholder("输入 Bearer Token 或 {{token}}")
+							Placeholder(locales.AuthTokenPlaceholder())
 						if in.Focused() {
 							in.Border(1, tk.Accent)
 						}
@@ -810,7 +810,7 @@ func docAuth(c *ui.Context, props pageProps, coll *domain.Collection, node *doma
 				case "basic":
 					ui.Column(c).Gap(10).Children(func() {
 						ui.Column(c).Gap(4).Children(func() {
-							ui.Text(c, "Username").FontSize(12).FontWeight(500).TextColor(tk.TextSecondary)
+							ui.Text(c, locales.AuthUsername()).FontSize(12).FontWeight(500).TextColor(tk.TextSecondary)
 							in := ui.TextInputBase(c.Key("coll-basic-user"), &state.user).
 								Width(320).Height(32).Padding(0, 10).Radius(m.RadiusSM).
 								Border(1, tk.Border).FontSize(13).TextColor(tk.TextPrimary)
@@ -822,7 +822,7 @@ func docAuth(c *ui.Context, props pageProps, coll *domain.Collection, node *doma
 							}
 						})
 						ui.Column(c).Gap(4).Children(func() {
-							ui.Text(c, "Password").FontSize(12).FontWeight(500).TextColor(tk.TextSecondary)
+							ui.Text(c, locales.AuthPassword()).FontSize(12).FontWeight(500).TextColor(tk.TextSecondary)
 							in := ui.TextInputBase(c.Key("coll-basic-pass"), &state.pass).
 								Width(320).Height(32).Padding(0, 10).Radius(m.RadiusSM).
 								Border(1, tk.Border).FontSize(13).TextColor(tk.TextPrimary)
@@ -837,11 +837,11 @@ func docAuth(c *ui.Context, props pageProps, coll *domain.Collection, node *doma
 				case "apikey":
 					ui.Row(c).Gap(12).Children(func() {
 						ui.Column(c).Grow(1).Gap(4).Children(func() {
-							ui.Text(c, "Key").FontSize(12).FontWeight(500).TextColor(tk.TextSecondary)
+							ui.Text(c, locales.KeyLabel()).FontSize(12).FontWeight(500).TextColor(tk.TextSecondary)
 							in := ui.TextInputBase(c.Key("coll-apikey-key"), &state.key).
 								FillWidth().Height(32).Padding(0, 10).Radius(m.RadiusSM).
 								Border(1, tk.Border).FontSize(13).TextColor(tk.TextPrimary).
-								Placeholder("例如 X-API-Key")
+								Placeholder(locales.AuthAPIKeyKeyPlaceholder())
 							if in.Focused() {
 								in.Border(1, tk.Accent)
 							}
@@ -850,11 +850,11 @@ func docAuth(c *ui.Context, props pageProps, coll *domain.Collection, node *doma
 							}
 						})
 						ui.Column(c).Grow(1).Gap(4).Children(func() {
-							ui.Text(c, "Value").FontSize(12).FontWeight(500).TextColor(tk.TextSecondary)
+							ui.Text(c, locales.ValueLabel()).FontSize(12).FontWeight(500).TextColor(tk.TextSecondary)
 							in := ui.TextInputBase(c.Key("coll-apikey-val"), &state.val).
 								FillWidth().Height(32).Padding(0, 10).Radius(m.RadiusSM).
 								Border(1, tk.Border).FontSize(13).TextColor(tk.TextPrimary).
-								Placeholder("Key 值或 {{api_key}}")
+								Placeholder(locales.AuthAPIKeyValPlaceholder())
 							if in.Focused() {
 								in.Border(1, tk.Accent)
 							}
@@ -914,9 +914,9 @@ func docVars(c *ui.Context, props pageProps, coll *domain.Collection, node *doma
 		ui.Row(c).FillWidth().Justify(ui.Center).Children(func() {
 			ui.Column(c).Width(docWidth).Padding(32, 0, 40, 0).Gap(16).Children(func() {
 				ui.Column(c).Gap(4).Children(func() {
-					ui.Text(c, "集合变量 (Variables)").FontSize(18).FontWeight(600).
+					ui.Text(c, locales.OverviewVarsTitle()).FontSize(18).FontWeight(600).
 						TextColor(tk.TextPrimary)
-					ui.Text(c, "集合变量仅在此集合及其子请求内生效。使用 {{variable_name}} 在 URL、标头、请求体中直接引用。").
+					ui.Text(c, locales.OverviewVarsDesc()).
 						FontSize(13).TextColor(tk.TextMuted)
 				})
 
@@ -931,13 +931,13 @@ func docVars(c *ui.Context, props pageProps, coll *domain.Collection, node *doma
 						AlignItems(ui.Center).Children(func() {
 						ui.Box(c).Width(32)
 						ui.Row(c).Width(180).Padding(0, 8).Children(func() {
-							ui.Text(c, "Variable").FontSize(11).FontWeight(600).TextColor(tk.TextMuted)
+							ui.Text(c, locales.VariableName()).FontSize(11).FontWeight(600).TextColor(tk.TextMuted)
 						})
 						ui.Row(c).Grow(1).Padding(0, 8).Children(func() {
-							ui.Text(c, "Current Value").FontSize(11).FontWeight(600).TextColor(tk.TextMuted)
+							ui.Text(c, locales.CurrentValue()).FontSize(11).FontWeight(600).TextColor(tk.TextMuted)
 						})
 						ui.Row(c).Width(160).Padding(0, 8).Children(func() {
-							ui.Text(c, "Description").FontSize(11).FontWeight(600).TextColor(tk.TextMuted)
+							ui.Text(c, locales.DescriptionLabel()).FontSize(11).FontWeight(600).TextColor(tk.TextMuted)
 						})
 						ui.Box(c).Width(32)
 					})
@@ -988,7 +988,7 @@ func docVars(c *ui.Context, props pageProps, coll *domain.Collection, node *doma
 								BorderWidth(0, 1, 0, 0).BorderColor(tk.Border).Children(func() {
 								kIn := ui.TextInputBase(c.Key(fmt.Sprintf("cv-k-%s-%d", id, idx)), &kv.Key).
 									Fill().Padding(0, 8).FontSize(12).TextColor(tk.TextPrimary).
-									Placeholder("Variable")
+									Placeholder(locales.VariableName())
 								if kIn.Changed() && isLast && (kv.Key != "" || kv.Value != "") {
 									state.vars = append(state.vars, domain.KV{ID: domain.NewID(), Enabled: true})
 								}
@@ -1002,7 +1002,7 @@ func docVars(c *ui.Context, props pageProps, coll *domain.Collection, node *doma
 								BorderWidth(0, 1, 0, 0).BorderColor(tk.Border).Children(func() {
 								vIn := ui.TextInputBase(c.Key(fmt.Sprintf("cv-v-%s-%d", id, idx)), &kv.Value).
 									Fill().Padding(0, 8).FontSize(12).TextColor(tk.TextPrimary).
-									Placeholder("Value")
+									Placeholder(locales.ValueLabel())
 								if vIn.Changed() && isLast && (kv.Key != "" || kv.Value != "") {
 									state.vars = append(state.vars, domain.KV{ID: domain.NewID(), Enabled: true})
 								}
@@ -1015,7 +1015,7 @@ func docVars(c *ui.Context, props pageProps, coll *domain.Collection, node *doma
 							ui.Row(c).Width(160).FillHeight().AlignItems(ui.Center).Children(func() {
 								dIn := ui.TextInputBase(c.Key(fmt.Sprintf("cv-d-%s-%d", id, idx)), &kv.Desc).
 									Fill().Padding(0, 8).FontSize(12).TextColor(tk.TextSecondary).
-									Placeholder("Description")
+									Placeholder(locales.DescriptionLabel())
 								if dIn.FocusLeft() || dIn.Submitted() {
 									persist()
 								}
@@ -1062,9 +1062,9 @@ func docScripts(c *ui.Context, props pageProps, coll *domain.Collection, node *d
 		ui.Row(c).FillWidth().Justify(ui.Center).Children(func() {
 			ui.Column(c).Width(docWidth).Padding(32, 0, 40, 0).Gap(16).Children(func() {
 				ui.Column(c).Gap(4).Children(func() {
-					ui.Text(c, "前置脚本 (Pre-request Scripts)").FontSize(18).FontWeight(600).
+					ui.Text(c, locales.OverviewScriptsTitle()).FontSize(18).FontWeight(600).
 						TextColor(tk.TextPrimary)
-					ui.Text(c, "在集合中的每个请求发出前执行的脚本，用于动态签名与参数准备。").
+					ui.Text(c, locales.OverviewScriptsDesc()).
 						FontSize(13).TextColor(tk.TextMuted)
 				})
 
@@ -1073,7 +1073,7 @@ func docScripts(c *ui.Context, props pageProps, coll *domain.Collection, node *d
 				ui.Row(c).Padding(12, 14).Radius(m.RadiusSM).Background(tk.BgSubtle).
 					AlignItems(ui.Center).Gap(8).Children(func() {
 					ui.Icon(c, icons.Info).FontSize(14).TextColor(tk.Accent)
-					ui.Text(c, "脚本执行支持 pm.environment.get / set 以及 pm.variables.get / set 常用 API。").
+					ui.Text(c, locales.OverviewScriptsHint()).
 						FontSize(12).TextColor(tk.TextSecondary)
 				})
 			})

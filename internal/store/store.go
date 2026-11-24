@@ -29,6 +29,7 @@ var (
 	ErrExists             = storage.ErrExists
 	ErrDefaultWorkspace   = storage.ErrDefaultWorkspace
 	ErrReadOnly           = storage.ErrReadOnly
+	ErrInvalidMove        = storage.ErrInvalidMove
 	ErrDefaultEnvironment = errors.New("store: 默认环境不可删除")
 )
 

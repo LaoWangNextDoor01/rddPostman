@@ -15,6 +15,7 @@ import (
 	"rddpostman/internal/curl"
 	"rddpostman/internal/domain"
 	"rddpostman/internal/transport"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
@@ -518,7 +519,7 @@ func reqBreadcrumb(c *ui.Context, props pageProps, n *domain.Node, activeID stri
 			saveBtn := ui.ButtonBase(c.Key("req-save-btn-" + activeID)).
 				Height(24).Padding(0, 8).Gap(4).Radius(4).
 				AlignItems(ui.Center).Cursor(ui.CursorPointer).
-				Role(ui.RoleButton).Label("Save").
+				Role(ui.RoleButton).Label(locales.Save()).
 				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 			switch {
 			case saveBtn.Pressed():
@@ -543,7 +544,7 @@ func reqBreadcrumb(c *ui.Context, props pageProps, n *domain.Node, activeID stri
 					textColor = tk2.Accent
 				}
 				ui.Icon(c, icons.Copy).FontSize(12).TextColor(iconColor)
-				ui.Text(c, "Save").FontSize(12).FontWeight(500).TextColor(textColor).SingleLine()
+				ui.Text(c, locales.Save()).FontSize(12).FontWeight(500).TextColor(textColor).SingleLine()
 			})
 		})
 	})
@@ -568,7 +569,7 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 		allVars = props.actions.resolveVariables(collID, nodeID)
 	}
 
-	activeEnvName := "No Environment"
+	activeEnvName := locales.NoEnvironment()
 	for _, env := range props.environments {
 		if env.ID == props.selectedEnv {
 			activeEnvName = env.Name
@@ -662,8 +663,8 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 				} else {
 					in := ui.TextInputBase(c.Key("req-url-input"), &state.urlDraft).Grow(1).FillHeight().
 						Padding(0, 8).FontSize(12).TextColor(tk2.TextPrimary).
-						Placeholder("Enter URL or paste text").PlaceholderColor(tk2.TextMuted).
-						Label("Request URL")
+						Placeholder(locales.ReqURLPlaceholder()).PlaceholderColor(tk2.TextMuted).
+						Label(locales.ReqURLLabel())
 					if state.urlFocusReq {
 						in.Focus()
 						state.urlFocusReq = false
@@ -760,7 +761,7 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 				cancelBtn := ui.ButtonBase(c.Key("req-cancel-btn")).
 					Height(34).PaddingX(16).Radius(6).Center().
 					Background(tk2.DangerSoft).Border(1, tk2.Danger).
-					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Cancel")
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.Cancel())
 				if cancelBtn.Clicked() {
 					if state.cancelFn != nil {
 						state.cancelFn()
@@ -768,7 +769,7 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 					state.sending = false
 				}
 				cancelBtn.Children(func() {
-					ui.Text(c, "Cancel").FontSize(12).FontWeight(500).TextColor(tk2.Danger).SingleLine()
+					ui.Text(c, locales.Cancel()).FontSize(12).FontWeight(500).TextColor(tk2.Danger).SingleLine()
 				})
 			} else {
 				splitWrap := ui.Row(c.Key("req-send-split")).Height(34).Radius(6).Clip().
@@ -778,7 +779,7 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 				splitWrap.Children(func() {
 					sendBtn := ui.ButtonBase(c.Key("req-send-btn")).
 						Height(34).PaddingX(18).Center().
-						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Send").
+						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.Send()).
 						Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 					switch {
 					case sendBtn.Pressed():
@@ -792,7 +793,7 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 						triggerSend()
 					}
 					sendBtn.Children(func() {
-						ui.Text(c, "Send").FontSize(12).FontWeight(500).TextColor(tk2.OnAccent).SingleLine()
+						ui.Text(c, locales.Send()).FontSize(12).FontWeight(500).TextColor(tk2.OnAccent).SingleLine()
 					})
 
 					// 30% 白叠主色分裂线（对齐 Pixso 组件库 · Button 06）
@@ -800,7 +801,7 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 
 					dropBtn := ui.ButtonBase(c.Key("req-send-more")).
 						Width(26).Height(34).Center().
-						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Send options").
+						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.ReqSendOptions()).
 						Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 					switch {
 					case dropBtn.Pressed():
@@ -820,7 +821,7 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 					v2.Popover(c, dropBtn, menuOpen, v2.PopoverOpts{Width: 164}, func(panel ui.Element) {
 						ui.Column(c).Padding(4).Gap(2).Children(func() {
 							if v2.MenuButton(c, v2.MenuButtonProps{
-								Icon: icons.Send, Key: "send-opt-run", Label: "Send Request",
+								Icon: icons.Send, Key: "send-opt-run", Label: locales.ScSendRequest(),
 							}).Clicked() {
 								*menuOpen = false
 								if triggerSend != nil {
@@ -828,7 +829,7 @@ func reqLine(c *ui.Context, props pageProps, coll *domain.Collection, n *domain.
 								}
 							}
 							if v2.MenuButton(c, v2.MenuButtonProps{
-								Icon: icons.Code, Key: "send-opt-curl", Label: "Copy as cURL",
+								Icon: icons.Code, Key: "send-opt-curl", Label: locales.ReqCopyAsCurl(),
 							}).Clicked() {
 								*menuOpen = false
 								copyAsCurl()
@@ -858,29 +859,29 @@ func reqConfigTabBar(c *ui.Context, state *reqSessionState, tk2 thV2.Tokens) {
 	paramCount := countActiveKV(state.queryDraft) + countActiveKV(state.pathVarsDraft)
 	headerCount := countActiveKV(state.headersDraft)
 
-	paramsLabel := "Params"
+	paramsLabel := locales.ReqTabParams()
 	if paramCount > 0 {
-		paramsLabel = fmt.Sprintf("Params %d", paramCount)
+		paramsLabel = fmt.Sprintf("%s %d", locales.ReqTabParams(), paramCount)
 	}
-	headersLabel := "Headers"
+	headersLabel := locales.ReqTabHeaders()
 	if headerCount > 0 {
-		headersLabel = fmt.Sprintf("Headers %d", headerCount)
+		headersLabel = fmt.Sprintf("%s %d", locales.ReqTabHeaders(), headerCount)
 	}
 
 	tabLabels := []string{
-		"Docs",
+		locales.ReqTabDocs(),
 		paramsLabel,
-		"Authorization",
+		locales.ReqTabAuth(),
 		headersLabel,
-		"Body",
-		"Scripts",
-		"Settings",
+		locales.ReqTabBody(),
+		locales.ReqTabScripts(),
+		locales.ReqTabSettings(),
 	}
 
 	tabsRowWithAction(c, tabLabels, state.reqTab, func(idx int) {
 		state.reqTab = idx
 	}, func() {
-		ui.Text(c, "Cookies").FontSize(12).TextColor(tk2.TextMuted).SingleLine()
+		ui.Text(c, locales.ReqTabCookies()).FontSize(12).TextColor(tk2.TextMuted).SingleLine()
 	})
 }
 
@@ -909,7 +910,7 @@ func reqConfigTabContent(c *ui.Context, props pageProps, coll *domain.Collection
 
 		ui.Column(c).Grow(1).Gap(6).Children(func() {
 			ui.Row(c).Height(20).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "Query Params").FontSize(12).FontWeight(500).TextColor(tk2.TextSecondary)
+				ui.Text(c, locales.ReqQueryParams()).FontSize(12).FontWeight(500).TextColor(tk2.TextSecondary)
 			})
 			renderKVEditor(c, tk, m, "query", &state.queryDraft, func(items []domain.KV) {
 				state.urlDraft = syncQueryToURL(state.urlDraft, items)
@@ -924,7 +925,7 @@ func reqConfigTabContent(c *ui.Context, props pageProps, coll *domain.Collection
 			if len(state.pathVarsDraft) > 0 {
 				ui.Box(c).Height(8)
 				ui.Row(c).Height(20).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "Path Variables").FontSize(12).FontWeight(500).TextColor(tk2.TextSecondary)
+					ui.Text(c, locales.ReqPathVariables()).FontSize(12).FontWeight(500).TextColor(tk2.TextSecondary)
 				})
 				renderKVEditor(c, tk, m, "pathvars", &state.pathVarsDraft, func(items []domain.KV) {
 					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
@@ -1017,10 +1018,10 @@ func renderDocsEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 					icon       *ui.SVG
 					insert     string
 				}{
-					{"bold", "Bold", icons.Bold, "**bold text**"},
-					{"italic", "Italic", icons.Italic, "*italic text*"},
-					{"code", "Code", icons.Code, "`code`"},
-					{"list", "List", icons.ListOrdered, "1. Item\n2. Item"},
+					{"bold", "Bold", icons.Bold, locales.MdBoldSample()},
+					{"italic", "Italic", icons.Italic, locales.MdItalicSample()},
+					{"code", "Code", icons.Code, locales.MdCodeSample()},
+					{"list", "List", icons.ListOrdered, strings.TrimSpace(locales.MdOrderedListSample())},
 				} {
 					tb := tb
 					btn := ui.ButtonBase(c.Key("docs-tb-" + tb.key + "-" + string(n.ID))).
@@ -1062,20 +1063,20 @@ func renderDocsEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 					node.Description = n.Description
 				})
 			}
-			ui.Text(c, "Markdown is supported. Use the toolbar above to format your documentation.").
+			ui.Text(c, locales.ReqDocsMarkdownHint()).
 				FontSize(11).TextColor(tk.TextMuted)
 		})
 
 		// 右侧 Documentation 信息面板（对齐 Pixso 32:76796 col / docs info，宽 260）
 		ui.Column(c).Width(260).Gap(10).Children(func() {
-			ui.Text(c, "Documentation").FontSize(13).FontWeight(600).TextColor(tk.TextPrimary)
-			ui.Text(c, "Add documentation for this request so that everyone on your team knows how to use it.").
+			ui.Text(c, locales.ReqDocsTitle()).FontSize(13).FontWeight(600).TextColor(tk.TextPrimary)
+			ui.Text(c, locales.ReqDocsDesc()).
 				FontSize(12).TextColor(tk.TextSecondary)
 
 			ui.Box(c).FillWidth().Height(1).Background(tk.Border)
 
 			ui.Column(c).Gap(4).Children(func() {
-				ui.Text(c, "METHOD").FontSize(11).TextColor(tk.TextMuted)
+				ui.Text(c, locales.ReqDocsMethod()).FontSize(11).TextColor(tk.TextMuted)
 				mth := "GET"
 				if n.Request != nil && n.Request.Method != "" {
 					mth = n.Request.Method
@@ -1084,11 +1085,11 @@ func renderDocsEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 			})
 
 			ui.Column(c).Gap(4).Children(func() {
-				ui.Text(c, "LAST UPDATED").FontSize(11).TextColor(tk.TextMuted)
+				ui.Text(c, locales.ReqDocsLastUpdated()).FontSize(11).TextColor(tk.TextMuted)
 				ui.Text(c, n.UpdatedAt.Format("2006-01-02 15:04")).FontSize(12).TextColor(tk.TextPrimary)
 			})
 
-			ui.Text(c, "Learn about documenting APIs").FontSize(12).TextColor(tk.Accent).Cursor(ui.CursorPointer)
+			ui.Text(c, locales.ReqDocsLearnMore()).FontSize(12).TextColor(tk.Accent).Cursor(ui.CursorPointer)
 		})
 	})
 }
@@ -1123,10 +1124,10 @@ func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 			Children(func() {
 				if *bulkMode {
 					ui.Row(c).FillWidth().FillHeight().Padding(0, 10).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-						ui.Text(c, "Rows (Key: Value)").FontSize(11).FontWeight(500).TextColor(tk2.TextSecondary)
+						ui.Text(c, locales.ReqBulkHeader()).FontSize(11).FontWeight(500).TextColor(tk2.TextSecondary)
 						toggleBtn := ui.ButtonBase(c.Key(keyPrefix + "-toggle-kv")).
 							Height(22).PaddingX(6).Radius(4).AlignItems(ui.Center).Cursor(ui.CursorPointer).
-							Role(ui.RoleButton).Label("Key-Value Edit")
+							Role(ui.RoleButton).Label(locales.ReqKeyValueEdit())
 						if toggleBtn.Hovered() {
 							toggleBtn.Background(tk2.BgHover)
 						}
@@ -1136,26 +1137,26 @@ func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 							onPersist(*items)
 						}
 						toggleBtn.Children(func() {
-							ui.Text(c, "Key-Value Edit").FontSize(11).FontWeight(500).TextColor(tk2.Accent)
+							ui.Text(c, locales.ReqKeyValueEdit()).FontSize(11).FontWeight(500).TextColor(tk2.Accent)
 						})
 					})
 				} else {
 					ui.Box(c).Width(32)
 					ui.Row(c).Width(200).FillHeight().Padding(0, 8).AlignItems(ui.Center).
 						BorderWidth(0, 1, 0, 0).BorderColor(tk2.Border).Children(func() {
-						ui.Text(c, "Key").FontSize(11).FontWeight(500).TextColor(tk2.TextSecondary)
+						ui.Text(c, locales.KeyLabel()).FontSize(11).FontWeight(500).TextColor(tk2.TextSecondary)
 					})
 					ui.Row(c).Grow(1).FillHeight().Padding(0, 8).AlignItems(ui.Center).
 						BorderWidth(0, 1, 0, 0).BorderColor(tk2.Border).Children(func() {
-						ui.Text(c, "Value").FontSize(11).FontWeight(500).TextColor(tk2.TextSecondary)
+						ui.Text(c, locales.ValueLabel()).FontSize(11).FontWeight(500).TextColor(tk2.TextSecondary)
 					})
 					ui.Row(c).Width(250).FillHeight().Padding(0, 8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
-						ui.Text(c, "Description").FontSize(11).FontWeight(500).TextColor(tk2.TextSecondary)
+						ui.Text(c, locales.DescriptionLabel()).FontSize(11).FontWeight(500).TextColor(tk2.TextSecondary)
 						ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
 							if keyPrefix == "headers" {
 								resetBtn := ui.ButtonBase(c.Key(keyPrefix + "-reset-defaults")).
 									Height(22).PaddingX(6).Radius(4).AlignItems(ui.Center).Cursor(ui.CursorPointer).
-									Role(ui.RoleButton).Label("Reset Defaults")
+									Role(ui.RoleButton).Label(locales.ReqResetDefaults())
 								if resetBtn.Hovered() {
 									resetBtn.Background(tk2.BgHover)
 								}
@@ -1164,12 +1165,12 @@ func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 									onPersist(*items)
 								}
 								resetBtn.Children(func() {
-									ui.Text(c, "Reset Defaults").FontSize(11).FontWeight(500).TextColor(tk2.TextMuted)
+									ui.Text(c, locales.ReqResetDefaults()).FontSize(11).FontWeight(500).TextColor(tk2.TextMuted)
 								})
 							}
 							toggleBtn := ui.ButtonBase(c.Key(keyPrefix + "-toggle-bulk")).
 								Height(22).PaddingX(6).Radius(4).AlignItems(ui.Center).Cursor(ui.CursorPointer).
-								Role(ui.RoleButton).Label("Bulk Edit")
+								Role(ui.RoleButton).Label(locales.ReqBulkEdit())
 							if toggleBtn.Hovered() {
 								toggleBtn.Background(tk2.BgHover)
 							}
@@ -1178,7 +1179,7 @@ func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 								*bulkMode = true
 							}
 							toggleBtn.Children(func() {
-								ui.Text(c, "Bulk Edit").FontSize(11).FontWeight(500).TextColor(tk2.Accent)
+								ui.Text(c, locales.ReqBulkEdit()).FontSize(11).FontWeight(500).TextColor(tk2.Accent)
 							})
 						})
 					})
@@ -1196,7 +1197,7 @@ func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 					*items = bulkToKVList(*bulkText)
 					onPersist(*items)
 				}
-				ui.Text(c, "Enter one key-value pair per line (key: value, prefix with // to disable)").
+				ui.Text(c, locales.ReqBulkHint()).
 					FontSize(11).TextColor(tk2.TextMuted)
 			})
 			return
@@ -1253,7 +1254,7 @@ func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 					BorderWidth(0, 1, 0, 0).BorderColor(tk2.Border).Children(func() {
 					keyIn := ui.TextInputBase(c.Key(fmt.Sprintf("%s-key-%d", keyPrefix, i)), &kv.Key).
 						Fill().Padding(0, 8).FontSize(12).TextColor(tk2.TextPrimary).
-						Placeholder("Key").PlaceholderColor(tk2.TextMuted)
+						Placeholder(locales.KeyLabel()).PlaceholderColor(tk2.TextMuted)
 					if keyIn.Changed() {
 						if i == len(*items)-1 && (kv.Key != "" || kv.Value != "") {
 							*items = append(*items, domain.KV{ID: domain.NewID(), Enabled: true})
@@ -1267,7 +1268,7 @@ func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 				// 3. Value 单元格
 				ui.Row(c).Grow(1).FillHeight().AlignItems(ui.Center).
 					BorderWidth(0, 1, 0, 0).BorderColor(tk2.Border).Children(func() {
-					placeholder := "Value"
+					placeholder := locales.ValueLabel()
 					placeholderColor := tk2.TextMuted
 					var defaultVal string
 					var hasDefault bool
@@ -1310,7 +1311,7 @@ func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 						} else {
 							ui.Row(c).Height(18).Padding(0, 6).Margin(0, 6).Radius(3).
 								Background(tk2.Accent.Alpha(0.1)).AlignItems(ui.Center).Children(func() {
-								ui.Text(c, "override").FontSize(10).TextColor(tk2.Accent)
+								ui.Text(c, locales.ReqOverrideBadge()).FontSize(10).TextColor(tk2.Accent)
 							})
 						}
 					}
@@ -1320,7 +1321,7 @@ func renderKVEditor(c *ui.Context, tk theme.Tokens, m theme.Metric,
 				ui.Row(c).Width(250).FillHeight().AlignItems(ui.Center).Children(func() {
 					descIn := ui.TextInputBase(c.Key(fmt.Sprintf("%s-desc-%d", keyPrefix, i)), &kv.Desc).
 						Fill().Padding(0, 8).FontSize(12).TextColor(tk2.TextSecondary).
-						Placeholder("Description").PlaceholderColor(tk2.TextMuted)
+						Placeholder(locales.DescriptionLabel()).PlaceholderColor(tk2.TextMuted)
 					if descIn.FocusLeft() || descIn.Submitted() {
 						onPersist(*items)
 					}
@@ -1368,21 +1369,21 @@ func renderAuthEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 
 	ui.Column(c).Grow(1).Gap(12).Children(func() {
 		ui.Row(c).Height(32).AlignItems(ui.Center).Gap(12).Children(func() {
-			ui.Text(c, "Type:").FontSize(12).FontWeight(500).TextColor(tk.TextSecondary)
+			ui.Text(c, locales.AuthTypeLabel()).FontSize(12).FontWeight(500).TextColor(tk.TextSecondary)
 
 			v2.Select(c, v2.SelectOpts{
 				Key:       "req-auth-select-" + string(n.ID),
-				Label:     "Auth Type",
+				Label:     locales.AuthTypeSelectLabel(),
 				Width:     240,
 				Height:    30,
 				MenuWidth: 260,
 				Value:     currType,
 				Options: []v2.SelectOption{
-					{Value: "inherit", Label: "Inherit auth from parent"},
+					{Value: "inherit", Label: locales.AuthInherit()},
 					{Value: "bearer", Label: "Bearer Token"},
 					{Value: "basic", Label: "Basic Auth"},
 					{Value: "apikey", Label: "API Key"},
-					{Value: "none", Label: "No Auth"},
+					{Value: "none", Label: locales.AuthNone()},
 				},
 				OnSelect: func(val string) {
 					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
@@ -1401,7 +1402,7 @@ func renderAuthEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 			if props.actions.resolveAuth != nil {
 				effectiveAuth = props.actions.resolveAuth(coll.ID, n.ID)
 			}
-			authLabel := "无认证"
+			authLabel := locales.AuthNone()
 			switch effectiveAuth.Type {
 			case domain.AuthBearer:
 				authLabel = "Bearer Token"
@@ -1414,11 +1415,11 @@ func renderAuthEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 			ui.Column(c).Gap(6).Children(func() {
 				ui.Row(c).Height(32).AlignItems(ui.Center).Gap(6).Children(func() {
 					ui.Icon(c, icons.Get("circle-help")).Size(14, 14).TextColor(tk.Info)
-					ui.Text(c, "该请求将自动继承上级目录或集合配置的认证令牌与授权头。").
+					ui.Text(c, locales.AuthInheritDesc()).
 						FontSize(m.FontSM).TextColor(tk.TextMuted)
 				})
 				ui.Row(c).Height(28).AlignItems(ui.Center).Gap(6).Children(func() {
-					ui.Text(c, "当前沿继承链生效的认证方式:").FontSize(m.FontSM).TextColor(tk.TextSecondary)
+					ui.Text(c, locales.AuthEffectiveLabel()).FontSize(m.FontSM).TextColor(tk.TextSecondary)
 					ui.Box(c).Padding(2, 8).Radius(m.RadiusSM).Background(tk.HoverSurface).Children(func() {
 						ui.Text(c, authLabel).FontSize(m.FontXS).FontWeight(600).TextColor(tk.FocusRing)
 					})
@@ -1430,7 +1431,7 @@ func renderAuthEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 				in := ui.TextInputBase(c.Key("auth-bearer-token"), &state.authTokenDraft).
 					Grow(1).Height(28).PaddingX(8).
 					Radius(m.RadiusSM).Border(m.Border, tk.Border).
-					FontSize(m.FontSM).TextColor(tk.TextPrimary).Placeholder("输入 Bearer Token 或 {{token}}")
+					FontSize(m.FontSM).TextColor(tk.TextPrimary).Placeholder(locales.AuthTokenPlaceholder())
 				if in.Focused() {
 					in.Border(m.Border, tk.FocusRing)
 				}
@@ -1443,7 +1444,7 @@ func renderAuthEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 		case "basic":
 			ui.Column(c).Gap(6).Children(func() {
 				ui.Row(c).Height(30).AlignItems(ui.Center).Gap(8).Children(func() {
-					ui.Text(c, "用户名:").FontSize(m.FontSM).TextColor(tk.TextSecondary).Width(60)
+					ui.Text(c, locales.AuthUsername()+":").FontSize(m.FontSM).TextColor(tk.TextSecondary).Width(60)
 					in := ui.TextInputBase(c.Key("auth-basic-user"), &state.authUserDraft).
 						Width(240).Height(28).PaddingX(8).
 						Radius(m.RadiusSM).Border(m.Border, tk.Border).
@@ -1461,7 +1462,7 @@ func renderAuthEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 					}
 				})
 				ui.Row(c).Height(30).AlignItems(ui.Center).Gap(8).Children(func() {
-					ui.Text(c, "密码:").FontSize(m.FontSM).TextColor(tk.TextSecondary).Width(60)
+					ui.Text(c, locales.AuthPassword()+":").FontSize(m.FontSM).TextColor(tk.TextSecondary).Width(60)
 					in := ui.TextInputBase(c.Key("auth-basic-pass"), &state.authPassDraft).
 						Width(240).Height(28).PaddingX(8).
 						Radius(m.RadiusSM).Border(m.Border, tk.Border).
@@ -1481,11 +1482,11 @@ func renderAuthEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 			})
 		case "apikey":
 			ui.Row(c).Height(30).AlignItems(ui.Center).Gap(8).Children(func() {
-				ui.Text(c, "Key:").FontSize(m.FontSM).TextColor(tk.TextSecondary).Width(50)
+				ui.Text(c, locales.KeyLabel()+":").FontSize(m.FontSM).TextColor(tk.TextSecondary).Width(50)
 				keyIn := ui.TextInputBase(c.Key("auth-apikey-key"), &state.authKeyDraft).
 					Width(180).Height(28).PaddingX(8).
 					Radius(m.RadiusSM).Border(m.Border, tk.Border).
-					FontSize(m.FontSM).TextColor(tk.TextPrimary).Placeholder("Header/Query 名")
+					FontSize(m.FontSM).TextColor(tk.TextPrimary).Placeholder(locales.AuthAPIKeyNamePlaceholder())
 				if keyIn.Focused() {
 					keyIn.Border(m.Border, tk.FocusRing)
 				}
@@ -1498,11 +1499,11 @@ func renderAuthEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 					})
 				}
 
-				ui.Text(c, "Value:").FontSize(m.FontSM).TextColor(tk.TextSecondary).Width(50)
+				ui.Text(c, locales.ValueLabel()+":").FontSize(m.FontSM).TextColor(tk.TextSecondary).Width(50)
 				valIn := ui.TextInputBase(c.Key("auth-apikey-val"), &state.authValDraft).
 					Width(220).Height(28).PaddingX(8).
 					Radius(m.RadiusSM).Border(m.Border, tk.Border).
-					FontSize(m.FontSM).TextColor(tk.TextPrimary).Placeholder("Key 值")
+					FontSize(m.FontSM).TextColor(tk.TextPrimary).Placeholder(locales.AuthAPIKeyValPlaceholder())
 				if valIn.Focused() {
 					valIn.Border(m.Border, tk.FocusRing)
 				}
@@ -1516,7 +1517,7 @@ func renderAuthEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 				}
 			})
 		case "none":
-			ui.Text(c, "当前请求不使用任何认证凭证。").FontSize(m.FontSM).
+			ui.Text(c, locales.AuthNoneHint()).FontSize(m.FontSM).
 				TextColor(tk.TextMuted)
 		}
 	})
@@ -1619,7 +1620,7 @@ func renderBodyEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 
 					beautifyBtn := ui.ButtonBase(c.Key("raw-beautify-" + string(n.ID))).
 						Height(22).PaddingX(6).Radius(4).AlignItems(ui.Center).
-						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Beautify")
+						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.BodyBeautify())
 					switch {
 					case beautifyBtn.Pressed():
 						beautifyBtn.Background(tk2.BgSelected)
@@ -1647,7 +1648,7 @@ func renderBodyEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 						}
 					}
 					beautifyBtn.Children(func() {
-						ui.Text(c, "Beautify").FontSize(12).TextColor(tk2.Accent).SingleLine()
+						ui.Text(c, locales.BodyBeautify()).FontSize(12).TextColor(tk2.Accent).SingleLine()
 					})
 				})
 			}
@@ -1659,7 +1660,7 @@ func renderBodyEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 		switch mode {
 		case "none":
 			ui.Row(c).Height(80).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-				ui.Text(c, "This request does not have a body").FontSize(12).
+				ui.Text(c, locales.BodyNoneHint()).FontSize(12).
 					TextColor(tk2.TextMuted)
 			})
 		case "raw":
@@ -1766,7 +1767,7 @@ func renderBodyEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 							ui.Text(c, filePath).FontSize(11).TextColor(tk2.TextMuted).SingleLine()
 						})
 						clearBtn := ui.ButtonBase(c.Key("binary-clear-file")).Size(22, 22).Radius(4).Center().
-							Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Clear file")
+							Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.BodyClearFile())
 						if clearBtn.Hovered() {
 							clearBtn.Background(tk2.BgHover)
 						}
@@ -1789,13 +1790,13 @@ func renderBodyEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 						})
 					})
 				} else {
-					ui.Text(c, "Select a local binary file to send as the request body").FontSize(12).
+					ui.Text(c, locales.BodyBinaryHint()).FontSize(12).
 						TextColor(tk2.TextMuted)
 				}
 
-				btnLabel := "Select File"
+				btnLabel := locales.BodySelectFile()
 				if strings.TrimSpace(state.bodyFileDraft) != "" {
-					btnLabel = "Change File"
+					btnLabel = locales.BodyChangeFile()
 				}
 				selFileBtn := ui.ButtonBase(c.Key("binary-select-file")).Height(28).PaddingX(12).
 					Radius(4).Border(1, tk2.Border).Background(tk2.BgSurface).Center().
@@ -1825,7 +1826,7 @@ func renderBodyEditor(c *ui.Context, props pageProps, coll *domain.Collection, n
 func renderScriptsEditor(c *ui.Context, props pageProps, coll *domain.Collection,
 	n *domain.Node, state *reqSessionState, tk theme.Tokens, m theme.Metric,
 ) {
-	subTabs := []string{"前置脚本 (Pre-request Script)", "测试断言 (Tests Script)"}
+	subTabs := []string{locales.ScriptsPreTab(), locales.ScriptsTestsTab()}
 	tabsRowWithAction(c, subTabs, state.scriptSubTab, func(idx int) {
 		state.scriptSubTab = idx
 	}, nil)
@@ -1836,8 +1837,8 @@ func renderScriptsEditor(c *ui.Context, props pageProps, coll *domain.Collection
 		if state.scriptSubTab == 0 {
 			// Pre-request Script
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-				ui.Text(c, "快速插入代码片段:").FontSize(m.FontXS).TextColor(tk.TextMuted)
-				if ui.Button(c, "设置变量").Height(22).FontSize(m.FontXS).Clicked() {
+				ui.Text(c, locales.ScriptsInsertSnippet()).FontSize(m.FontXS).TextColor(tk.TextMuted)
+				if ui.Button(c, locales.ScriptsSnipSetVar()).Height(22).FontSize(m.FontXS).Clicked() {
 					if state.preScriptDraft != "" && !strings.HasSuffix(state.preScriptDraft, "\n") {
 						state.preScriptDraft += "\n"
 					}
@@ -1848,7 +1849,7 @@ func renderScriptsEditor(c *ui.Context, props pageProps, coll *domain.Collection
 						}
 					})
 				}
-				if ui.Button(c, "设置环境变量").Height(22).FontSize(m.FontXS).Clicked() {
+				if ui.Button(c, locales.ScriptsSnipSetEnv()).Height(22).FontSize(m.FontXS).Clicked() {
 					if state.preScriptDraft != "" && !strings.HasSuffix(state.preScriptDraft, "\n") {
 						state.preScriptDraft += "\n"
 					}
@@ -1864,7 +1865,7 @@ func renderScriptsEditor(c *ui.Context, props pageProps, coll *domain.Collection
 			ui.TextArea(c, &state.preScriptDraft).Fill().MinHeight(180).
 				Padding(m.Space2, m.Space2).Radius(m.RadiusSM).
 				FontSize(m.FontSM).FixedLineHeight(20).
-				Placeholder("// 在发送请求前执行的 JavaScript 脚本\npm.variables.set(\"timestamp\", \"1609459200\");\npm.environment.set(\"auth_token\", \"secret\");").
+				Placeholder(locales.ScriptsPrePlaceholder()).
 				OnChange(func() {
 					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
 						if node.Request != nil {
@@ -1875,8 +1876,8 @@ func renderScriptsEditor(c *ui.Context, props pageProps, coll *domain.Collection
 		} else {
 			// Tests Script
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-				ui.Text(c, "快速插入测试断言:").FontSize(m.FontXS).TextColor(tk.TextMuted)
-				if ui.Button(c, "状态码 200").Height(22).FontSize(m.FontXS).Clicked() {
+				ui.Text(c, locales.ScriptsInsertTest()).FontSize(m.FontXS).TextColor(tk.TextMuted)
+				if ui.Button(c, locales.ScriptsSnipStatus200()).Height(22).FontSize(m.FontXS).Clicked() {
 					if state.testsScriptDraft != "" && !strings.HasSuffix(state.testsScriptDraft, "\n") {
 						state.testsScriptDraft += "\n"
 					}
@@ -1887,7 +1888,7 @@ func renderScriptsEditor(c *ui.Context, props pageProps, coll *domain.Collection
 						}
 					})
 				}
-				if ui.Button(c, "耗时 < 500ms").Height(22).FontSize(m.FontXS).Clicked() {
+				if ui.Button(c, locales.ScriptsSnipTime500()).Height(22).FontSize(m.FontXS).Clicked() {
 					if state.testsScriptDraft != "" && !strings.HasSuffix(state.testsScriptDraft, "\n") {
 						state.testsScriptDraft += "\n"
 					}
@@ -1898,7 +1899,7 @@ func renderScriptsEditor(c *ui.Context, props pageProps, coll *domain.Collection
 						}
 					})
 				}
-				if ui.Button(c, "JSON 字段校验").Height(22).FontSize(m.FontXS).Clicked() {
+				if ui.Button(c, locales.ScriptsSnipJSONField()).Height(22).FontSize(m.FontXS).Clicked() {
 					if state.testsScriptDraft != "" && !strings.HasSuffix(state.testsScriptDraft, "\n") {
 						state.testsScriptDraft += "\n"
 					}
@@ -1914,7 +1915,7 @@ func renderScriptsEditor(c *ui.Context, props pageProps, coll *domain.Collection
 			ui.TextArea(c, &state.testsScriptDraft).Fill().MinHeight(180).
 				Padding(m.Space2, m.Space2).Radius(m.RadiusSM).
 				FontSize(m.FontSM).FixedLineHeight(20).
-				Placeholder("// 请求收到响应后执行的测试断言脚本\npm.test(\"Status code is 200\", function () {\n    pm.response.to.have.status(200);\n});\npm.test(\"Check code is 0\", function () {\n    pm.expect(pm.response.json().code).to.eql(0);\n});").
+				Placeholder(locales.ScriptsTestsPlaceholder()).
 				OnChange(func() {
 					props.actions.updateNode(coll.ID, n.ID, func(node *domain.Node) {
 						if node.Request != nil {
@@ -1944,7 +1945,7 @@ func renderSettingsEditor(c *ui.Context, props pageProps, coll *domain.Collectio
 
 	ui.Column(c).Grow(1).Gap(12).Padding(4, 0).Children(func() {
 		ui.Row(c).Height(32).AlignItems(ui.Center).Gap(8).Children(func() {
-			ui.Text(c, "请求超时时间 (ms):").FontSize(m.FontSM).
+			ui.Text(c, locales.ReqSettingTimeout()).FontSize(m.FontSM).
 				TextColor(tk.TextSecondary).Width(160)
 			in := ui.TextInputBase(c.Key("settings-timeout-input"), &state.timeoutDraft).
 				Width(120).Height(26).PaddingX(6).
@@ -2001,7 +2002,7 @@ func renderSettingsEditor(c *ui.Context, props pageProps, coll *domain.Collectio
 					}
 				})
 			}
-			ui.Text(c, "自动跟随 HTTP 重定向 (Follow Redirects)").FontSize(m.FontSM).
+			ui.Text(c, locales.ReqSettingRedirects()).FontSize(m.FontSM).
 				TextColor(tk.TextSecondary)
 		})
 
@@ -2039,7 +2040,7 @@ func renderSettingsEditor(c *ui.Context, props pageProps, coll *domain.Collectio
 					}
 				})
 			}
-			ui.Text(c, "开启 SSL/TLS 证书有效性校验 (Verify SSL)").FontSize(m.FontSM).
+			ui.Text(c, locales.ReqSettingVerifySSL()).FontSize(m.FontSM).
 				TextColor(tk.TextSecondary)
 		})
 
@@ -2079,17 +2080,17 @@ func renderSettingsEditor(c *ui.Context, props pageProps, coll *domain.Collectio
 					}
 				})
 			}
-			ui.Text(c, "启用会话 Cookie 管理 (CookieJar 自动持久化并在后续请求中携带)").FontSize(m.FontSM).
+			ui.Text(c, locales.ReqSettingCookieJar()).FontSize(m.FontSM).
 				TextColor(tk.TextSecondary)
 		})
 
 		ui.Row(c).Height(32).AlignItems(ui.Center).Gap(8).Children(func() {
-			ui.Text(c, "自定义代理 (Proxy URL):").FontSize(m.FontSM).
+			ui.Text(c, locales.ReqSettingProxy()).FontSize(m.FontSM).
 				TextColor(tk.TextSecondary).Width(160)
 			in := ui.TextInputBase(c.Key("settings-proxy-input"), &state.proxyDraft).
 				Fill().Height(26).PaddingX(6).
 				Radius(m.RadiusSM).Border(m.Border, tk.Border).
-				Placeholder("例如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080").
+				Placeholder(locales.ReqSettingProxyPlaceholder()).
 				FontSize(m.FontSM).TextColor(tk.TextPrimary)
 			if in.Focused() {
 				in.Border(m.Border, tk.FocusRing)
@@ -2139,7 +2140,7 @@ func renderSettingsEditor(c *ui.Context, props pageProps, coll *domain.Collectio
 					}
 				})
 			}
-			ui.Text(c, "禁用代理 (直连模式 Direct Connection，绕过系统代理)").FontSize(m.FontSM).
+			ui.Text(c, locales.ReqSettingDisableProxy()).FontSize(m.FontSM).
 				TextColor(tk.TextSecondary)
 		})
 	})
@@ -2162,23 +2163,23 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 			}
 		}
 
-		headersTabLabel := "Headers"
+		headersTabLabel := locales.RespTabHeaders()
 		if headerCount > 0 {
-			headersTabLabel = fmt.Sprintf("Headers %d", headerCount)
+			headersTabLabel = fmt.Sprintf("%s %d", locales.RespTabHeaders(), headerCount)
 		}
-		cookiesTabLabel := "Cookies"
+		cookiesTabLabel := locales.RespTabCookies()
 		if cookieCount > 0 {
-			cookiesTabLabel = fmt.Sprintf("Cookies %d", cookieCount)
+			cookiesTabLabel = fmt.Sprintf("%s %d", locales.RespTabCookies(), cookieCount)
 		}
-		testTabLabel := "Test Results"
+		testTabLabel := locales.RespTabTests()
 		if totalTests > 0 {
-			testTabLabel = fmt.Sprintf("Test Results (%d/%d)", passedTests, totalTests)
+			testTabLabel = fmt.Sprintf("%s (%d/%d)", locales.RespTabTests(), passedTests, totalTests)
 		}
 
 		// 响应头行：左侧轻量化 Tab + 右侧状态码 / 耗时 / 体积 / 复制（16px 统一边距）
 		ui.Row(c).FillWidth().Padding(8, 16, 6, 16).AlignItems(ui.Center).Children(func() {
 			respTabs := []string{
-				"Body",
+				locales.RespTabBody(),
 				headersTabLabel,
 				cookiesTabLabel,
 				testTabLabel,
@@ -2188,7 +2189,7 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 			}, func() {
 				ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
 					if state.sending {
-						ui.Text(c, "Sending...").FontSize(11).FontWeight(600).TextColor(tk2.Warning)
+						ui.Text(c, locales.RespSending()).FontSize(11).FontWeight(600).TextColor(tk2.Warning)
 					} else if state.hasResponse {
 						statusColor := tk2.Success
 						if state.respStatus >= 400 || state.respStatus == 0 {
@@ -2219,7 +2220,7 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 						if copyPayload != "" {
 							copyBtn := ui.ButtonBase(c.Key("resp-copy-btn")).Height(22).PaddingX(6).
 								Radius(4).AlignItems(ui.Center).Gap(4).Cursor(ui.CursorPointer).
-								Role(ui.RoleButton).Label("Copy response").Tooltip(copyTooltip)
+								Role(ui.RoleButton).Label(locales.RespCopyResponse()).Tooltip(copyTooltip)
 							copiedTab := ui.Local(copyBtn, "resp-copied-payload", func() string { return "" })
 							if *copiedTab != "" && *copiedTab != copyPayload {
 								*copiedTab = ""
@@ -2237,10 +2238,10 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 							copyBtn.Children(func() {
 								if isCopied {
 									ui.Icon(c, icons.Check).Size(11, 11).TextColor(tk2.Success)
-									ui.Text(c, "Copied").FontSize(11).TextColor(tk2.Success)
+									ui.Text(c, locales.Copied()).FontSize(11).TextColor(tk2.Success)
 								} else {
 									ui.Icon(c, icons.Copy).Size(11, 11).TextColor(tk2.TextSecondary)
-									ui.Text(c, "Copy").FontSize(11).TextColor(tk2.TextSecondary)
+									ui.Text(c, locales.Copy()).FontSize(11).TextColor(tk2.TextSecondary)
 								}
 							})
 						}
@@ -2254,7 +2255,7 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 			if state.sending {
 				ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Center).Justify(ui.Center).Gap(8).Children(func() {
 					ui.Icon(c, icons.Clock).Size(15, 15).TextColor(tk2.Accent)
-					ui.Text(c, "Sending request...").FontSize(12).TextColor(tk2.TextSecondary)
+					ui.Text(c, locales.RespSendingFull()).FontSize(12).TextColor(tk2.TextSecondary)
 				})
 				return
 			}
@@ -2265,9 +2266,9 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 						Border(1, tk2.Border).Center().Children(func() {
 						ui.Icon(c, icons.Send).FontSize(16).TextColor(tk2.TextMuted)
 					})
-					ui.Text(c, "Click Send to get a response").
+					ui.Text(c, locales.RespEmptyTitle()).
 						FontSize(12).FontWeight(500).TextColor(tk2.TextSecondary)
-					ui.Text(c, "Enter a URL and press Send (Ctrl+Enter) to inspect response body, headers, and cookies.").
+					ui.Text(c, locales.RespEmptyDesc()).
 						FontSize(11).TextColor(tk2.TextMuted)
 				})
 				return
@@ -2277,7 +2278,7 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 				ui.Column(c).Padding(8, 0).Gap(6).Children(func() {
 					ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
 						ui.Icon(c, icons.Get("triangle-alert")).Size(16, 16).TextColor(tk.Danger)
-						ui.Text(c, "请求遇到错误:").FontSize(m.FontSM).FontWeight(600).TextColor(tk.Danger)
+						ui.Text(c, locales.RespErrorPrefix()).FontSize(m.FontSM).FontWeight(600).TextColor(tk.Danger)
 					})
 					ui.Text(c, state.respError).FontSize(m.FontSM).TextColor(tk.TextPrimary)
 				})
@@ -2290,7 +2291,7 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 					renderResponseBody(c, state, tk, m)
 				} else if state.respError == "" {
 					ui.Row(c).Height(60).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-						ui.Text(c, "响应体内容为空").FontSize(m.FontSM).TextColor(tk.TextMuted)
+						ui.Text(c, locales.RespEmptyBody()).FontSize(m.FontSM).TextColor(tk.TextMuted)
 					})
 				}
 			case 1:
@@ -2312,7 +2313,7 @@ func responsePane(c *ui.Context, props pageProps, n *domain.Node,
 func renderTestResults(c *ui.Context, results []domain.TestResult, tk theme.Tokens, m theme.Metric) {
 	if len(results) == 0 {
 		ui.Row(c).Height(80).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-			ui.Text(c, "本次请求未执行测试脚本。您可在上方「Scripts」Tab 中编写 pm.test(...) 测试断言。").
+			ui.Text(c, locales.RespNoTests()).
 				FontSize(m.FontSM).TextColor(tk.TextMuted)
 		})
 		return
@@ -2403,9 +2404,9 @@ func responseTabCopyPayload(state *reqSessionState) (payload, tooltip string) {
 	}
 	switch state.respTab {
 	case 1:
-		return formatResponseHeaders(state.respHeaders), "Copy all headers"
+		return formatResponseHeaders(state.respHeaders), locales.RespCopyAllHeadersTip()
 	case 2:
-		return formatResponseCookies(state.respCookies), "Copy all cookies"
+		return formatResponseCookies(state.respCookies), locales.RespCopyAllCookiesTip()
 	case 3:
 		if len(state.respTestResults) == 0 {
 			return "", ""
@@ -2424,9 +2425,9 @@ func responseTabCopyPayload(state *reqSessionState) (payload, tooltip string) {
 				fmt.Fprintf(&b, " (%s)", tr.Error)
 			}
 		}
-		return b.String(), "Copy test results"
+		return b.String(), locales.RespCopyTestsTip()
 	default:
-		return state.respBody, "Copy response body"
+		return state.respBody, locales.RespCopyBodyTip()
 	}
 }
 
@@ -2434,7 +2435,7 @@ func responseTabCopyPayload(state *reqSessionState) (payload, tooltip string) {
 func renderResponseHeaders(c *ui.Context, headers []domain.KV, tk theme.Tokens, m theme.Metric) {
 	if len(headers) == 0 {
 		ui.Row(c).Height(40).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-			ui.Text(c, "响应中无返回标头").FontSize(m.FontXS).TextColor(tk.TextMuted)
+			ui.Text(c, locales.RespNoHeaders()).FontSize(m.FontXS).TextColor(tk.TextMuted)
 		})
 		return
 	}
@@ -2450,14 +2451,14 @@ func renderResponseHeaders(c *ui.Context, headers []domain.KV, tk theme.Tokens, 
 			ui.Row(c).FillWidth().Height(28).PaddingX(8).Gap(8).AlignItems(ui.Center).
 				Background(tk2.BgSubtle).
 				BorderWidth(0, 0, 1, 0).BorderColor(tk2.Border).Children(func() {
-				ui.Text(c, "KEY").FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Width(200).SingleLine()
-				ui.Text(c, "VALUE").FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Grow(1).SingleLine()
+				ui.Text(c, locales.ColKey()).FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Width(200).SingleLine()
+				ui.Text(c, locales.ColValue()).FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Grow(1).SingleLine()
 
 				copyAllBtn := ui.ButtonBase(c.Key("resp-hdr-copy-all")).
 					Height(20).PaddingX(6).Gap(4).Radius(m.RadiusSM).
 					AlignItems(ui.Center).Justify(ui.Center).
 					Cursor(ui.CursorPointer).Role(ui.RoleButton).
-					Label("Copy All Headers").Tooltip("Copy all headers as Key: Value")
+					Label(locales.RespCopyAllHeaders()).Tooltip(locales.RespCopyAllHeadersTip())
 				if allCopied {
 					copyAllBtn.Background(tk2.AccentSoft)
 				} else if copyAllBtn.Hovered() {
@@ -2470,10 +2471,10 @@ func renderResponseHeaders(c *ui.Context, headers []domain.KV, tk theme.Tokens, 
 				copyAllBtn.Children(func() {
 					if allCopied {
 						ui.Icon(c, icons.Check).FontSize(10).TextColor(tk2.Success)
-						ui.Text(c, "Copied").FontSize(10).TextColor(tk2.Success).SingleLine()
+						ui.Text(c, locales.Copied()).FontSize(10).TextColor(tk2.Success).SingleLine()
 					} else {
 						ui.Icon(c, icons.Copy).FontSize(10).TextColor(tk2.TextSecondary)
-						ui.Text(c, "Copy All").FontSize(10).TextColor(tk2.TextSecondary).SingleLine()
+						ui.Text(c, locales.CopyAll()).FontSize(10).TextColor(tk2.TextSecondary).SingleLine()
 					}
 				})
 			})
@@ -2495,7 +2496,7 @@ func renderResponseHeaders(c *ui.Context, headers []domain.KV, tk theme.Tokens, 
 						Width(200).Height(22).PaddingX(4).Radius(m.RadiusSM).
 						AlignItems(ui.Center).Justify(ui.Start).
 						Cursor(ui.CursorPointer).Role(ui.RoleButton).
-						Label("Header key " + h.Key).Tooltip("Click to copy " + h.Key + ": " + h.Value)
+						Label("Header key " + h.Key).Tooltip(locales.RespClickCopyTip(h.Key + ": " + h.Value))
 					if keyBtn.Hovered() {
 						keyBtn.Background(tk2.BgSelected)
 					}
@@ -2531,7 +2532,7 @@ func renderResponseHeaders(c *ui.Context, headers []domain.KV, tk theme.Tokens, 
 						Height(22).PaddingX(6).Gap(4).Radius(m.RadiusSM).
 						AlignItems(ui.Center).Justify(ui.Center).
 						Cursor(ui.CursorPointer).Role(ui.RoleButton).
-						Label("Copy header " + h.Key).Tooltip("Copy value")
+						Label("Copy header " + h.Key).Tooltip(locales.RespCopyValueTip())
 					if isCopied {
 						copyBtn.Background(tk2.AccentSoft)
 					} else if copyBtn.Hovered() {
@@ -2544,10 +2545,10 @@ func renderResponseHeaders(c *ui.Context, headers []domain.KV, tk theme.Tokens, 
 					copyBtn.Children(func() {
 						if isCopied {
 							ui.Icon(c, icons.Check).FontSize(11).TextColor(tk2.Success)
-							ui.Text(c, "Copied").FontSize(10).TextColor(tk2.Success).SingleLine()
+							ui.Text(c, locales.Copied()).FontSize(10).TextColor(tk2.Success).SingleLine()
 						} else {
 							ui.Icon(c, icons.Copy).FontSize(11).TextColor(tk2.TextSecondary)
-							ui.Text(c, "Copy").FontSize(10).TextColor(tk2.TextSecondary).SingleLine()
+							ui.Text(c, locales.Copy()).FontSize(10).TextColor(tk2.TextSecondary).SingleLine()
 						}
 					})
 				})
@@ -2560,7 +2561,7 @@ func renderResponseHeaders(c *ui.Context, headers []domain.KV, tk theme.Tokens, 
 func renderResponseCookies(c *ui.Context, cookies []transport.ResponseCookie, tk theme.Tokens, m theme.Metric) {
 	if len(cookies) == 0 {
 		ui.Row(c).Height(40).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-			ui.Text(c, "响应中未包含 Cookie").FontSize(m.FontXS).TextColor(tk.TextMuted)
+			ui.Text(c, locales.RespNoCookies()).FontSize(m.FontXS).TextColor(tk.TextMuted)
 		})
 		return
 	}
@@ -2575,18 +2576,18 @@ func renderResponseCookies(c *ui.Context, cookies []transport.ResponseCookie, tk
 			ui.Row(c).Height(28).PaddingX(8).Gap(8).AlignItems(ui.Center).
 				Background(tk2.BgSubtle).
 				BorderWidth(0, 0, 1, 0).BorderColor(tk2.Border).Children(func() {
-				ui.Text(c, "NAME").FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Width(130).SingleLine()
-				ui.Text(c, "VALUE").FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Grow(1).MinWidth(150).SingleLine()
-				ui.Text(c, "DOMAIN").FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Width(110).SingleLine()
-				ui.Text(c, "PATH").FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Width(60).SingleLine()
-				ui.Text(c, "EXPIRES").FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Width(130).SingleLine()
+				ui.Text(c, locales.ColName()).FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Width(130).SingleLine()
+				ui.Text(c, locales.ColValue()).FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Grow(1).MinWidth(150).SingleLine()
+				ui.Text(c, locales.ColDomain()).FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Width(110).SingleLine()
+				ui.Text(c, locales.ColPath()).FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Width(60).SingleLine()
+				ui.Text(c, locales.ColExpires()).FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Width(130).SingleLine()
 				ui.Text(c, "HTTPONLY").FontSize(10).FontWeight(600).TextColor(tk2.TextMuted).Width(65).SingleLine()
 
 				copyAllBtn := ui.ButtonBase(c.Key("ck-copy-all")).
 					Height(20).PaddingX(6).Gap(4).Radius(m.RadiusSM).
 					AlignItems(ui.Center).Justify(ui.Center).
 					Cursor(ui.CursorPointer).Role(ui.RoleButton).
-					Label("Copy All Cookies").Tooltip("Copy all cookies as name=value; ...")
+					Label(locales.RespCopyAllCookies()).Tooltip(locales.RespCopyAllCookiesTip())
 				if allCopied {
 					copyAllBtn.Background(tk2.AccentSoft)
 				} else if copyAllBtn.Hovered() {
@@ -2599,10 +2600,10 @@ func renderResponseCookies(c *ui.Context, cookies []transport.ResponseCookie, tk
 				copyAllBtn.Children(func() {
 					if allCopied {
 						ui.Icon(c, icons.Check).FontSize(10).TextColor(tk2.Success)
-						ui.Text(c, "Copied").FontSize(10).TextColor(tk2.Success).SingleLine()
+						ui.Text(c, locales.Copied()).FontSize(10).TextColor(tk2.Success).SingleLine()
 					} else {
 						ui.Icon(c, icons.Copy).FontSize(10).TextColor(tk2.TextSecondary)
-						ui.Text(c, "Copy All").FontSize(10).TextColor(tk2.TextSecondary).SingleLine()
+						ui.Text(c, locales.CopyAll()).FontSize(10).TextColor(tk2.TextSecondary).SingleLine()
 					}
 				})
 			})
@@ -2624,7 +2625,7 @@ func renderResponseCookies(c *ui.Context, cookies []transport.ResponseCookie, tk
 						Width(130).Height(24).PaddingX(4).Radius(m.RadiusSM).
 						AlignItems(ui.Center).Justify(ui.Start).
 						Cursor(ui.CursorPointer).Role(ui.RoleButton).
-						Label("Cookie name " + ck.Name).Tooltip("Click to copy " + ck.Name + "=" + ck.Value)
+						Label("Cookie name " + ck.Name).Tooltip(locales.RespClickCopyTip(ck.Name + "=" + ck.Value))
 					if nameBtn.Hovered() {
 						nameBtn.Background(tk2.BgSelected)
 					}
@@ -2680,7 +2681,7 @@ func renderResponseCookies(c *ui.Context, cookies []transport.ResponseCookie, tk
 						Height(22).PaddingX(6).Gap(4).Radius(m.RadiusSM).
 						AlignItems(ui.Center).Justify(ui.Center).
 						Cursor(ui.CursorPointer).Role(ui.RoleButton).
-						Label("Copy " + ck.Name).Tooltip("Copy value")
+						Label("Copy " + ck.Name).Tooltip(locales.RespCopyValueTip())
 					if isCopied {
 						copyBtn.Background(tk2.AccentSoft)
 					} else if copyBtn.Hovered() {
@@ -2693,10 +2694,10 @@ func renderResponseCookies(c *ui.Context, cookies []transport.ResponseCookie, tk
 					copyBtn.Children(func() {
 						if isCopied {
 							ui.Icon(c, icons.Check).FontSize(11).TextColor(tk2.Success)
-							ui.Text(c, "Copied").FontSize(10).TextColor(tk2.Success).SingleLine()
+							ui.Text(c, locales.Copied()).FontSize(10).TextColor(tk2.Success).SingleLine()
 						} else {
 							ui.Icon(c, icons.Copy).FontSize(11).TextColor(tk2.TextSecondary)
-							ui.Text(c, "Copy").FontSize(10).TextColor(tk2.TextSecondary).SingleLine()
+							ui.Text(c, locales.Copy()).FontSize(10).TextColor(tk2.TextSecondary).SingleLine()
 						}
 					})
 				})

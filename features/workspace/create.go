@@ -10,6 +10,7 @@ import (
 	"rddpostman/internal/nav"
 	"rddpostman/internal/routes"
 	"rddpostman/internal/store"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -46,7 +47,7 @@ func createWorkspaceView(c *ui.Context, db *store.Store, r nav.Navigator, st *ws
 			} else if path != "" {
 				entry := st.loadIcon(path)
 				if entry.failed {
-					st.createIconErr = "Unsupported or unreadable image file."
+					st.createIconErr = locales.WsIconInvalidErr()
 				} else {
 					st.createIcon = path
 					st.createIconErr = ""
@@ -84,7 +85,7 @@ func createWorkspaceView(c *ui.Context, db *store.Store, r nav.Navigator, st *ws
 				st.createLocalErr = errMsg
 			} else if dir != "" {
 				if !isExistingDir(dir) {
-					st.createLocalErr = "Selected path is not an accessible folder."
+					st.createLocalErr = locales.WsFolderInvalidErr()
 				} else {
 					rememberRecentFolder(dir)
 					st.localFolders = prependLocalFolder(st.localFolders, dir)
@@ -139,12 +140,12 @@ func createWorkspaceView(c *ui.Context, db *store.Store, r nav.Navigator, st *ws
 		ui.Column(c).FillWidth().Padding(28, m.Space6, 40, m.Space6).AlignItems(ui.Center).Children(func() {
 			ui.Column(c).FillWidth().MaxWidth(480).Gap(m.Space4).Children(func() {
 				// 标题
-				ui.Text(c, "Create your workspace").
+				ui.Text(c, locales.WsCreateHeading()).
 					FontSize(m.FontXL).Bold().TextColor(tk.TextPrimary).SingleLine()
 
 				// 1. Workspace icon（选择本地图片文件替换 Name 列默认图标）
 				ui.Column(c).FillWidth().Gap(m.Space2).Children(func() {
-					ui.Text(c, "Workspace icon").FontSize(m.FontXS).FontWeight(500).
+					ui.Text(c, locales.WsIconLabel()).FontSize(m.FontXS).FontWeight(500).
 						TextColor(tk.TextPrimary).SingleLine()
 
 					ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(m.Space3).Children(func() {
@@ -152,19 +153,19 @@ func createWorkspaceView(c *ui.Context, db *store.Store, r nav.Navigator, st *ws
 
 						ui.Column(c).Gap(m.Space15).AlignItems(ui.Start).Children(func() {
 							if st.createIcon == "" {
-								if wsIconUploadButton(c, "ws-icon-choose", "Choose local image").Clicked() {
+								if wsIconUploadButton(c, "ws-icon-choose", locales.WsIconChoose()).Clicked() {
 									triggerPickIcon()
 								}
-								ui.Text(c, "PNG, JPG or SVG · Replaces the default icon in the workspace list.").
+								ui.Text(c, locales.WsIconHint()).
 									FontSize(m.FontMicro).TextColor(tk.TextMuted).SingleLine()
 							} else {
 								ui.Row(c).AlignItems(ui.Center).Gap(m.Space2).Children(func() {
-									if wsIconUploadButton(c, "ws-icon-change", "Change image").Clicked() {
+									if wsIconUploadButton(c, "ws-icon-change", locales.WsIconChange()).Clicked() {
 										triggerPickIcon()
 									}
 									rmBtn := ui.ButtonBase(c.Key("ws-icon-remove")).
 										Height(26).PaddingX(m.Space1).Center().Radius(m.RadiusSM).
-										Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Remove").
+										Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.Remove()).
 										Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 									if rmBtn.Hovered() {
 										rmBtn.Background(tk.DangerSoft)
@@ -174,7 +175,7 @@ func createWorkspaceView(c *ui.Context, db *store.Store, r nav.Navigator, st *ws
 										st.createIconErr = ""
 									}
 									rmBtn.Children(func() {
-										ui.Text(c, "Remove").FontSize(m.FontXS).FontWeight(500).
+										ui.Text(c, locales.Remove()).FontSize(m.FontXS).FontWeight(500).
 											TextColor(tk.Danger).SingleLine()
 									})
 								})
@@ -190,7 +191,7 @@ func createWorkspaceView(c *ui.Context, db *store.Store, r nav.Navigator, st *ws
 
 				// 2. Workspace name
 				ui.Column(c).FillWidth().Gap(m.Space15).Children(func() {
-					ui.Text(c, "Workspace name").FontSize(m.FontXS).FontWeight(500).
+					ui.Text(c, locales.WorkspaceName()).FontSize(m.FontXS).FontWeight(500).
 						TextColor(tk.TextPrimary).SingleLine()
 
 					prevName := st.createName
@@ -199,9 +200,9 @@ func createWorkspaceView(c *ui.Context, db *store.Store, r nav.Navigator, st *ws
 						FillWidth().Height(m.ButtonLarge).PaddingX(m.Space3).
 						Radius(m.RadiusSM).Background(tk.BgSurface).
 						FontSize(m.FontSM).TextColor(tk.TextPrimary).
-						Placeholder("A team name, project or service...").
+						Placeholder(locales.WsNamePlaceholder()).
 						PlaceholderColor(tk.TextMuted).
-						Label("Workspace name")
+						Label(locales.WorkspaceName())
 					if st.createName != prevName {
 						st.createNameAuto = false
 					}
@@ -227,19 +228,19 @@ func createWorkspaceView(c *ui.Context, db *store.Store, r nav.Navigator, st *ws
 
 				// 3. Select workspace type
 				ui.Column(c).FillWidth().Gap(m.Space15).Children(func() {
-					ui.Text(c, "Select workspace type").FontSize(m.FontXS).FontWeight(500).
+					ui.Text(c, locales.WsSelectType()).FontSize(m.FontXS).FontWeight(500).
 						TextColor(tk.TextPrimary).SingleLine()
 
 					ui.Row(c).FillWidth().Gap(m.Space2).AlignItems(ui.Stretch).Children(func() {
-						wsTypeCard(c, st, "Internal", "Share APIs with your team.", "", icons.Users)
-						wsTypeCard(c, st, "Partner", "Share APIs with your partners.", "Upgrade plan", icons.Link)
-						wsTypeCard(c, st, "Public", "Everyone can access your APIs.", "", icons.Globe)
+						wsTypeCard(c, st, "Internal", locales.WsTypeInternal(), locales.WsTypeInternalDesc(), "", icons.Users)
+						wsTypeCard(c, st, "Partner", locales.WsTypePartner(), locales.WsTypePartnerDesc(), locales.WsTypePartnerBadge(), icons.Link)
+						wsTypeCard(c, st, "Public", locales.WsTypePublic(), locales.WsTypePublicDesc(), "", icons.Globe)
 					})
 				})
 
 				// 4. Choose how you'd like to set up this workspace
 				ui.Column(c).FillWidth().Gap(m.Space15).Children(func() {
-					ui.Text(c, "Choose how you'd like to set up this workspace").
+					ui.Text(c, locales.WsSetupHeading()).
 						FontSize(m.FontXS).FontWeight(500).TextColor(tk.TextPrimary).SingleLine()
 
 					ui.Row(c).FillWidth().Gap(m.Space3).AlignItems(ui.Stretch).Children(func() {
@@ -251,9 +252,9 @@ func createWorkspaceView(c *ui.Context, db *store.Store, r nav.Navigator, st *ws
 				// 5. Description (Optional)
 				ui.Column(c).FillWidth().Gap(m.Space15).Children(func() {
 					ui.Row(c).AlignItems(ui.Center).Gap(m.Space15).Children(func() {
-						ui.Text(c, "Description").FontSize(m.FontXS).FontWeight(500).
+						ui.Text(c, locales.DescriptionLabel()).FontSize(m.FontXS).FontWeight(500).
 							TextColor(tk.TextPrimary).SingleLine()
-						ui.Text(c, "(Optional)").FontSize(m.FontMicro).
+						ui.Text(c, locales.Optional()).FontSize(m.FontMicro).
 							TextColor(tk.TextMuted).SingleLine()
 					})
 
@@ -261,9 +262,9 @@ func createWorkspaceView(c *ui.Context, db *store.Store, r nav.Navigator, st *ws
 						FillWidth().Height(64).Padding(m.Space2, m.Space3).
 						Radius(m.RadiusSM).Background(tk.BgSurface).
 						FontSize(m.FontSM).TextColor(tk.TextPrimary).
-						Placeholder("Add a brief description for this workspace...").
+						Placeholder(locales.WsDescPlaceholder()).
 						PlaceholderColor(tk.TextMuted).
-						Label("Workspace description")
+						Label(locales.WsDescLabel())
 					switch {
 					case descIn.Focused():
 						descIn.Border(m.Border, tk.Focus).Shadow(0, 0, 0, 3, tk.FocusRing)
@@ -276,7 +277,7 @@ func createWorkspaceView(c *ui.Context, db *store.Store, r nav.Navigator, st *ws
 
 				// 6. 底部按钮行：Cancel + Create Workspace
 				ui.Row(c).FillWidth().Justify(ui.End).Gap(m.Space2).Margin(m.Space1, 0, 0, 0).Children(func() {
-					if wsSecondaryButton(c, "ws-create-cancel", "Cancel").Clicked() {
+					if wsSecondaryButton(c, "ws-create-cancel", locales.Cancel()).Clicked() {
 						st.resetCreateForm()
 						if r != nil {
 							r.Push(routes.HubWorkspaces)
@@ -284,7 +285,7 @@ func createWorkspaceView(c *ui.Context, db *store.Store, r nav.Navigator, st *ws
 					}
 					disabled := strings.TrimSpace(st.createName) == "" ||
 						(st.createSetup == "local" && strings.TrimSpace(st.createLocalDir) == "")
-					if wsPrimaryButton(c, "ws-create-submit", "Create Workspace", disabled).Clicked() {
+					if wsPrimaryButton(c, "ws-create-submit", locales.HubCreateWorkspaceTitle(), disabled).Clicked() {
 						if submitCreateWorkspace(db, st) && r != nil {
 							r.Push(routes.HubWorkspaces)
 						}
@@ -320,18 +321,18 @@ func wsIconUploadButton(c *ui.Context, key, label string) ui.Element {
 func submitCreateWorkspace(db *store.Store, st *wsContentState) bool {
 	name := strings.TrimSpace(st.createName)
 	if name == "" {
-		st.createErr = "Please enter a workspace name."
+		st.createErr = locales.WsNameRequiredErr()
 		return false
 	}
 	dir := ""
 	if st.createSetup == "local" {
 		dir = strings.TrimSpace(st.createLocalDir)
 		if dir == "" {
-			st.createLocalErr = "Please choose a local folder first."
+			st.createLocalErr = locales.WsFolderRequiredErr()
 			return false
 		}
 		if !isExistingDir(dir) {
-			st.createLocalErr = "Selected folder does not exist."
+			st.createLocalErr = locales.WsFolderMissingErr()
 			return false
 		}
 	}
@@ -379,11 +380,11 @@ func submitCreateWorkspace(db *store.Store, st *wsContentState) bool {
 	return true
 }
 
-func wsTypeCard(c *ui.Context, st *wsContentState, title, desc, badge string, icon *ui.SVG) {
+func wsTypeCard(c *ui.Context, st *wsContentState, value, title, desc, badge string, icon *ui.SVG) {
 	m, tk := thV2.Metrics, thV2.Of(c)
-	selected := st.createType == title
+	selected := st.createType == value
 
-	card := ui.ButtonBase(c.Key("ws-type-"+title)).
+	card := ui.ButtonBase(c.Key("ws-type-"+value)).
 		Grow(1).Padding(m.Space3).Radius(m.RadiusSM).
 		Background(tk.BgSurface).
 		AlignItems(ui.Start).Justify(ui.Start).
@@ -400,7 +401,7 @@ func wsTypeCard(c *ui.Context, st *wsContentState, title, desc, badge string, ic
 	}
 
 	if card.Clicked() {
-		st.createType = title
+		st.createType = value
 	}
 
 	iconColor := tk.TextSecondary
@@ -431,7 +432,7 @@ func wsSetupBlankCard(c *ui.Context, st *wsContentState) {
 		Grow(1).MinHeight(152).Padding(m.Space3).Radius(m.RadiusSM).
 		Background(tk.BgSurface).
 		AlignItems(ui.Start).Justify(ui.Start).
-		Cursor(ui.CursorPointer).Role(ui.RoleRadio).Label("Blank workspace").
+		Cursor(ui.CursorPointer).Role(ui.RoleRadio).Label(locales.WsSetupBlank()).
 		Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 
 	switch {
@@ -457,10 +458,10 @@ func wsSetupBlankCard(c *ui.Context, st *wsContentState) {
 		ui.Column(c).FillWidth().Gap(m.Space15).Children(func() {
 			ui.Row(c).AlignItems(ui.Center).Gap(m.Space15).Children(func() {
 				ui.Icon(c, icons.FilePlus).FontSize(m.IconSM).TextColor(iconColor)
-				ui.Text(c, "Blank workspace").FontSize(m.FontSM).FontWeight(600).
+				ui.Text(c, locales.WsSetupBlank()).FontSize(m.FontSM).FontWeight(600).
 					TextColor(tk.TextPrimary).SingleLine()
 			})
-			ui.Text(c, "I want to start from scratch.").FontSize(m.FontMicro).TextColor(tk.TextMuted)
+			ui.Text(c, locales.WsSetupBlankDesc()).FontSize(m.FontMicro).TextColor(tk.TextMuted)
 		})
 	})
 }
@@ -498,19 +499,19 @@ func wsSetupLocalCard(
 		// 1. 卡片头部：点击切换至 local 模式
 		hdrBtn := ui.ButtonBase(c.Key("ws-setup-local")).
 			FillWidth().Justify(ui.Start).AlignItems(ui.Center).Gap(m.Space15).
-			Cursor(ui.CursorPointer).Role(ui.RoleRadio).Label("Open a local folder")
+			Cursor(ui.CursorPointer).Role(ui.RoleRadio).Label(locales.WsSetupLocal())
 		if hdrBtn.Clicked() {
 			st.createSetup = "local"
 		}
 		hdrBtn.Children(func() {
 			ui.Icon(c, icons.Folder).FontSize(m.IconSM).TextColor(iconColor)
-			ui.Text(c, "Open a local folder").FontSize(m.FontSM).FontWeight(600).
+			ui.Text(c, locales.WsSetupLocal()).FontSize(m.FontSM).FontWeight(600).
 				TextColor(tk.TextPrimary).SingleLine()
 		})
 
 		// 2. 本地目录候选列表（真实读取最近目录 / 同级项目目录）
 		if len(st.localFolders) == 0 {
-			ui.Text(c, "Select an existing folder or Git repo on your machine.").
+			ui.Text(c, locales.WsSetupLocalDesc()).
 				FontSize(m.FontMicro).TextColor(tk.TextMuted)
 		} else {
 			selKey := normalizePathKey(st.createLocalDir)
@@ -566,7 +567,7 @@ func wsSetupLocalCard(
 			pickBtn := ui.ButtonBase(c.Key("ws-open-new-folder")).
 				Height(24).PaddingX(m.Space2).Center().
 				Radius(m.RadiusSM).Border(m.Border, tk.BorderPopover).
-				Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Open New Folder").
+				Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.WsOpenNewFolder()).
 				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 			switch {
 			case pickBtn.Pressed():
@@ -580,7 +581,7 @@ func wsSetupLocalCard(
 				onPickNewFolder()
 			}
 			pickBtn.Children(func() {
-				ui.Text(c, "Open New Folder").FontSize(m.FontMicro).FontWeight(500).
+				ui.Text(c, locales.WsOpenNewFolder()).FontSize(m.FontMicro).FontWeight(500).
 					TextColor(tk.TextPrimary).SingleLine()
 			})
 		})

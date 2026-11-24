@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"rddpostman/locales"
 )
 
 // JSONErrorInfo 表示解析 JSON 失败时的定位信息，供 UI 高亮错误行与内联诊断卡使用。
@@ -23,7 +25,7 @@ type JSONErrorInfo struct {
 // Error 实现 error 接口。
 func (e *JSONErrorInfo) Error() string {
 	if e.Line > 0 {
-		return fmt.Sprintf("第 %d 行第 %d 列语法错误: %s", e.Line, e.Col, e.Detail)
+		return fmt.Sprintf("%s: %s", locales.DtErrJSONLineCol(strconv.Itoa(e.Line), strconv.Itoa(e.Col)), e.Detail)
 	}
 	return e.Detail
 }
@@ -118,7 +120,7 @@ func UnescapeJSON(src string) (string, error) {
 	}
 	if err := json.Unmarshal([]byte(`"`+src+`"`), &out); err != nil {
 		return "", &JSONErrorInfo{
-			Summary: "JSON 反转义失败",
+			Summary: locales.DtErrJSONUnescape(),
 			Detail:  err.Error(),
 		}
 	}
@@ -147,7 +149,7 @@ func describeJSONError(src string, err error) error {
 		return &JSONErrorInfo{
 			Line:    line,
 			Col:     col,
-			Summary: fmt.Sprintf("SyntaxError · 第 %d 行第 %d 列", line, col),
+			Summary: locales.DtErrJSONLineCol(strconv.Itoa(line), strconv.Itoa(col)),
 			Detail:  syn.Error(),
 		}
 	}

@@ -16,7 +16,7 @@ func mainPane(c *ui.Context, props pageProps) {
 	tk := thV2.Of(c)
 	state := props.state
 
-	ui.Column(c).Grow(1).MinHeight(0).Background(tk.BgSurface).Children(func() {
+	ui.Column(c).Fill().MinHeight(0).Background(tk.BgSurface).Children(func() {
 		// 顶部常驻 Tab 条（含多类型 Tabs、+ 与右侧环境切换器，对齐 Pixso 8-请求-Body）
 		tabsBar(c, props)
 		if envID, isEnv := parseEnvTabID(state.active); isEnv && props.actions.renderEnvTab != nil {
@@ -49,9 +49,21 @@ func emptyWorkspace(c *ui.Context, props pageProps) {
 		wsName = "API Workspace"
 	}
 
-	ui.Scroll(c).Grow(1).Background(tk.BgSurface).Children(func() {
-		ui.Row(c).FillWidth().Justify(ui.Center).Children(func() {
-			ui.Column(c).Width(640).Padding(48, 20, 40, 20).
+	scroll := ui.Scroll(c.Key("empty-ws-scroll")).Grow(1).FillWidth().Background(tk.BgSurface)
+	measured := ui.Local(scroll, "empty-ws-measured", func() bool { return false })
+	vh := scroll.Bounds().H
+	if vh == 0 && !*measured {
+		*measured = true
+		c.Services().Invalidate()
+	}
+
+	scroll.Children(func() {
+		wrap := ui.Row(c).FillWidth().Justify(ui.Center).AlignItems(ui.Center)
+		if vh > 0 {
+			wrap.MinHeight(vh)
+		}
+		wrap.Children(func() {
+			ui.Column(c).FillWidth().MaxWidth(640).Padding(36, 20, 36, 20).
 				AlignItems(ui.Center).Gap(20).Children(func() {
 
 				// 1. 顶部工作区徽标与标题区
@@ -61,11 +73,11 @@ func emptyWorkspace(c *ui.Context, props pageProps) {
 					ui.Icon(c, icons.LayersBoldDuotone).FontSize(26).TextColor(tk.Accent)
 				})
 
-				ui.Column(c).AlignItems(ui.Center).Gap(6).Children(func() {
+				ui.Column(c).FillWidth().AlignItems(ui.Center).Gap(6).Children(func() {
 					ui.Text(c, wsName).FontSize(20).FontWeight(600).
-						TextColor(tk.TextPrimary)
-					ui.Text(c, "在工作台中组织集合、调试 API 请求与同步环境变量。从左侧打开已有接口，或立即开始：").
-						FontSize(13).TextColor(tk.TextMuted)
+						TextColor(tk.TextPrimary).TextAlign(ui.Center)
+					ui.Text(c, locales.EmptyWsSubtitle()).
+						FontSize(13).TextColor(tk.TextMuted).TextAlign(ui.Center)
 				})
 
 				ui.Box(c).Height(4)
@@ -78,7 +90,7 @@ func emptyWorkspace(c *ui.Context, props pageProps) {
 							Key:   "empty-act-new-req",
 							Icon:  icons.SendBoldDuotone,
 							Title: locales.NewRequest(),
-							Desc:  "快速创建并调试单个 HTTP 请求",
+							Desc:  locales.EmptyCardNewReqDesc(),
 							OnClick: func() {
 								if len(props.collections) > 0 {
 									props.actions.createNode(domain.ID(props.collections[0].ID), domain.KindRequest)
@@ -92,7 +104,7 @@ func emptyWorkspace(c *ui.Context, props pageProps) {
 							Key:   "empty-act-new-coll",
 							Icon:  icons.LibraryBoldDuotone,
 							Title: locales.NewCollection(),
-							Desc:  "在 Tab 内直接编辑集合名称与统一认证",
+							Desc:  locales.EmptyCardNewCollDesc(),
 							OnClick: func() {
 								if props.actions.createCollectionTab != nil {
 									props.actions.createCollectionTab()
@@ -106,8 +118,8 @@ func emptyWorkspace(c *ui.Context, props pageProps) {
 						emptyActionCard(c, emptyCardProps{
 							Key:   "empty-act-import",
 							Icon:  icons.CodeBoldDuotone,
-							Title: "导入接口 (cURL)",
-							Desc:  "从 cURL 命令一键生成并解析请求",
+							Title: locales.EmptyCardImportCurlTitle(),
+							Desc:  locales.EmptyCardImportCurlDesc(),
 							OnClick: func() {
 								props.state.importCurlOpen = true
 								props.state.importCurlText = ""
@@ -119,7 +131,7 @@ func emptyWorkspace(c *ui.Context, props pageProps) {
 							Key:   "empty-act-env",
 							Icon:  icons.GlobeBoldDuotone,
 							Title: locales.RailEnvironments(),
-							Desc:  "配置 baseUrl 与多套环境变量",
+							Desc:  locales.EmptyCardEnvDesc(),
 							OnClick: func() {
 								props.actions.navigate(routes.WorkbenchEnvironmentsOf(string(props.workspaceID)))
 							},
@@ -206,18 +218,18 @@ func shortcutCheatsheet(c *ui.Context, tk thV2.Tokens, m thV2.Metric) {
 	col1 := []struct{ label, key string }{
 		{locales.NewRequest(), keycap("", "N")},
 		{locales.NewCollection(), keycap("", "B")},
-		{"保存请求", keycap("", "S")},
-		{"发送请求", keycap("", "Enter")},
+		{locales.ScSaveRequest(), keycap("", "S")},
+		{locales.ScSendRequest(), keycap("", "Enter")},
 	}
 	col2 := []struct{ label, key string }{
 		{locales.GlobalSearch(), keycap("", "K")},
 		{locales.SwitchEnvironment(), keycap("", "E")},
-		{"关闭当前标签", keycap("", "W")},
+		{locales.ScCloseTab(), keycap("", "W")},
 		{locales.ShowAllCommands(), keycap("shift", "P")},
 	}
 
 	ui.Column(c).FillWidth().Gap(10).Children(func() {
-		ui.Text(c, "常用快捷键").FontSize(12).FontWeight(600).
+		ui.Text(c, locales.CommonShortcuts()).FontSize(12).FontWeight(600).
 			TextColor(tk.TextSecondary)
 
 		ui.Row(c).FillWidth().Gap(24).Children(func() {

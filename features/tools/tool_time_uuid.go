@@ -11,6 +11,7 @@ import (
 	"rddpostman/components/v1/icons"
 	v2 "rddpostman/components/v2"
 	"rddpostman/internal/devtools"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -99,7 +100,7 @@ func renderTimestampTool(c *ui.Context) {
 
 	root.Children(func() {
 		// 1. Header (48px) + 右侧时区下拉选择器
-		toolHeader(c, icons.Clock, "Unix 时间戳与时区转换", "实时秒/毫秒时钟 · 双向转换 · 多时区与 ISO 8601 快捷格式", func() {
+		toolHeader(c, icons.Clock, locales.ToolTimestampTitle(), locales.ToolTimestampDesc(), func() {
 			tzBtn := toolBtn(c, toolBtnOpts{
 				Key:     "ts-tz-btn",
 				Label:   fmt.Sprintf("%s (%s)", tz.name, tz.offset),
@@ -174,11 +175,11 @@ func renderTimestampTool(c *ui.Context) {
 					ui.Row(c).Gap(24).AlignItems(ui.Center).Children(func() {
 						ui.Column(c).Gap(4).Children(func() {
 							ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-								ui.Text(c, "当前 UNIX 时间戳 (秒)").FontSize(m.FontXS).FontWeight(500).TextColor(tk.TextSecondary)
+								ui.Text(c, locales.TsCurrentSec()).FontSize(m.FontXS).FontWeight(500).TextColor(tk.TextSecondary)
 								if st.paused {
-									toolPill(c, "已暂停", pillWarning, true)
+									toolPill(c, locales.TsPaused(), pillWarning, true)
 								} else {
-									toolPill(c, "实时跳动", pillSuccess, true)
+									toolPill(c, locales.TsLive(), pillSuccess, true)
 								}
 							})
 							ui.Text(c, strconv.FormatInt(clockInfo.Seconds, 10)).
@@ -186,7 +187,7 @@ func renderTimestampTool(c *ui.Context) {
 						})
 						ui.Box(c).Size(1, 44).Background(tk.Border)
 						ui.Column(c).Gap(4).Children(func() {
-							ui.Text(c, "当前时间戳 (毫秒 ms)").FontSize(m.FontXS).FontWeight(500).TextColor(tk.TextSecondary)
+							ui.Text(c, locales.TsCurrentMs()).FontSize(m.FontXS).FontWeight(500).TextColor(tk.TextSecondary)
 							ui.Text(c, strconv.FormatInt(clockInfo.Milliseconds, 10)).
 								Font("monospace").FontSize(18).FontWeight(500).TextColor(tk.Accent).SingleLine()
 						})
@@ -194,10 +195,10 @@ func renderTimestampTool(c *ui.Context) {
 
 					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 						pVar := btnSecondary
-						pLbl := "暂停"
+						pLbl := locales.TsPause()
 						if st.paused {
 							pVar = btnPrimary
-							pLbl = "继续"
+							pLbl = locales.TsResume()
 						}
 						if toolBtn(c, toolBtnOpts{Key: "ts-pause-btn", Label: pLbl, Icon: icons.Play, Variant: pVar}).Clicked() {
 							st.paused = !st.paused
@@ -206,18 +207,18 @@ func renderTimestampTool(c *ui.Context) {
 							}
 						}
 						cSecVar := btnSecondary
-						cSecLbl := "复制秒"
+						cSecLbl := locales.TsCopySec()
 						if st.copiedKey == "clk-sec" {
-							cSecVar, cSecLbl = btnSuccess, "已复制"
+							cSecVar, cSecLbl = btnSuccess, locales.Copied()
 						}
 						if toolBtn(c, toolBtnOpts{Key: "ts-copy-sec", Label: cSecLbl, Icon: icons.Copy, Variant: cSecVar}).Clicked() {
 							c.Services().WriteClipboard(strconv.FormatInt(clockInfo.Seconds, 10))
 							st.copiedKey = "clk-sec"
 						}
 						cMsVar := btnSecondary
-						cMsLbl := "复制毫秒"
+						cMsLbl := locales.TsCopyMs()
 						if st.copiedKey == "clk-ms" {
-							cMsVar, cMsLbl = btnSuccess, "已复制"
+							cMsVar, cMsLbl = btnSuccess, locales.Copied()
 						}
 						if toolBtn(c, toolBtnOpts{Key: "ts-copy-ms", Label: cMsLbl, Icon: icons.Copy, Variant: cMsVar}).Clicked() {
 							c.Services().WriteClipboard(strconv.FormatInt(clockInfo.Milliseconds, 10))
@@ -231,13 +232,13 @@ func renderTimestampTool(c *ui.Context) {
 					// 左卡：时间戳 -> 日期时间
 					ui.Box(c).Grow(1).Basis(0).Children(func() {
 						toolCard(c, "ts-to-dt-card", tk.Border, tk.BgApp, func() {
-							ui.Text(c, "时间戳  →  日期时间").FontSize(m.FontSM).FontWeight(600).TextColor(tk.TextPrimary)
+							ui.Text(c, locales.TsToDtTitle()).FontSize(m.FontSM).FontWeight(600).TextColor(tk.TextPrimary)
 						}, func() {
 							uIdx := 0
 							if st.unitMs {
 								uIdx = 1
 							}
-							toolSegmented(c, "ts-unit", []string{"秒 (s)", "毫秒 (ms)"}, uIdx, func(idx int) {
+							toolSegmented(c, "ts-unit", []string{locales.TsUnitSec(), locales.TsUnitMs()}, uIdx, func(idx int) {
 								st.unitMs = idx == 1
 								convertTS()
 							})
@@ -248,7 +249,7 @@ func renderTimestampTool(c *ui.Context) {
 										Grow(1).Height(34).Padding(0, 12).Radius(m.RadiusMD).
 										Background(tk.BgBase).Border(m.Border, tk.Border).
 										Font("monospace").FontSize(13).TextColor(tk.TextPrimary).
-										Placeholder("例如 1763884855").PlaceholderColor(tk.TextMuted).
+										Placeholder(locales.TsPlaceholder()).PlaceholderColor(tk.TextMuted).
 										Label("Unix timestamp input")
 									if in.Focused() {
 										in.Border(m.Border, tk.Focus)
@@ -256,7 +257,7 @@ func renderTimestampTool(c *ui.Context) {
 									if in.Changed() || in.Submitted() {
 										convertTS()
 									}
-									if toolBtn(c, toolBtnOpts{Key: "ts-fill-now", Label: "填入当前", Variant: btnSecondary, Height: 34}).Clicked() {
+									if toolBtn(c, toolBtnOpts{Key: "ts-fill-now", Label: locales.TsFillNow(), Variant: btnSecondary, Height: 34}).Clicked() {
 										now := time.Now()
 										info := devtools.FromTimeInZone(now, tz.loc)
 										if st.unitMs {
@@ -270,7 +271,7 @@ func renderTimestampTool(c *ui.Context) {
 								})
 
 								if st.tsErr != "" {
-									toolInlineErrorCard(c, "ts-err", "时间戳解析失败", st.tsErr, "", nil)
+									toolInlineErrorCard(c, "ts-err", locales.TsParseErrTitle(), st.tsErr, "", nil)
 								}
 
 								// 5 行多格式输出表
@@ -280,11 +281,11 @@ func renderTimestampTool(c *ui.Context) {
 										val  string
 										mono bool
 									}{
-										{"本地时间 (" + tz.offset + ")", st.tsRes.Local, true},
-										{"UTC 标准时间", st.tsRes.UTC, true},
+										{locales.TsLocalTime(tz.offset), st.tsRes.Local, true},
+										{locales.TsUTCTime(), st.tsRes.UTC, true},
 										{"ISO 8601", st.tsRes.ISO8601, true},
 										{"RFC 2822", st.tsRes.RFC2822, true},
-										{"相对时间", st.tsRes.Relative, false},
+										{locales.TsRelativeTime(), st.tsRes.Relative, false},
 									}
 									for i, f := range fmts {
 										idx, item := i, f
@@ -313,9 +314,9 @@ func renderTimestampTool(c *ui.Context) {
 													vt.TextColor(tk.TextPrimary)
 												}
 											})
-											bVar, bLbl, bIc := btnGhost, "复制", icons.Copy
+											bVar, bLbl, bIc := btnGhost, locales.Copy(), icons.Copy
 											if isCopied {
-												bVar, bLbl, bIc = btnSuccess, "已复制", icons.Check
+												bVar, bLbl, bIc = btnSuccess, locales.Copied(), icons.Check
 											}
 											if toolBtn(c, toolBtnOpts{Key: rKey + "-btn", Label: bLbl, Icon: bIc, Variant: bVar, Height: 24, PadX: 8}).Clicked() {
 												c.Services().WriteClipboard(item.val)
@@ -331,7 +332,7 @@ func renderTimestampTool(c *ui.Context) {
 					// 右卡：日期时间 -> 时间戳
 					ui.Box(c).Grow(1).Basis(0).Children(func() {
 						toolCard(c, "dt-to-ts-card", tk.Border, tk.BgApp, func() {
-							ui.Text(c, "日期时间  →  时间戳").FontSize(m.FontSM).FontWeight(600).TextColor(tk.TextPrimary)
+							ui.Text(c, locales.DtToTsTitle()).FontSize(m.FontSM).FontWeight(600).TextColor(tk.TextPrimary)
 						}, func() {
 							toolPill(c, tz.offset, pillNeutral, false)
 						}, func() {
@@ -355,17 +356,17 @@ func renderTimestampTool(c *ui.Context) {
 									label string
 									calc  func(now time.Time) time.Time
 								}{
-									{"今天 00:00", func(n time.Time) time.Time {
+									{locales.DtPresetToday(), func(n time.Time) time.Time {
 										return time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, tz.loc)
 									}},
-									{"明天 00:00", func(n time.Time) time.Time {
+									{locales.DtPresetTomorrow(), func(n time.Time) time.Time {
 										return time.Date(n.Year(), n.Month(), n.Day()+1, 0, 0, 0, 0, tz.loc)
 									}},
-									{"本年末", func(n time.Time) time.Time {
+									{locales.DtPresetYearEnd(), func(n time.Time) time.Time {
 										return time.Date(n.Year(), 12, 31, 23, 59, 59, 0, tz.loc)
 									}},
-									{"+1 小时", func(n time.Time) time.Time { return n.Add(time.Hour) }},
-									{"+7 天", func(n time.Time) time.Time { return n.AddDate(0, 0, 7) }},
+									{locales.DtPresetPlus1H(), func(n time.Time) time.Time { return n.Add(time.Hour) }},
+									{locales.DtPresetPlus7D(), func(n time.Time) time.Time { return n.AddDate(0, 0, 7) }},
 								}
 								ui.Row(c).FillWidth().Gap(6).Children(func() {
 									for i, p := range presets {
@@ -386,7 +387,7 @@ func renderTimestampTool(c *ui.Context) {
 								})
 
 								if st.dtErr != "" {
-									toolInlineErrorCard(c, "dt-err", "日期解析失败", st.dtErr, "", nil)
+									toolInlineErrorCard(c, "dt-err", locales.DtParseErrTitle(), st.dtErr, "", nil)
 								}
 
 								// 秒 / 毫秒结果卡
@@ -396,8 +397,8 @@ func renderTimestampTool(c *ui.Context) {
 									val   string
 									hl    bool
 								}{
-									{"dt-res-sec", "Unix 时间戳 · 秒 (10 位)", strconv.FormatInt(st.dtRes.Seconds, 10), true},
-									{"dt-res-ms", "Unix 时间戳 · 毫秒 (13 位)", strconv.FormatInt(st.dtRes.Milliseconds, 10), false},
+									{"dt-res-sec", locales.DtResSec(), strconv.FormatInt(st.dtRes.Seconds, 10), true},
+									{"dt-res-ms", locales.DtResMs(), strconv.FormatInt(st.dtRes.Milliseconds, 10), false},
 								} {
 									it := resItem
 									isCopied := st.copiedKey == it.key
@@ -416,12 +417,12 @@ func renderTimestampTool(c *ui.Context) {
 											ui.Text(c, it.label).FontSize(m.FontXS).TextColor(tk.TextSecondary)
 											ui.Text(c, it.val).Font("monospace").FontSize(18).FontWeight(600).TextColor(vc).SingleLine()
 										})
-										bVar, bLbl, bIc := btnSecondary, "复制", icons.Copy
+										bVar, bLbl, bIc := btnSecondary, locales.Copy(), icons.Copy
 										if it.hl {
 											bVar = btnPrimary
 										}
 										if isCopied {
-											bVar, bLbl, bIc = btnSuccess, "已复制", icons.Check
+											bVar, bLbl, bIc = btnSuccess, locales.Copied(), icons.Check
 										}
 										if toolBtn(c, toolBtnOpts{Key: it.key + "-copy", Label: bLbl, Icon: bIc, Variant: bVar}).Clicked() {
 											c.Services().WriteClipboard(it.val)
@@ -433,7 +434,7 @@ func renderTimestampTool(c *ui.Context) {
 								// 距当前时间差值条
 								ui.Row(c).FillWidth().Height(38).Padding(0, 12).AlignItems(ui.Center).Justify(ui.SpaceBetween).
 									Radius(m.RadiusMD).Background(tk.BgApp).Border(m.Border, tk.Border).Children(func() {
-									ui.Text(c, "距当前时间差值").FontSize(m.FontXS).TextColor(tk.TextSecondary)
+									ui.Text(c, locales.DtDiffFromNow()).FontSize(m.FontXS).TextColor(tk.TextSecondary)
 									ui.Text(c, st.dtRes.Relative).FontSize(m.FontSM).FontWeight(500).TextColor(tk.TextPrimary)
 								})
 							})
@@ -444,10 +445,10 @@ func renderTimestampTool(c *ui.Context) {
 		})
 
 		// 3. Footer (26px)
-		fTxt := fmt.Sprintf("系统时钟同步正常 · 时区 %s (%s)", tz.name, tz.offset)
+		fTxt := locales.TsFooterSynced(tz.name, tz.offset)
 		fCol := tk.Success
 		if st.paused {
-			fTxt = "时钟已暂停 · 点击“继续”恢复实时时间"
+			fTxt = locales.TsFooterPaused()
 			fCol = tk.Warning
 		}
 		toolFooter(c, fTxt, fCol, "Epoch 1970-01-01T00:00:00Z")
@@ -534,20 +535,20 @@ func renderUUIDTool(c *ui.Context) {
 
 	root.Children(func() {
 		// 1. Header (48px)
-		toolHeader(c, icons.Sparkles, "UUID 与高熵随机串生成", "UUID v4 / v7 · ULID · 自定义密码学安全随机串批量生成", func() {
-			if toolBtn(c, toolBtnOpts{Key: "uuid-regen", Label: "重新生成", Icon: icons.Sparkles, Variant: btnPrimary, Height: 26}).Clicked() {
+		toolHeader(c, icons.Sparkles, locales.ToolUUIDTitle(), locales.ToolUUIDDesc(), func() {
+			if toolBtn(c, toolBtnOpts{Key: "uuid-regen", Label: locales.UuidRegenerate(), Icon: icons.Sparkles, Variant: btnPrimary, Height: 26}).Clicked() {
 				generate(st)
 			}
 		})
 
 		// 2. Toolbar (44px)
 		toolToolbar(c, func() {
-			toolSegmented(c, "uuid-mode", []string{"UUID v4", "UUID v7 (时序)", "ULID", "随机字符串"}, st.mode, func(idx int) {
+			toolSegmented(c, "uuid-mode", []string{"UUID v4", locales.UuidModeV7(), "ULID", locales.UuidModeRandom()}, st.mode, func(idx int) {
 				st.mode = idx
 				generate(st)
 			})
 			toolDividerV(c)
-			ui.Text(c, "数量").FontSize(m.FontXS).TextColor(tk.TextSecondary)
+			ui.Text(c, locales.UuidCountLabel()).FontSize(m.FontXS).TextColor(tk.TextSecondary)
 			toolSegmented(c, "uuid-count", []string{"1", "5", "10", "20"}, st.countIdx, func(idx int) {
 				st.countIdx = idx
 				generate(st)
@@ -557,7 +558,7 @@ func renderUUIDTool(c *ui.Context) {
 				if st.upper {
 					uVar = btnActive
 				}
-				if toolBtn(c, toolBtnOpts{Key: "uuid-upper", Label: "大写 ABC", Variant: uVar}).Clicked() {
+				if toolBtn(c, toolBtnOpts{Key: "uuid-upper", Label: locales.UuidUpperBtn(), Variant: uVar}).Clicked() {
 					st.upper = !st.upper
 					generate(st)
 				}
@@ -566,7 +567,7 @@ func renderUUIDTool(c *ui.Context) {
 					if st.noHyphens {
 						nhVar = btnActive
 					}
-					if toolBtn(c, toolBtnOpts{Key: "uuid-nohyphen", Label: "无连字符", Variant: nhVar}).Clicked() {
+					if toolBtn(c, toolBtnOpts{Key: "uuid-nohyphen", Label: locales.UuidNoHyphens(), Variant: nhVar}).Clicked() {
 						st.noHyphens = !st.noHyphens
 						generate(st)
 					}
@@ -575,11 +576,11 @@ func renderUUIDTool(c *ui.Context) {
 		}, func() {
 			allCopied := st.copiedKey == "uuid-all"
 			v := btnSecondary
-			lbl := fmt.Sprintf("复制全部 (%d 条)", count)
+			lbl := locales.UuidCopyAll(strconv.Itoa(count))
 			ic := icons.Copy
 			if allCopied {
 				v = btnSuccess
-				lbl = fmt.Sprintf("已复制全部 (%d 条)", count)
+				lbl = locales.UuidCopiedAll(strconv.Itoa(count))
 				ic = icons.Check
 			}
 			if toolBtn(c, toolBtnOpts{Key: "uuid-copy-all", Label: lbl, Icon: ic, Variant: v}).Clicked() {
@@ -602,18 +603,18 @@ func renderUUIDTool(c *ui.Context) {
 						ExcludeAmbiguous: st.optNoAmbiguous,
 					}
 					bits := devtools.CalcEntropyBits(opts)
-					strengthLbl, strengthVar := "极强 CSPRNG", pillSuccess
+					strengthLbl, strengthVar := locales.UuidStrengthStrong(), pillSuccess
 					if bits < 64 {
-						strengthLbl, strengthVar = "较弱", pillWarning
+						strengthLbl, strengthVar = locales.UuidStrengthWeak(), pillWarning
 					} else if bits < 128 {
-						strengthLbl, strengthVar = "中等", pillAccent
+						strengthLbl, strengthVar = locales.UuidStrengthMedium(), pillAccent
 					}
 
 					ui.Column(c).FillWidth().Padding(14, 16).Gap(12).Radius(m.RadiusLG).
 						Background(tk.BgApp).Border(m.Border, tk.Border).Children(func() {
 						ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 							ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
-								ui.Text(c, "字符长度").FontSize(m.FontSM).FontWeight(500).TextColor(tk.TextPrimary)
+								ui.Text(c, locales.UuidLengthLabel()).FontSize(m.FontSM).FontWeight(500).TextColor(tk.TextPrimary)
 								ui.Box(c).Height(28).Padding(0, 10).Radius(m.RadiusSM).Center().
 									Background(tk.BgBase).Border(m.Border, tk.Accent).Children(func() {
 									ui.Text(c, fmt.Sprintf("%d", int(math.Round(st.randLen)))).
@@ -626,42 +627,43 @@ func renderUUIDTool(c *ui.Context) {
 							})
 							ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 								ui.Icon(c, icons.Lock).FontSize(13).TextColor(tk.Success)
-								ui.Text(c, fmt.Sprintf("密码学熵值: %.0f bits", bits)).
+								ui.Text(c, locales.UuidEntropyLabel(fmt.Sprintf("%.0f", bits))).
 									Font("monospace").FontSize(m.FontXS).FontWeight(500).TextColor(tk.Success)
 								toolPill(c, strengthLbl, strengthVar, true)
 							})
 						})
 
 						ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-							ui.Text(c, "字符集").FontSize(m.FontSM).FontWeight(500).TextColor(tk.TextPrimary)
-							toolCheckboxChip(c, "rand-up", "A-Z 大写", st.optUpper, func() { st.optUpper = !st.optUpper; generate(st) })
-							toolCheckboxChip(c, "rand-lo", "a-z 小写", st.optLower, func() { st.optLower = !st.optLower; generate(st) })
-							toolCheckboxChip(c, "rand-dg", "0-9 数字", st.optDigits, func() { st.optDigits = !st.optDigits; generate(st) })
-							toolCheckboxChip(c, "rand-sy", "!@#$% 符号", st.optSymbols, func() { st.optSymbols = !st.optSymbols; generate(st) })
-							toolCheckboxChip(c, "rand-na", "排除易混淆 0O1lI", st.optNoAmbiguous, func() { st.optNoAmbiguous = !st.optNoAmbiguous; generate(st) })
+							ui.Text(c, locales.UuidCharsetLabel()).FontSize(m.FontSM).FontWeight(500).TextColor(tk.TextPrimary)
+							toolCheckboxChip(c, "rand-up", locales.UuidCharUpper(), st.optUpper, func() { st.optUpper = !st.optUpper; generate(st) })
+							toolCheckboxChip(c, "rand-lo", locales.UuidCharLower(), st.optLower, func() { st.optLower = !st.optLower; generate(st) })
+							toolCheckboxChip(c, "rand-dg", locales.UuidCharDigits(), st.optDigits, func() { st.optDigits = !st.optDigits; generate(st) })
+							toolCheckboxChip(c, "rand-sy", locales.UuidCharSymbols(), st.optSymbols, func() { st.optSymbols = !st.optSymbols; generate(st) })
+							toolCheckboxChip(c, "rand-na", locales.UuidCharNoAmbig(), st.optNoAmbiguous, func() { st.optNoAmbiguous = !st.optNoAmbiguous; generate(st) })
 						})
 					})
 				}
 
 				// 生成结果列表卡片
-				listTitle := fmt.Sprintf("生成的 UUID v4 列表 (%d 条)", len(st.items))
+				itemCountStr := strconv.Itoa(len(st.items))
+				listTitle := locales.UuidListV4(itemCountStr)
 				badgeText := "v4 · Variant 1"
 				switch st.mode {
 				case idModeUUIDv7:
-					listTitle = fmt.Sprintf("生成的 UUID v7 时序列表 (%d 条)", len(st.items))
+					listTitle = locales.UuidListV7(itemCountStr)
 					badgeText = "v7 · Time-Ordered"
 				case idModeULID:
-					listTitle = fmt.Sprintf("生成的 ULID 列表 (%d 条 · 26 chars)", len(st.items))
+					listTitle = locales.UuidListULID(itemCountStr)
 					badgeText = "ULID · 128-bit"
 				case idModeRandom:
-					listTitle = fmt.Sprintf("生成的随机密钥 (%d 条 · %d 位)", len(st.items), int(math.Round(st.randLen)))
+					listTitle = locales.UuidListRandom(itemCountStr, strconv.Itoa(int(math.Round(st.randLen))))
 					badgeText = fmt.Sprintf("%d chars", int(math.Round(st.randLen)))
 				}
 
 				toolCard(c, "uuid-list-card", tk.Border, tk.BgApp, func() {
 					ui.Text(c, listTitle).FontSize(m.FontXS).FontWeight(600).TextColor(tk.TextSecondary)
 				}, func() {
-					ui.Text(c, "点击单行复制，或右上角批量复制").FontSize(m.FontXS).TextColor(tk.TextMuted)
+					ui.Text(c, locales.UuidListHint()).FontSize(m.FontXS).TextColor(tk.TextMuted)
 				}, func() {
 					for i, val := range st.items {
 						idx, item := i, val
@@ -684,9 +686,9 @@ func renderUUIDTool(c *ui.Context) {
 							})
 							ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 								toolPill(c, badgeText, pillNeutral, false)
-								bVar, bLbl, bIc := btnGhost, "复制", icons.Copy
+								bVar, bLbl, bIc := btnGhost, locales.Copy(), icons.Copy
 								if isCopied {
-									bVar, bLbl, bIc = btnSuccess, "已复制", icons.Check
+									bVar, bLbl, bIc = btnSuccess, locales.Copied(), icons.Check
 								}
 								if toolBtn(c, toolBtnOpts{Key: rKey + "-copy", Label: bLbl, Icon: bIc, Variant: bVar, Height: 24, PadX: 8}).Clicked() {
 									c.Services().WriteClipboard(item)
@@ -700,11 +702,11 @@ func renderUUIDTool(c *ui.Context) {
 		})
 
 		// 4. Footer (26px)
-		fTxt := "使用 crypto/rand 本地安全随机源生成"
+		fTxt := locales.UuidFooterSource()
 		if st.copiedKey == "uuid-all" {
-			fTxt = fmt.Sprintf("已批量复制 %d 条结果到剪贴板", len(st.items))
+			fTxt = locales.UuidFooterCopiedAll(strconv.Itoa(len(st.items)))
 		} else if st.copiedKey != "" {
-			fTxt = "已复制单条结果到剪贴板"
+			fTxt = locales.UuidFooterCopiedOne()
 		}
 		toolFooter(c, fTxt, tk.Success, "RFC 4122 / RFC 9562 / CSPRNG")
 	})

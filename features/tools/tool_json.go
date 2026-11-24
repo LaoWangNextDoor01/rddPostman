@@ -2,12 +2,14 @@ package tools
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	thV2 "rddpostman/components/theme/v2"
 	"rddpostman/components/v1/icons"
 	v2 "rddpostman/components/v2"
 	"rddpostman/internal/devtools"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
@@ -30,10 +32,12 @@ type jsonIndentOption struct {
 	hint  string
 }
 
-var jsonIndentOptions = []jsonIndentOption{
-	{key: "2", label: "2 空格 (推荐)", short: "缩进: 2 空格", pad: "  ", hint: "2 spaces"},
-	{key: "4", label: "4 空格", short: "缩进: 4 空格", pad: "    ", hint: "4 spaces"},
-	{key: "tab", label: "制表符 Tab", short: "缩进: Tab", pad: "\t", hint: `\t`},
+func getJSONIndentOptions() []jsonIndentOption {
+	return []jsonIndentOption{
+		{key: "2", label: locales.JsonIndent2Label(), short: locales.JsonIndent2Short(), pad: "  ", hint: "2 spaces"},
+		{key: "4", label: locales.JsonIndent4Label(), short: locales.JsonIndent4Short(), pad: "    ", hint: "4 spaces"},
+		{key: "tab", label: locales.JsonIndentTabLabel(), short: locales.JsonIndentTabShort(), pad: "\t", hint: `\t`},
+	}
 }
 
 type jsonToolState struct {
@@ -45,7 +49,6 @@ type jsonToolState struct {
 	lastSig   string
 	errInfo   *devtools.JSONErrorInfo
 	copied    bool
-	editing   bool // 点击空白输入区直接进入编辑器
 }
 
 func renderJSONTool(c *ui.Context) {
@@ -61,6 +64,7 @@ func renderJSONTool(c *ui.Context) {
 				Buffer:      inBuf,
 				SoftWrap:    true,
 				LineNumbers: editor.LineNumbersOn,
+				Label:       "JSON input",
 			},
 			outputEd: &editor.State{
 				Buffer:      outBuf,
@@ -70,11 +74,14 @@ func renderJSONTool(c *ui.Context) {
 			},
 		}
 	})
+	st.inputEd.Placeholder = locales.JsonEmptyTitle() + " · " + locales.JsonEmptyDesc()
+
+	indentOpts := getJSONIndentOptions()
 
 	// 实时联动计算
 	recompute := func(force bool) {
 		raw := st.inputEd.Buffer.String()
-		ind := jsonIndentOptions[st.indentIdx]
+		ind := indentOpts[st.indentIdx]
 		sig := fmt.Sprintf("%d|%d|%v|%s", st.mode, st.indentIdx, st.sortKeys, raw)
 		if !force && sig == st.lastSig {
 			return
@@ -118,29 +125,27 @@ func renderJSONTool(c *ui.Context) {
 	outBytes := len([]byte(rawOutput))
 	inLines := countLines(rawInput)
 	outLines := countLines(rawOutput)
-	indOpt := jsonIndentOptions[st.indentIdx]
+	indOpt := indentOpts[st.indentIdx]
 
 	root.Children(func() {
 		// 1. 顶部标题栏 (48px)
-		toolHeader(c, icons.Code, "JSON 格式化与转义", "校验语法 · 美化缩进 · 压缩排序 · 字符串转义", func() {
-			if toolBtn(c, toolBtnOpts{Key: "json-sample", Label: "载入示例", Icon: icons.Sparkles, Variant: btnGhost, Height: 26}).Clicked() {
+		toolHeader(c, icons.Code, locales.ToolJSONTitle(), locales.ToolJSONDesc(), func() {
+			if toolBtn(c, toolBtnOpts{Key: "json-sample", Label: locales.LoadSample(), Icon: icons.Sparkles, Variant: btnGhost, Height: 26}).Clicked() {
 				st.inputEd.Buffer.Reset(sampleJSONText)
-				st.editing = true
 				recompute(true)
 			}
-			if toolBtn(c, toolBtnOpts{Key: "json-clear", Label: "清空", Icon: icons.Trash, Variant: btnGhost, Height: 26}).Clicked() {
+			if toolBtn(c, toolBtnOpts{Key: "json-clear", Label: locales.Clear(), Icon: icons.Trash, Variant: btnGhost, Height: 26}).Clicked() {
 				st.inputEd.Buffer.Reset("")
 				st.outputEd.Buffer.Reset("")
 				st.errInfo = nil
 				st.copied = false
-				st.editing = false
 				st.lastSig = ""
 			}
 		})
 
 		// 2. 操作工具条 (44px)
 		toolToolbar(c, func() {
-			toolSegmented(c, "json-mode", []string{"格式化", "压缩", "转义", "去转义"}, st.mode, func(idx int) {
+			toolSegmented(c, "json-mode", []string{locales.JsonModeFormat(), locales.JsonModeMinify(), locales.JsonModeEscape(), locales.JsonModeUnescape()}, st.mode, func(idx int) {
 				st.mode = idx
 				recompute(true)
 			})
@@ -163,7 +168,7 @@ func renderJSONTool(c *ui.Context) {
 			}
 			v2.Popover(c, indentBtn, indentOpen, v2.PopoverOpts{Width: 180}, func(panel ui.Element) {
 				ui.Column(c).Padding(4).Gap(2).Children(func() {
-					for i, opt := range jsonIndentOptions {
+					for i, opt := range indentOpts {
 						idx, o := i, opt
 						on := idx == st.indentIdx
 						row := ui.ButtonBase(c.Key("json-ind-opt-"+o.key)).
@@ -202,24 +207,23 @@ func renderJSONTool(c *ui.Context) {
 			if st.sortKeys {
 				sortVar = btnActive
 			}
-			if toolBtn(c, toolBtnOpts{Key: "json-sort", Label: "Key 排序 A→Z", Icon: icons.ListOrdered, Variant: sortVar}).Clicked() {
+			if toolBtn(c, toolBtnOpts{Key: "json-sort", Label: locales.JsonSortKeys(), Icon: icons.ListOrdered, Variant: sortVar}).Clicked() {
 				st.sortKeys = !st.sortKeys
 				recompute(true)
 			}
 		}, func() {
-			if toolBtn(c, toolBtnOpts{Key: "json-swap", Label: "结果回填", Icon: icons.ArrowLeft, Variant: btnSecondary, Disabled: rawOutput == ""}).Clicked() {
+			if toolBtn(c, toolBtnOpts{Key: "json-swap", Label: locales.JsonUseOutput(), Icon: icons.ArrowLeft, Variant: btnSecondary, Disabled: rawOutput == ""}).Clicked() {
 				if rawOutput != "" {
 					st.inputEd.Buffer.Reset(rawOutput)
-					st.editing = true
 					recompute(true)
 				}
 			}
 			copyVar := btnPrimary
-			copyLbl := "复制结果"
+			copyLbl := locales.JsonCopyResult()
 			copyIc := icons.Copy
 			if st.copied {
 				copyVar = btnSuccess
-				copyLbl = "已复制"
+				copyLbl = locales.Copied()
 				copyIc = icons.Check
 			}
 			if toolBtn(c, toolBtnOpts{Key: "json-copy", Label: copyLbl, Icon: copyIc, Variant: copyVar, Disabled: rawOutput == ""}).Clicked() {
@@ -239,60 +243,37 @@ func renderJSONTool(c *ui.Context) {
 					inMeta = fmt.Sprintf("%d B · %d lines", inBytes, inLines)
 				}
 				toolPaneHeader(c, "INPUT", inMeta, func() {
+					if toolBtn(c, toolBtnOpts{Key: "json-in-paste", Label: locales.PasteFromClipboard(), Icon: icons.Copy, Variant: btnGhost, Height: 22, PadX: 7}).Clicked() {
+						if clip := c.Services().ReadClipboard(); strings.TrimSpace(clip) != "" {
+							st.inputEd.Buffer.Reset(clip)
+							recompute(true)
+						}
+					}
 					if isEmpty {
-						toolPill(c, "等待输入", pillNeutral, false)
+						toolPill(c, locales.WaitingForInput(), pillNeutral, false)
 					} else if st.errInfo != nil {
-						toolPill(c, "1 处语法错误", pillDanger, true)
+						toolPill(c, locales.JsonSyntaxErrCount(), pillDanger, true)
 					} else {
 						toolPill(c, "UTF-8", pillNeutral, false)
 					}
 				})
 
-				if isEmpty && !st.editing {
-					// 精美空态引导页
-					ui.Column(c).Grow(1).FillWidth().Center().Padding(m.Space6).Gap(10).Background(tk.BgBase).Children(func() {
-						ui.Box(c).Size(44, 44).Radius(10).Background(tk.AccentSoft).Border(m.Border, tk.Accent.Alpha(0.25)).Center().Children(func() {
-							ui.Icon(c, icons.CodeBoldDuotone).FontSize(22).TextColor(tk.Accent)
-						})
-						ui.Text(c, "粘贴或输入 JSON 文本").FontSize(13).FontWeight(500).TextColor(tk.TextPrimary)
-						ui.Text(c, "支持大体积 JSON 实时校验、自动格式化与字符串转义").FontSize(m.FontSM).TextColor(tk.TextMuted)
-						ui.Row(c).Gap(8).Padding(4, 0, 0, 0).Children(func() {
-							if toolBtn(c, toolBtnOpts{Key: "json-empty-paste", Label: "从剪贴板粘贴", Icon: icons.Copy, Variant: btnPrimary}).Clicked() {
-								clip := c.Services().ReadClipboard()
-								st.editing = true
-								if strings.TrimSpace(clip) != "" {
-									st.inputEd.Buffer.Reset(clip)
-									recompute(true)
-								}
-							}
-							if toolBtn(c, toolBtnOpts{Key: "json-empty-sample", Label: "载入示例数据", Icon: icons.Sparkles, Variant: btnSecondary}).Clicked() {
-								st.inputEd.Buffer.Reset(sampleJSONText)
-								st.editing = true
-								recompute(true)
-							}
-							if toolBtn(c, toolBtnOpts{Key: "json-empty-edit", Label: "手动输入", Variant: btnGhost}).Clicked() {
-								st.editing = true
-							}
-						})
+				ui.Column(c).Grow(1).FillWidth().Children(func() {
+					ui.Box(c.Key("json-in-ed")).Grow(1).FillWidth().Background(tk.BgBase).Clip().Children(func() {
+						editor.View(c, st.inputEd).Fill()
 					})
-				} else {
-					ui.Column(c).Grow(1).FillWidth().Children(func() {
-						ui.Box(c.Key("json-in-ed")).Grow(1).FillWidth().Background(tk.BgBase).Clip().Children(func() {
-							editor.View(c, st.inputEd).Fill()
-						})
-						if st.errInfo != nil {
-							ui.Box(c).FillWidth().Padding(8, 12, 12, 12).Children(func() {
-								actionLbl := ""
-								if st.errInfo.Line > 0 {
-									actionLbl = fmt.Sprintf("第 %d 行", st.errInfo.Line)
-								}
-								toolInlineErrorCard(c, "json-err-card", st.errInfo.Summary, st.errInfo.Detail, actionLbl, func() {
-									// 点击按钮载入合法示例或保持提示
-								})
+					if st.errInfo != nil {
+						ui.Box(c).FillWidth().Padding(8, 12, 12, 12).Children(func() {
+							actionLbl := ""
+							if st.errInfo.Line > 0 {
+								actionLbl = locales.JsonLineBadge(strconv.Itoa(st.errInfo.Line))
+							}
+							toolInlineErrorCard(c, "json-err-card", st.errInfo.Summary, st.errInfo.Detail, actionLbl, func() {
+								// 点击按钮载入合法示例或保持提示
 							})
-						}
-					})
-				}
+						})
+					}
+				})
 			})
 
 			// 中间 1px 竖分割线
@@ -302,7 +283,7 @@ func renderJSONTool(c *ui.Context) {
 			ui.Column(c).Grow(1).Basis(0).FillHeight().Children(func() {
 				outMeta := "0 B"
 				if st.errInfo != nil {
-					outMeta = "校验失败"
+					outMeta = locales.JsonValidationFailed()
 				} else if rawOutput != "" {
 					if st.mode == jsonModeMinify && inBytes > 0 {
 						pct := int(float64(inBytes-outBytes) / float64(inBytes) * 100)
@@ -316,21 +297,21 @@ func renderJSONTool(c *ui.Context) {
 
 				toolPaneHeader(c, "OUTPUT", outMeta, func() {
 					if st.errInfo != nil {
-						toolPill(c, "已暂停更新", pillNeutral, false)
+						toolPill(c, locales.JsonPaused(), pillNeutral, false)
 					} else if rawOutput != "" {
 						switch st.mode {
 						case jsonModeMinify:
-							lbl := "已压缩"
+							lbl := locales.JsonMinified()
 							if st.sortKeys {
-								lbl = "已压缩 · Key 已排序"
+								lbl = locales.JsonMinifiedSorted()
 							}
 							toolPill(c, lbl, pillAccent, true)
 						case jsonModeEscape:
-							toolPill(c, "已转义字符串", pillAccent, true)
+							toolPill(c, locales.JsonEscaped(), pillAccent, true)
 						case jsonModeUnescape:
-							toolPill(c, "已去转义", pillSuccess, true)
+							toolPill(c, locales.JsonUnescaped(), pillSuccess, true)
 						default:
-							toolPill(c, "Valid JSON", pillSuccess, true)
+							toolPill(c, locales.JsonValid(), pillSuccess, true)
 						}
 					}
 				})
@@ -341,13 +322,13 @@ func renderJSONTool(c *ui.Context) {
 						ui.Box(c).Size(40, 40).Radius(10).Background(tk.DangerSoft).Border(m.Border, tk.Danger.Alpha(0.35)).Center().Children(func() {
 							ui.Icon(c, icons.TriangleAlert).FontSize(18).TextColor(tk.Danger)
 						})
-						ui.Text(c, "无法生成格式化输出").FontSize(13).FontWeight(500).TextColor(tk.TextPrimary)
-						ui.Text(c, "修复左侧语法错误后，输出将自动恢复实时同步").FontSize(m.FontSM).TextColor(tk.TextMuted)
+						ui.Text(c, locales.JsonOutputErrTitle()).FontSize(13).FontWeight(500).TextColor(tk.TextPrimary)
+						ui.Text(c, locales.JsonOutputErrDesc()).FontSize(m.FontSM).TextColor(tk.TextMuted)
 					})
 				case rawOutput == "":
 					ui.Column(c).Grow(1).FillWidth().Center().Padding(m.Space6).Gap(8).Background(tk.BgApp).Children(func() {
-						ui.Text(c, "格式化结果将在此实时呈现").FontSize(m.FontSM).TextColor(tk.TextMuted)
-						ui.Text(c, "支持 2/4 空格与 Tab 缩进 · Key 深度排序 · 字符串转义").FontSize(m.FontXS).TextColor(tk.TextDisabled)
+						ui.Text(c, locales.JsonOutputEmptyTitle()).FontSize(m.FontSM).TextColor(tk.TextMuted)
+						ui.Text(c, locales.JsonOutputEmptyDesc()).FontSize(m.FontXS).TextColor(tk.TextDisabled)
 					})
 				default:
 					ui.Box(c.Key("json-out-ed")).Grow(1).FillWidth().Background(tk.BgBase).Clip().Children(func() {
@@ -358,19 +339,19 @@ func renderJSONTool(c *ui.Context) {
 		})
 
 		// 4. 底部状态条 (26px)
-		stText := "就绪 · 等待输入"
+		stText := locales.JsonFooterReady()
 		stCol := tk.TextMuted
 		if st.errInfo != nil {
-			stText = "校验失败 · " + st.errInfo.Summary
+			stText = locales.JsonFooterErr(st.errInfo.Summary)
 			stCol = tk.Danger
 		} else if st.copied {
-			stText = fmt.Sprintf("已复制 %d 字节到剪贴板", outBytes)
+			stText = locales.JsonFooterCopied(strconv.Itoa(outBytes))
 			stCol = tk.Success
 		} else if rawOutput != "" {
-			stText = "JSON 语法有效 · RFC 8259"
+			stText = locales.JsonFooterValid()
 			stCol = tk.Success
 		}
-		toolFooter(c, stText, stCol, indOpt.short, "编码: UTF-8")
+		toolFooter(c, stText, stCol, indOpt.short, locales.JsonFooterEncoding())
 	})
 }
 

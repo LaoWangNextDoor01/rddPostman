@@ -106,7 +106,7 @@ func tabsBar(c *ui.Context, props pageProps) {
 						if selected {
 							badgeColor = tk.Accent
 						}
-						ui.Text(c, "TOOL").FontSize(10).
+						ui.Text(c, locales.TabToolBadge()).FontSize(10).
 							LetterSpacing(0.3).Bold().
 							TextColor(badgeColor)
 						ui.Text(c, label).FontSize(m.FontXS).FontWeight(500).
@@ -172,7 +172,7 @@ func tabsBar(c *ui.Context, props pageProps) {
 			if len(state.tabs) > 0 {
 				addBtn := ui.ButtonBase(c.Key("tab-add")).
 					Size(24, 24).Radius(m.RadiusSM).Center().
-					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("tab add").
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.TabAddLabel()).
 					Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 				switch {
 				case addBtn.Pressed():
@@ -204,7 +204,7 @@ func tabsBar(c *ui.Context, props pageProps) {
 func tabBarEnvironmentSwitcher(c *ui.Context, props pageProps) {
 	m, tk := thV2.Metrics, thV2.Of(c)
 
-	activeEnvName := "No Environment"
+	activeEnvName := locales.NoEnvironment()
 	hasActiveEnv := false
 	for _, env := range props.environments {
 		if env.ID == props.selectedEnv {
@@ -219,7 +219,7 @@ func tabBarEnvironmentSwitcher(c *ui.Context, props pageProps) {
 		Radius(m.RadiusSM).
 		AlignItems(ui.Center).Justify(ui.Center).
 		Cursor(ui.CursorPointer).Role(ui.RoleButton).
-		Label(activeEnvName).Tooltip("Switch environment").
+		Label(activeEnvName).Tooltip(locales.SwitchEnvironment()).
 		Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 
 	open := ui.Local(btn, "tab-env-open", func() bool { return false })
@@ -250,14 +250,14 @@ func tabBarEnvironmentSwitcher(c *ui.Context, props pageProps) {
 
 	v2.Popover(c, btn, open, v2.PopoverOpts{Width: 220}, func(panel ui.Element) {
 		ui.Column(c).Padding(4, 0).Gap(1).Children(func() {
-			ui.Text(c, "ENVIRONMENT").FontSize(10).FontWeight(600).
+			ui.Text(c, locales.TabBarEnvHeader()).FontSize(10).FontWeight(600).
 				TextColor(tk.TextMuted).Padding(4, 10, 2, 10)
 
 			// 1. "No Environment" 选项
 			noEnvBtn := ui.ButtonBase(c.Key("tab-env-opt-none")).
 				FillWidth().Height(28).Padding(0, 10).Gap(8).
 				Radius(m.RadiusSM).AlignItems(ui.Center).Justify(ui.SpaceBetween).
-				Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("No Environment")
+				Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.NoEnvironment())
 			if !hasActiveEnv {
 				noEnvBtn.Background(tk.BgSelected)
 			} else if noEnvBtn.Hovered() {
@@ -270,7 +270,7 @@ func tabBarEnvironmentSwitcher(c *ui.Context, props pageProps) {
 				*open = false
 			}
 			noEnvBtn.Children(func() {
-				ui.Text(c, "No Environment").FontSize(m.FontXS).
+				ui.Text(c, locales.NoEnvironment()).FontSize(m.FontXS).
 					FontWeight(map[bool]int{true: 500, false: 400}[!hasActiveEnv]).
 					TextColor(map[bool]ui.Color{true: tk.TextPrimary, false: tk.TextSecondary}[!hasActiveEnv]).
 					SingleLine().Grow(1)

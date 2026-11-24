@@ -6,6 +6,7 @@ import (
 	thV2 "rddpostman/components/theme/v2"
 	"rddpostman/components/v1/icons"
 	v2 "rddpostman/components/v2"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -26,6 +27,7 @@ func SidebarView(c *ui.Context, activeToolID string, openTool func(toolID string
 	}
 
 	kw := strings.ToLower(strings.TrimSpace(*search))
+	allTools := All()
 
 	col.Children(func() {
 		// 1. 顶部搜索行（对齐 collection/sidebar.go：34px 高、list-filter 图标、Search 占位、更多操作钮）
@@ -47,12 +49,12 @@ func SidebarView(c *ui.Context, activeToolID string, openTool func(toolID string
 				ui.Icon(c, icons.ListFilter).FontSize(13).TextColor(tk.TextMuted)
 				ui.TextInputBase(c.Key("tools-sb-search-input"), search).Grow(1).
 					FontSize(m.FontSM).TextColor(tk.TextPrimary).
-					Placeholder("Search").PlaceholderColor(tk.TextMuted).
-					Label("Filter dev tools")
+					Placeholder(locales.Search()).PlaceholderColor(tk.TextMuted).
+					Label(locales.ToolsFilterLabel())
 				if *search != "" {
 					clr := v2.IconButton(c, v2.IconButtonOpts{
 						Key:      "tools-sb-search-clear",
-						Label:    "Clear filter",
+						Label:    locales.ClearFilter(),
 						Icon:     icons.X,
 						Size:     18,
 						IconSize: 11,
@@ -66,8 +68,8 @@ func SidebarView(c *ui.Context, activeToolID string, openTool func(toolID string
 
 			moreBtn := v2.IconButton(c, v2.IconButtonOpts{
 				Key:      "tools-sb-more",
-				Label:    "More tool actions",
-				Tooltip:  "更多操作",
+				Label:    locales.MoreActions(),
+				Tooltip:  locales.MoreActions(),
 				Icon:     icons.Ellipsis,
 				Size:     24,
 				IconSize: 14,
@@ -79,7 +81,7 @@ func SidebarView(c *ui.Context, activeToolID string, openTool func(toolID string
 			v2.Popover(c, moreBtn, moreOpen, v2.PopoverOpts{Width: 168}, func(panel ui.Element) {
 				ui.Column(c).Padding(4).Gap(2).Children(func() {
 					if v2.MenuButton(c, v2.MenuButtonProps{
-						Icon: icons.Layers, Key: "tools-sb-expand-all", Label: "展开全部分组",
+						Icon: icons.Layers, Key: "tools-sb-expand-all", Label: locales.ToolsExpandGroups(),
 					}).Clicked() {
 						for k := range *collapsed {
 							delete(*collapsed, k)
@@ -87,10 +89,10 @@ func SidebarView(c *ui.Context, activeToolID string, openTool func(toolID string
 						*moreOpen = false
 					}
 					if v2.MenuButton(c, v2.MenuButtonProps{
-						Icon: icons.Folder, Key: "tools-sb-collapse-all", Label: "折叠全部分组",
+						Icon: icons.Folder, Key: "tools-sb-collapse-all", Label: locales.ToolsCollapseGroups(),
 					}).Clicked() {
-						for _, def := range registry {
-							(*collapsed)[def.Category] = true
+						for _, def := range allTools {
+							(*collapsed)[def.CategoryKey] = true
 						}
 						*moreOpen = false
 					}
@@ -100,30 +102,31 @@ func SidebarView(c *ui.Context, activeToolID string, openTool func(toolID string
 
 		// 2. 分组小工具树
 		type group struct {
+			key   string
 			name  string
 			items []ToolDef
 		}
 		var groups []group
 		groupIdx := map[string]int{}
-		for _, def := range registry {
+		for _, def := range allTools {
 			if kw != "" {
 				hay := strings.ToLower(def.Name + " " + def.ShortName + " " + def.Description + " " + def.Keywords + " " + def.Category)
 				if !strings.Contains(hay, kw) {
 					continue
 				}
 			}
-			idx, ok := groupIdx[def.Category]
+			idx, ok := groupIdx[def.CategoryKey]
 			if !ok {
 				idx = len(groups)
-				groupIdx[def.Category] = idx
-				groups = append(groups, group{name: def.Category})
+				groupIdx[def.CategoryKey] = idx
+				groups = append(groups, group{key: def.CategoryKey, name: def.Category})
 			}
 			groups[idx].items = append(groups[idx].items, def)
 		}
 
 		if len(groups) == 0 {
 			ui.Column(c).Grow(1).FillWidth().Center().Padding(m.Space4).Gap(m.Space1).Children(func() {
-				ui.Text(c, "未找到匹配的小工具").FontSize(m.FontXS).TextColor(tk.TextMuted)
+				ui.Text(c, locales.ToolsNoMatch()).FontSize(m.FontXS).TextColor(tk.TextMuted)
 			})
 			return
 		}
@@ -132,10 +135,10 @@ func SidebarView(c *ui.Context, activeToolID string, openTool func(toolID string
 			ui.Column(c).FillWidth().Padding(6, m.Space2, m.Space4, m.Space2).Gap(6).Children(func() {
 				for _, g := range groups {
 					grp := g
-					isOpen := kw != "" || !(*collapsed)[grp.name]
+					isOpen := kw != "" || !(*collapsed)[grp.key]
 					ui.Column(c).FillWidth().Gap(2).Children(func() {
 						// 文件夹样式分组行（26px 高、⌄ 箭头 + 文件夹图标 + 分组名）
-						grpBtn := ui.ButtonBase(c.Key("tools-grp-"+grp.name)).
+						grpBtn := ui.ButtonBase(c.Key("tools-grp-"+grp.key)).
 							FillWidth().Height(m.RowHeight).Padding(0, 8).Gap(5).
 							Radius(m.RadiusSM).AlignItems(ui.Center).Justify(ui.Start).
 							Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(grp.name).
@@ -144,7 +147,7 @@ func SidebarView(c *ui.Context, activeToolID string, openTool func(toolID string
 							grpBtn.Background(tk.BgSubtle)
 						}
 						if grpBtn.Clicked() {
-							(*collapsed)[grp.name] = isOpen
+							(*collapsed)[grp.key] = isOpen
 						}
 						grpBtn.Children(func() {
 							arrow := ui.Icon(c, icons.ChevronDown).FontSize(11).TextColor(tk.TextMuted)

@@ -1,11 +1,15 @@
 // gen-icons 扫描 components/v1/icons/assets 下的 .svg，
 // 生成类型化图标变量文件 components/v1/icons/icons_gen.go。
 //
-// 由 scripts/sync-icons.ps1|.sh 在同步资产后调用；内容无变化时不写文件，
-// 避免无意义的 mtime 变动。手工调用：go run ./scripts/gen-icons
+// 支持两种用法：
+//   - 仅生成 Go 注册表：go run ./scripts/gen-icons
+//   - 同步 Solar 图标并生成：go run ./scripts/gen-icons -sync（由 scripts/sync-icons.ps1|.sh 调用）
+//
+// 内容无变化时不写文件，避免无意义的 mtime 变动。
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,7 +29,7 @@ var reserved = map[string]bool{
 }
 
 // resolveVarName 返回某个图标对应的导出变量名。
-// Pascal 名与包内标识符冲突时加 Icon 后缀，例如 Lucide "get" → GetIcon。
+// Pascal 名与包内标识符冲突时加 Icon 后缀，例如 "get" → GetIcon。
 func resolveVarName(name string) (string, bool) {
 	p := pascal(name)
 	if reserved[p] {
@@ -35,7 +39,18 @@ func resolveVarName(name string) (string, bool) {
 }
 
 func main() {
-	if err := run(); err != nil {
+	doSync := flag.Bool("sync", false, "按 scripts/icons.txt 从 @iconify-json/solar 同步 SVG 资产后再生成 icons_gen.go")
+	force := flag.Bool("force", false, "配合 -sync 强制重新拉取当前版本的 Solar 图标集")
+	version := flag.String("version", defaultSolarVersion, "指定 @iconify-json/solar 版本号")
+	flag.Parse()
+
+	var err error
+	if *doSync {
+		err = syncIcons(*version, *force)
+	} else {
+		err = run()
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "gen-icons:", err)
 		os.Exit(1)
 	}
@@ -63,7 +78,7 @@ func run() error {
 	var b strings.Builder
 	b.WriteString(header)
 	b.WriteString("// 类型化图标变量：kebab-case → PascalCase，IDE 可补全；新图标在清单加行并同步后自动出现。\n")
-	b.WriteString("// 与包内函数冲突的图标自动加 Icon 后缀（如 Lucide \"get\" → GetIcon）。\n")
+	b.WriteString("// 与包内函数冲突的图标自动加 Icon 后缀（如 \"get\" → GetIcon）。\n")
 	b.WriteString("var (\n")
 	seen := map[string]string{}
 	for _, n := range names {
@@ -73,7 +88,7 @@ func run() error {
 		}
 		seen[varName] = n
 		if renamed {
-			fmt.Fprintf(&b, "\t%s = Get(%q) // Lucide %q：与包内标识符冲突，自动加 Icon 后缀\n", varName, n, n)
+			fmt.Fprintf(&b, "\t%s = Get(%q) // %q：与包内标识符冲突，自动加 Icon 后缀\n", varName, n, n)
 			fmt.Printf("注意：%q 与包内标识符冲突，变量名改为 %s\n", n, varName)
 			continue
 		}

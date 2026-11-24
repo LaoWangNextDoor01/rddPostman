@@ -2,10 +2,13 @@ package devtools
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"rddpostman/locales"
 )
 
 // Base64URLSafeDiff 统计标准 Base64 转为 URL-Safe / 省略填充时的替换数量。
@@ -90,9 +93,9 @@ func Base64Decode(src string, urlSafe bool) (string, error) {
 		}
 	}
 	if pos, ch := findInvalidBase64Char(cleaned); pos > 0 {
-		return "", fmt.Errorf("Invalid Base64 · 第 %d 位发现非法字符 %q", pos, string(ch))
+		return "", errors.New(locales.DtErrBase64InvalidChar(strconv.QuoteRune(ch), strconv.Itoa(pos)))
 	}
-	return "", fmt.Errorf("无效的 Base64 字符串: %w", lastErr)
+	return "", errors.New(locales.DtErrBase64Invalid(lastErr.Error()))
 }
 
 func findInvalidBase64Char(s string) (int, rune) {
@@ -160,7 +163,7 @@ func URLDecode(src string) (string, error) {
 	}
 	out, err := url.QueryUnescape(src)
 	if err != nil {
-		return "", fmt.Errorf("无效的 URL 编码: %w", err)
+		return "", errors.New(locales.DtErrURLDecode(err.Error()))
 	}
 	return out, nil
 }
@@ -240,7 +243,7 @@ func UnicodeUnescape(src string) (string, error) {
 	escaped = strings.ReplaceAll(escaped, "\n", `\n`)
 	out, err := strconv.Unquote(`"` + escaped + `"`)
 	if err != nil {
-		return "", fmt.Errorf("Unicode 反转义失败: %w", err)
+		return "", errors.New(locales.DtErrUnicodeUnescape(err.Error()))
 	}
 	return out, nil
 }

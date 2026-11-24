@@ -40,8 +40,8 @@ func sidebar(c *ui.Context, props pageProps) {
 				filterActive := *filterOpen || !props.state.allFiltersEnabled()
 				filterBtn := v2.IconButton(c, v2.IconButtonOpts{
 					Key:          "sb-filter-btn",
-					Label:        "Filter sidebar",
-					Tooltip:      "Filter",
+					Label:        locales.CollFilterSidebar(),
+					Tooltip:      locales.Filter(),
 					Icon:         icons.ListFilter,
 					Size:         18,
 					IconSize:     13,
@@ -56,13 +56,13 @@ func sidebar(c *ui.Context, props pageProps) {
 				v2.Popover(c, filterBtn, filterOpen, v2.PopoverOpts{Width: 156}, func(panel ui.Element) {
 					ui.Column(c).Padding(4, 0).Gap(0).Children(func() {
 						allOn := props.state.allFiltersEnabled()
-						sidebarFilterCheckboxRow(c, "sb-flt-all", "Select all", allOn, true, func() {
+						sidebarFilterCheckboxRow(c, "sb-flt-all", locales.SelectAll(), allOn, true, func() {
 							props.state.setAllFilters(!allOn)
 						})
 						for _, cat := range sidebarFilterCategories {
 							catName := cat
 							checked := props.state.filterEnabled(catName)
-							sidebarFilterCheckboxRow(c, "sb-flt-"+catName, catName, checked, false, func() {
+							sidebarFilterCheckboxRow(c, "sb-flt-"+catName, sidebarFilterCatLabel(catName), checked, false, func() {
 								if props.state.sidebarFilter == nil {
 									props.state.setAllFilters(true)
 								}
@@ -74,12 +74,12 @@ func sidebar(c *ui.Context, props pageProps) {
 
 				ui.TextInputBase(c.Key("sb-search-input"), search).Grow(1).
 					FontSize(m.FontSM).TextColor(tk.TextPrimary).
-					Placeholder("Search").PlaceholderColor(tk.TextMuted).
-					Label("Filter collections")
+					Placeholder(locales.Search()).PlaceholderColor(tk.TextMuted).
+					Label(locales.CollFilterCollections())
 				if *search != "" {
 					clr := v2.IconButton(c, v2.IconButtonOpts{
 						Key:      "sb-search-clear",
-						Label:    "Clear filter",
+						Label:    locales.ClearFilter(),
 						Icon:     icons.X,
 						Size:     18,
 						IconSize: 11,
@@ -95,8 +95,8 @@ func sidebar(c *ui.Context, props pageProps) {
 
 			moreBtn := v2.IconButton(c, v2.IconButtonOpts{
 				Key:      "sb-more",
-				Label:    "more",
-				Tooltip:  "More actions",
+				Label:    locales.TreeMore(),
+				Tooltip:  locales.MoreActions(),
 				Icon:     icons.Ellipsis,
 				Size:     24,
 				IconSize: 14,
@@ -108,7 +108,7 @@ func sidebar(c *ui.Context, props pageProps) {
 			v2.Popover(c, moreBtn, moreOpen, v2.PopoverOpts{Width: 184}, func(panel ui.Element) {
 				ui.Column(c).Padding(4).Gap(2).Children(func() {
 					if v2.MenuButton(c, v2.MenuButtonProps{
-						Icon: icons.Layers, Key: "sb-more-expand", Label: "Expand all",
+						Icon: icons.Layers, Key: "sb-more-expand", Label: locales.ExpandAll(),
 					}).Clicked() {
 						for _, coll := range props.collections {
 							*props.state.openFlag(string(coll.ID)) = true
@@ -116,7 +116,7 @@ func sidebar(c *ui.Context, props pageProps) {
 						*moreOpen = false
 					}
 					if v2.MenuButton(c, v2.MenuButtonProps{
-						Icon: icons.Folder, Key: "sb-more-collapse", Label: "Collapse all",
+						Icon: icons.Folder, Key: "sb-more-collapse", Label: locales.CollapseAll(),
 					}).Clicked() {
 						for _, coll := range props.collections {
 							*props.state.openFlag(string(coll.ID)) = false
@@ -125,7 +125,7 @@ func sidebar(c *ui.Context, props pageProps) {
 					}
 					v2.PopoverDivider(c)
 					if v2.MenuButton(c, v2.MenuButtonProps{
-						Icon: icons.Code, Key: "sb-more-curl", Label: "Import cURL",
+						Icon: icons.Code, Key: "sb-more-curl", Label: locales.CmdImportCurlTitle(),
 					}).Clicked() {
 						props.state.importCurlOpen = true
 						props.state.importCurlText = ""
@@ -133,7 +133,7 @@ func sidebar(c *ui.Context, props pageProps) {
 						*moreOpen = false
 					}
 					if v2.MenuButton(c, v2.MenuButtonProps{
-						Icon: icons.Upload, Key: "sb-more-postman", Label: "Import Postman JSON",
+						Icon: icons.Upload, Key: "sb-more-postman", Label: locales.CmdImportPostmanTitle(),
 					}).Clicked() {
 						props.state.importPostmanOpen = true
 						props.state.importPostmanText = ""
@@ -146,6 +146,7 @@ func sidebar(c *ui.Context, props pageProps) {
 
 		// 2. 可滚动集合树区
 		actions := treeActions{
+			collections: props.collections,
 			create: func(row *treeNode, kind treeKind) {
 				domainKind := domain.KindFolder
 				if kind == treeRequest {
@@ -172,6 +173,26 @@ func sidebar(c *ui.Context, props pageProps) {
 					props.actions.duplicateNode(row.id)
 				}
 			},
+			move: func(srcCollID, nodeID, dstCollID, dstParentID string, dstIndex int) {
+				if props.actions.moveNode != nil {
+					props.actions.moveNode(domain.ID(srcCollID), domain.ID(nodeID), domain.ID(dstCollID), domain.ID(dstParentID), dstIndex)
+				}
+			},
+			moveCollection: func(collID string, dstIndex int) {
+				if props.actions.moveCollection != nil {
+					props.actions.moveCollection(domain.ID(collID), dstIndex)
+				}
+			},
+			openMoveDialog: func(row *treeNode) {
+				if row == nil || row.kind == treeCollection {
+					return
+				}
+				rowCopy := *row
+				props.state.movePending = &rowCopy
+				props.state.moveTargetCollID = ""
+				props.state.moveTargetParentID = ""
+				props.state.moveDialogOpen = true
+			},
 		}
 
 		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
@@ -183,7 +204,7 @@ func sidebar(c *ui.Context, props pageProps) {
 					nodes := filterTree(buildTree(props.collections), *search, props.state)
 					if len(nodes) == 0 && *search != "" {
 						ui.Box(c).Padding(m.Space3).Center().Children(func() {
-							ui.Text(c, "No matching requests").FontSize(m.FontXS).TextColor(tk.TextMuted)
+							ui.Text(c, locales.CollNoMatchRequests()).FontSize(m.FontXS).TextColor(tk.TextMuted)
 						})
 					} else {
 						collectionTree(c, props.state, nodes, actions)
@@ -193,7 +214,7 @@ func sidebar(c *ui.Context, props pageProps) {
 					newCollRow := ui.ButtonBase(c.Key("sb-inline-new-coll")).
 						FillWidth().Height(m.RowHeight).Padding(0, 8, 0, 24).Gap(6).
 						Radius(m.RadiusSM).AlignItems(ui.Center).Justify(ui.Start).
-						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("New Collection").
+						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.MenuNewCollection()).
 						Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 					switch {
 					case newCollRow.Pressed():
@@ -206,7 +227,7 @@ func sidebar(c *ui.Context, props pageProps) {
 					}
 					newCollRow.Children(func() {
 						ui.Icon(c, icons.Plus).FontSize(12).TextColor(tk.TextMuted)
-						ui.Text(c, "New Collection").FontSize(m.FontSM).TextColor(tk.TextSecondary).SingleLine()
+						ui.Text(c, locales.MenuNewCollection()).FontSize(m.FontSM).TextColor(tk.TextSecondary).SingleLine()
 					})
 				}
 			})
@@ -268,6 +289,29 @@ func sidebarSectionHeader(c *ui.Context, key, title string, open bool, onClick f
 	})
 }
 
+func sidebarFilterCatLabel(cat string) string {
+	switch cat {
+	case "Collections":
+		return locales.CollCatCollections()
+	case "Environments":
+		return locales.CollCatEnvironments()
+	case "Documents":
+		return locales.CollCatDocuments()
+	case "Specs":
+		return locales.CollCatSpecs()
+	case "Mocks":
+		return locales.CollCatMocks()
+	case "Datasets":
+		return locales.CollCatDatasets()
+	case "Toolsets":
+		return locales.CollCatToolsets()
+	case "Flows":
+		return locales.CollCatFlows()
+	default:
+		return cat
+	}
+}
+
 // importCurlDialog 弹出从 cURL 导入请求的对话框。
 func importCurlDialog(c *ui.Context, props pageProps) {
 	m := theme.Metrics
@@ -281,10 +325,10 @@ func importCurlDialog(c *ui.Context, props pageProps) {
 		panel.Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 				ui.Icon(c, icons.Get("code")).FontSize(m.IconMD).TextColor(tk.Accent)
-				ui.Text(c, "从 cURL 导入请求").FontSize(m.FontMD).Bold().
+				ui.Text(c, locales.CollImportCurlTitle()).FontSize(m.FontMD).Bold().
 					TextColor(tk.TextPrimary)
 			})
-			ui.Text(c, "输入或粘贴标准的 cURL 命令，自动解析请求方法、URL、标头、认证与请求体并创建请求。").
+			ui.Text(c, locales.CollImportCurlDesc()).
 				FontSize(m.FontXS).TextColor(tk.TextMuted)
 
 			ui.TextArea(c, &state.importCurlText).FillWidth().MinHeight(120).
@@ -299,12 +343,12 @@ func importCurlDialog(c *ui.Context, props pageProps) {
 			submit := func() {
 				trimmed := strings.TrimSpace(state.importCurlText)
 				if trimmed == "" {
-					state.importCurlErr = "请输入有效的 cURL 命令"
+					state.importCurlErr = locales.CollImportCurlEmptyErr()
 					return
 				}
 				targetID := domain.ID(state.selected)
 				if err := props.actions.importCurl(targetID, trimmed); err != nil {
-					state.importCurlErr = "解析 cURL 失败: " + err.Error()
+					state.importCurlErr = locales.CollImportCurlFailErr(err.Error())
 					return
 				}
 				state.importCurlOpen = false
@@ -315,7 +359,7 @@ func importCurlDialog(c *ui.Context, props pageProps) {
 				if ui.Button(c, locales.Cancel()).Clicked() {
 					state.importCurlOpen = false
 				}
-				if ui.PrimaryButton(c, "导入请求").Clicked() {
+				if ui.PrimaryButton(c, locales.CollImportReqBtn()).Clicked() {
 					submit()
 				}
 			})
@@ -336,10 +380,10 @@ func importPostmanDialog(c *ui.Context, props pageProps) {
 		panel.Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 				ui.Icon(c, icons.Get("file")).FontSize(m.IconMD).TextColor(tk.Accent)
-				ui.Text(c, "导入 Postman 集合 (v2.1)").FontSize(m.FontMD).Bold().
+				ui.Text(c, locales.CollImportPostmanTitle()).FontSize(m.FontMD).Bold().
 					TextColor(tk.TextPrimary)
 			})
-			ui.Text(c, "粘贴 Postman Collection v2.1 格式的 JSON 文本，将完整导入集合、目录树、请求、环境变量与前后置脚本。").
+			ui.Text(c, locales.CollImportPostmanDesc()).
 				FontSize(m.FontXS).TextColor(tk.TextMuted)
 
 			ui.TextArea(c, &state.importPostmanText).FillWidth().MinHeight(150).
@@ -354,11 +398,11 @@ func importPostmanDialog(c *ui.Context, props pageProps) {
 			submit := func() {
 				trimmed := strings.TrimSpace(state.importPostmanText)
 				if trimmed == "" {
-					state.importPostmanErr = "请输入有效的 Postman 集合 JSON"
+					state.importPostmanErr = locales.CollImportPostmanEmptyErr()
 					return
 				}
 				if err := props.actions.importCollection(trimmed); err != nil {
-					state.importPostmanErr = "导入失败: " + err.Error()
+					state.importPostmanErr = locales.CollImportFailErr(err.Error())
 					return
 				}
 				state.importPostmanOpen = false
@@ -369,7 +413,7 @@ func importPostmanDialog(c *ui.Context, props pageProps) {
 				if ui.Button(c, locales.Cancel()).Clicked() {
 					state.importPostmanOpen = false
 				}
-				if ui.PrimaryButton(c, "导入集合").Clicked() {
+				if ui.PrimaryButton(c, locales.CollImportCollBtn()).Clicked() {
 					submit()
 				}
 			})
@@ -384,15 +428,15 @@ func emptySidebar(c *ui.Context, props pageProps) {
 		ui.Box(c).Size(44, 44).Radius(22).Background(tk.BgSubtle).Center().Children(func() {
 			ui.Icon(c, icons.Layers).FontSize(20).TextColor(tk.TextMuted)
 		})
-		ui.Text(c, "You don't have any collections").FontSize(m.FontSM).FontWeight(600).
+		ui.Text(c, locales.CollEmptySidebarTitle()).FontSize(m.FontSM).FontWeight(600).
 			TextColor(tk.TextPrimary).TextAlign(ui.Center)
-		ui.Text(c, "Collections let you group related requests, making them easier to access and run.").
+		ui.Text(c, locales.CollEmptySidebarDesc()).
 			FontSize(m.FontXS).TextColor(tk.TextMuted).TextAlign(ui.Center)
 
 		btn := ui.ButtonBase(c.Key("empty-new-collection")).Height(28).
 			PaddingX(14).AlignItems(ui.Center).Justify(ui.Center).
 			Radius(m.RadiusSM).Background(tk.Accent).
-			Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Create a collection").
+			Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.CollCreateFirstBtn()).
 			Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 		switch {
 		case btn.Pressed():
@@ -404,7 +448,7 @@ func emptySidebar(c *ui.Context, props pageProps) {
 			props.actions.createCollectionTab()
 		}
 		btn.Children(func() {
-			ui.Text(c, "Create a collection").FontSize(m.FontXS).FontWeight(500).
+			ui.Text(c, locales.CollCreateFirstBtn()).FontSize(m.FontXS).FontWeight(500).
 				TextColor(tk.OnAccent).SingleLine()
 		})
 	})

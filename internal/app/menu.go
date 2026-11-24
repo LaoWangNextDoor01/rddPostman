@@ -4,6 +4,7 @@ import (
 	"runtime"
 
 	"rddpostman/internal/routes"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo"
 )
@@ -35,7 +36,7 @@ func (a *App) buildMacMenu() *mygo.Menu {
 				mygo.Separator(),
 				{
 					ID:          "settings",
-					Label:       "Settings...",
+					Label:       locales.MenuSettings(),
 					Accelerator: "Cmd+,",
 					Click: func(_ *mygo.MenuItem, win *mygo.Window) {
 						a.dispatch(win, func() {
@@ -56,11 +57,11 @@ func (a *App) buildMacMenu() *mygo.Menu {
 
 		// 2. File 菜单：创建、工作区、导入导出与关闭
 		{
-			Label: "File",
+			Label: locales.MenuFile(),
 			Submenu: []*mygo.MenuItem{
 				{
 					ID:          "new_request",
-					Label:       "New Request",
+					Label:       locales.MenuNewRequest(),
 					Accelerator: "Cmd+N",
 					Click: func(_ *mygo.MenuItem, win *mygo.Window) {
 						a.dispatch(win, func() {
@@ -70,7 +71,7 @@ func (a *App) buildMacMenu() *mygo.Menu {
 				},
 				{
 					ID:          "new_collection",
-					Label:       "New Collection",
+					Label:       locales.MenuNewCollection(),
 					Accelerator: "Shift+Cmd+N",
 					Click: func(_ *mygo.MenuItem, win *mygo.Window) {
 						a.dispatch(win, func() {
@@ -80,7 +81,7 @@ func (a *App) buildMacMenu() *mygo.Menu {
 				},
 				{
 					ID:    "new_workspace",
-					Label: "New Workspace",
+					Label: locales.MenuNewWorkspace(),
 					Click: func(_ *mygo.MenuItem, win *mygo.Window) {
 						a.dispatch(win, func() {
 							a.router.Push(routes.HubWorkspaceNew)
@@ -90,7 +91,7 @@ func (a *App) buildMacMenu() *mygo.Menu {
 				mygo.Separator(),
 				{
 					ID:          "import",
-					Label:       "Import...",
+					Label:       locales.MenuImport(),
 					Accelerator: "Cmd+O",
 					Click: func(_ *mygo.MenuItem, win *mygo.Window) {
 						a.dispatch(win, func() {
@@ -100,7 +101,7 @@ func (a *App) buildMacMenu() *mygo.Menu {
 				},
 				{
 					ID:    "export",
-					Label: "Export...",
+					Label: locales.MenuExport(),
 					Click: func(_ *mygo.MenuItem, win *mygo.Window) {
 						a.dispatch(win, func() {
 							a.OpenExport()
@@ -125,11 +126,11 @@ func (a *App) buildMacMenu() *mygo.Menu {
 
 		// 6. Help 菜单：帮助与关于
 		{
-			Label: "Help",
+			Label: locales.MenuHelp(),
 			Submenu: []*mygo.MenuItem{
 				{
 					ID:    "help",
-					Label: "rddPostman Help",
+					Label: locales.MenuAppHelp(),
 					Click: func(_ *mygo.MenuItem, win *mygo.Window) {
 						a.dispatch(win, func() {
 							a.OpenSettings("shortcuts")
@@ -138,7 +139,7 @@ func (a *App) buildMacMenu() *mygo.Menu {
 				},
 				{
 					ID:    "about_postman",
-					Label: "About Postman",
+					Label: locales.MenuAbout(),
 					Click: func(_ *mygo.MenuItem, win *mygo.Window) {
 						a.dispatch(win, func() {
 							a.OpenSettings("about")

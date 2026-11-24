@@ -94,21 +94,21 @@ func TestDualLayoutHubAndWorkbench(t *testing.T) {
 		t.Fatalf("expected Ctrl K or ⌘K shortcut badge; got %q", tt.Texts())
 	}
 	saveLayoutPNG(t, snapDir, "hub-list.png", tt)
-	for _, want := range []string{"wang's Team", "Workspaces", "API Catalog", "Payments API", "Create workspace"} {
+	for _, want := range []string{locales.HubYourTeam(), locales.HubWorkspaces(), locales.HubAPICatalog(), "Payments API", locales.CreateWorkspaceAction()} {
 		if !tt.HasText(want) {
 			t.Fatalf("hub list missing %q; got %q", want, tt.Texts())
 		}
 	}
 
 	// 2. 点击 Create workspace 跳转到独立子路由 /hub/workspaces/new，Hub 侧栏依然常驻
-	if err := tt.Click("Create workspace"); err != nil {
+	if err := tt.Click(locales.CreateWorkspaceAction()); err != nil {
 		t.Fatalf("Click Create workspace: %v", err)
 	}
 	tt.Advance(300 * time.Millisecond)
 	if got := a.Router().Path(); got != routes.HubWorkspaceNew {
 		t.Fatalf("after Create workspace path = %q, want %q", got, routes.HubWorkspaceNew)
 	}
-	if !tt.HasText("Create your workspace") || !tt.HasText("wang's Team") {
+	if !tt.HasText(locales.WsCreateHeading()) || !tt.HasText(locales.HubYourTeam()) {
 		t.Fatalf("expected create page inside HubLayout; got %q", tt.Texts())
 	}
 
@@ -141,7 +141,7 @@ func TestDualLayoutHubAndWorkbench(t *testing.T) {
 	}
 
 	// 4. 在 Hub 布局下点击顶部设置按钮：弹出全局设置 Dialog，不改变路由
-	if err := tt.Click("设置"); err != nil {
+	if err := tt.Click(locales.SettingsTitle()); err != nil {
 		t.Fatalf("Click Settings in HubLayout: %v", err)
 	}
 	if got := a.Router().Path(); got != routes.HubWorkspaces {
@@ -173,7 +173,7 @@ func TestDualLayoutHubAndWorkbench(t *testing.T) {
 	if got := a.Router().Path(); got != wantWB {
 		t.Fatalf("workbench path = %q, want %q", got, wantWB)
 	}
-	if tt.HasText("wang's Team") {
+	if tt.HasText(locales.HubYourTeam()) {
 		t.Fatalf("Hub sidebar should not be shown inside WorkbenchLayout")
 	}
 	if !tt.HasText("Demo Collection") {
@@ -289,13 +289,13 @@ func TestDualLayoutHubAndWorkbench(t *testing.T) {
 	}
 
 	// 8. 在 WorkbenchLayout 下打开全局设置弹窗，路由不变且关闭后请求 Tab 仍在
-	if err := tt.Click("设置"); err != nil {
+	if err := tt.Click(locales.SettingsTitle()); err != nil {
 		t.Fatalf("Click Settings in WorkbenchLayout: %v", err)
 	}
-	if !tt.HasText("General") {
+	if !tt.HasText(locales.SettingsNavGeneral()) {
 		t.Fatalf("expected Settings dialog in WorkbenchLayout; got %q", tt.Texts())
 	}
-	if err := tt.Click("Close settings"); err != nil {
+	if err := tt.Click(locales.SettingsClose()); err != nil {
 		t.Fatalf("Click Close settings in WorkbenchLayout: %v", err)
 	}
 	if got := a.Router().Path(); got != routes.WorkbenchEnvironmentsOf(string(ws.ID)) {
@@ -309,21 +309,21 @@ func TestDualLayoutHubAndWorkbench(t *testing.T) {
 	if err := tt.Click(locales.SwitchWorkspace()); err != nil {
 		t.Fatalf("Click workspace selector: %v", err)
 	}
-	if err := tt.Click("Search dropdown workspaces"); err != nil {
+	if err := tt.Click(locales.SearchDropdownWorkspaces()); err != nil {
 		t.Fatalf("Click dropdown search: %v", err)
 	}
 	tt.Type("XYZNoMatch")
-	if !tt.HasText("No matching workspaces") {
+	if !tt.HasText(locales.NoWorkspaceMatches()) {
 		t.Fatalf("expected filtered empty state in workspace dropdown; got %q", tt.Texts())
 	}
-	if err := tt.Click("创建"); err != nil {
-		t.Fatalf("Click 创建 in workspace selector: %v", err)
+	if err := tt.Click(locales.Create()); err != nil {
+		t.Fatalf("Click Create in workspace selector: %v", err)
 	}
 	tt.Advance(300 * time.Millisecond)
 	if got := a.Router().Path(); got != routes.HubWorkspaceNew {
-		t.Fatalf("after dropdown 创建 path = %q, want %q", got, routes.HubWorkspaceNew)
+		t.Fatalf("after dropdown Create path = %q, want %q", got, routes.HubWorkspaceNew)
 	}
-	if !tt.HasText("Create your workspace") || !tt.HasText("wang's Team") {
+	if !tt.HasText(locales.WsCreateHeading()) || !tt.HasText(locales.HubYourTeam()) {
 		t.Fatalf("expected HubLayout create page from dropdown; got %q", tt.Texts())
 	}
 }

@@ -9,6 +9,7 @@ import (
 
 	thV2 "rddpostman/components/theme/v2"
 	"rddpostman/components/v1/icons"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -59,10 +60,10 @@ var openImagePicker = defaultOpenImagePicker
 
 func defaultOpenImagePicker() (string, error) {
 	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
-		Title: "Choose workspace icon",
+		Title: locales.WsPickIconTitle(),
 		Filters: []mygo.FileFilter{
 			{
-				Name:       "Images",
+				Name:       locales.WsPickIconFilter(),
 				Extensions: []string{"png", "jpg", "jpeg", "svg", "webp", "gif"},
 			},
 		},

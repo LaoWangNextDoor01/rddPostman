@@ -24,6 +24,8 @@ var (
 	ErrNewerVersion = errors.New("storage: 数据由更高版本写入")
 	// ErrReadOnly 表示工作区里有当前版本无法安全改写的数据。
 	ErrReadOnly = errors.New("storage: 工作区处于只读状态")
+	// ErrInvalidMove 表示非法的节点移动（例如将目录移入自身或子目录下）。
+	ErrInvalidMove = errors.New("storage: 无效的移动目标")
 )
 
 // Ref 是注册表里的一条工作区记录。
@@ -87,6 +89,9 @@ type Backend interface {
 
 	// SaveNode 新建或更新一个目录/请求；parentID 只在新建时使用。
 	SaveNode(ctx context.Context, ref Ref, collID, parentID domain.ID, n *domain.Node) error
+	// MoveNode 将节点（目录连同子树，或单个请求）移动到目标集合与目标父目录下（dstParentID 为空表示集合根层），
+	// 并持久化更新后的节点元数据（如 Order、UpdatedAt）。
+	MoveNode(ctx context.Context, ref Ref, srcCollID, nodeID, dstCollID, dstParentID domain.ID, n *domain.Node) error
 	DeleteNode(ctx context.Context, ref Ref, collID, id domain.ID) error
 
 	SaveEnvironment(ctx context.Context, ref Ref, env domain.Environment) error

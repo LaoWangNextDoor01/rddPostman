@@ -1,8 +1,8 @@
 package app
 
 import (
-	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -10,6 +10,7 @@ import (
 	"rddpostman/components/v1/icons"
 	"rddpostman/internal/domain"
 	"rddpostman/internal/importer"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -59,10 +60,10 @@ var saveExportFile = defaultSaveExportFile
 
 func defaultSaveExportFile(defaultName string, data []byte) (string, error) {
 	path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
-		Title:       "Export JSON",
+		Title:       locales.ExportDialogTitle(),
 		DefaultPath: defaultName,
 		Filters: []mygo.FileFilter{
-			{Name: "JSON Files", Extensions: []string{"json"}},
+			{Name: locales.ExportFilterJSON(), Extensions: []string{"json"}},
 		},
 	})
 	if err != nil || strings.TrimSpace(path) == "" {
@@ -100,7 +101,7 @@ func (a *App) exportDialog(c *ui.Context, open *bool) {
 				*statusMsg = ""
 			} else if savedPath != "" {
 				*errMsg = ""
-				*statusMsg = "Saved to " + savedPath
+				*statusMsg = locales.ExportSavedTo(savedPath)
 			}
 		}
 
@@ -169,12 +170,12 @@ func (a *App) exportDialog(c *ui.Context, open *bool) {
 					AlignItems(ui.Center).
 					BorderWidth(0, 0, m.Border, 0).BorderColor(tk.Border).Children(func() {
 					ui.Icon(c, icons.Download).FontSize(m.IconMD).TextColor(tk.Accent)
-					ui.Text(c, "Export Postman JSON").FontSize(m.FontLG).FontWeight(600).
+					ui.Text(c, locales.CmdExportTitle()).FontSize(m.FontLG).FontWeight(600).
 						TextColor(tk.TextPrimary).SingleLine().Grow(1)
 
 					closeBtn := ui.ButtonBase(c.Key("export-close")).
 						Size(28, 28).Radius(m.RadiusSM).Center().
-						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Close export")
+						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.ExportCloseLabel())
 					if closeBtn.Hovered() {
 						closeBtn.Background(tk.BgHover)
 					}
@@ -193,11 +194,11 @@ func (a *App) exportDialog(c *ui.Context, open *bool) {
 					ui.Column(c).Width(230).FillHeight().Background(tk.BgApp).
 						BorderWidth(0, m.Border, 0, 0).BorderColor(tk.Border).
 						Padding(m.Space3, m.Space2).Gap(m.Space1).Children(func() {
-						ui.Text(c, "ITEMS IN WORKSPACE").FontSize(10).FontWeight(600).
+						ui.Text(c, locales.ExportItemsHeader()).FontSize(10).FontWeight(600).
 							TextColor(tk.TextMuted).Padding(0, m.Space2, m.Space1, m.Space2)
 
 						if len(targets) == 0 {
-							ui.Text(c, "Nothing to export").FontSize(m.FontXS).TextColor(tk.TextMuted).
+							ui.Text(c, locales.ExportNothing()).FontSize(m.FontXS).TextColor(tk.TextMuted).
 								Padding(m.Space2, m.Space2)
 						} else {
 							ui.Scroll(c).Grow(1).FillWidth().Children(func() {
@@ -239,7 +240,7 @@ func (a *App) exportDialog(c *ui.Context, open *bool) {
 						ui.Row(c).FillWidth().AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
 							ui.Text(c, defaultFile).FontSize(m.FontXS).FontWeight(500).
 								TextColor(tk.TextSecondary).SingleLine()
-							ui.Text(c, fmt.Sprintf("%d bytes", len(previewBytes))).FontSize(11).
+							ui.Text(c, locales.ExportBytes(strconv.Itoa(len(previewBytes)))).FontSize(11).
 								TextColor(tk.TextMuted).SingleLine()
 						})
 
@@ -247,7 +248,7 @@ func (a *App) exportDialog(c *ui.Context, open *bool) {
 							Border(m.Border, tk.Border).Padding(m.Space3).Children(func() {
 							if previewJSON == "" {
 								ui.Box(c).Fill().Center().Children(func() {
-									ui.Text(c, "Select a collection or environment to preview JSON").
+									ui.Text(c, locales.ExportPreviewEmpty()).
 										FontSize(m.FontXS).TextColor(tk.TextMuted)
 								})
 							} else {
@@ -275,7 +276,7 @@ func (a *App) exportDialog(c *ui.Context, open *bool) {
 					copyBtn := ui.ButtonBase(c.Key("export-copy-json")).
 						Height(30).PaddingX(12).Radius(m.RadiusSM).Center().Gap(6).
 						Border(m.Border, tk.BorderPopover).Background(tk.BgSurface).
-						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Copy JSON").
+						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.ExportCopyJSON()).
 						Disabled(len(previewBytes) == 0)
 					if len(previewBytes) > 0 && copyBtn.Hovered() {
 						copyBtn.Background(tk.BgHover)
@@ -283,12 +284,12 @@ func (a *App) exportDialog(c *ui.Context, open *bool) {
 					if copyBtn.Clicked() && len(previewBytes) > 0 {
 						c.Services().WriteClipboard(previewJSON)
 						*errMsg = ""
-						*statusMsg = "Copied JSON to clipboard"
+						*statusMsg = locales.ExportCopied()
 					}
 					copyBtn.Children(func() {
 						ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
 							ui.Icon(c, icons.Copy).FontSize(12).TextColor(tk.TextSecondary)
-							ui.Text(c, "Copy JSON").FontSize(m.FontXS).FontWeight(500).
+							ui.Text(c, locales.ExportCopyJSON()).FontSize(m.FontXS).FontWeight(500).
 								TextColor(tk.TextPrimary).SingleLine()
 						})
 					})
@@ -296,7 +297,7 @@ func (a *App) exportDialog(c *ui.Context, open *bool) {
 					saveBtn := ui.ButtonBase(c.Key("export-save-file")).
 						Height(30).PaddingX(14).Radius(m.RadiusSM).Center().
 						Background(tk.Accent).
-						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Save to File").
+						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.ExportSaveToFile()).
 						Disabled(len(previewBytes) == 0)
 					if len(previewBytes) > 0 && saveBtn.Hovered() {
 						saveBtn.Background(tk.AccentHover)
@@ -319,7 +320,7 @@ func (a *App) exportDialog(c *ui.Context, open *bool) {
 					saveBtn.Children(func() {
 						ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
 							ui.Icon(c, icons.Download).FontSize(12).TextColor(tk.OnAccent)
-							ui.Text(c, "Save to File").FontSize(m.FontXS).FontWeight(500).
+							ui.Text(c, locales.ExportSaveToFile()).FontSize(m.FontXS).FontWeight(500).
 								TextColor(tk.OnAccent).SingleLine()
 						})
 					})

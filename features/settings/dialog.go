@@ -19,12 +19,14 @@ type settingsNavItem struct {
 	icon  *ui.SVG
 }
 
-var settingsNavItems = []settingsNavItem{
-	{id: "general", label: "General", icon: icons.Settings},
-	{id: "themes", label: "Themes", icon: icons.Sparkles},
-	{id: "shortcuts", label: "Shortcuts", icon: icons.SquareTerminal},
-	{id: "data", label: "Data", icon: icons.Download},
-	{id: "about", label: "About", icon: icons.Info},
+func getSettingsNavItems() []settingsNavItem {
+	return []settingsNavItem{
+		{id: "general", label: locales.SettingsNavGeneral(), icon: icons.Settings},
+		{id: "themes", label: locales.SettingsNavThemes(), icon: icons.Sparkles},
+		{id: "shortcuts", label: locales.SettingsNavShortcuts(), icon: icons.SquareTerminal},
+		{id: "data", label: locales.SettingsNavData(), icon: icons.Download},
+		{id: "about", label: locales.SettingsNavAbout(), icon: icons.Info},
+	}
 }
 
 // Dialog 在 RootLayout 层绘制全局设置弹窗（对齐 Pixso 24-全局框架-SettingDialog）。
@@ -68,13 +70,14 @@ func Dialog(c *ui.Context, open *bool, opts ...DialogOptions) {
 			Clip()
 
 		panel.Children(func() {
+			navItems := getSettingsNavItems()
 			ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
 				// 左侧分类导航栏
 				ui.Column(c).Width(176).FillHeight().
 					Background(tk.BgSubtle).
 					BorderWidth(0, m.Border, 0, 0).BorderColor(tk.Border).
 					Padding(m.Space3, m.Space2).Gap(2).Children(func() {
-					for _, item := range settingsNavItems {
+					for _, item := range navItems {
 						it := item
 						selected := *activeTab == it.id
 						btn := ui.ButtonBase(c.Key("settings-nav-"+it.id)).
@@ -110,8 +113,8 @@ func Dialog(c *ui.Context, open *bool, opts ...DialogOptions) {
 				// 右侧内容区
 				ui.Column(c).Grow(1).FillHeight().Background(tk.BgSurface).Children(func() {
 					// 顶部标题与关闭按钮
-					title := "General"
-					for _, it := range settingsNavItems {
+					title := locales.SettingsNavGeneral()
+					for _, it := range navItems {
 						if it.id == *activeTab {
 							title = it.label
 							break
@@ -125,7 +128,7 @@ func Dialog(c *ui.Context, open *bool, opts ...DialogOptions) {
 
 						closeBtn := ui.ButtonBase(c.Key("settings-dialog-close")).
 							Size(28, 28).Radius(m.RadiusSM).Center().
-							Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Close settings")
+							Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.SettingsClose())
 						if closeBtn.Hovered() {
 							closeBtn.Background(tk.BgHover)
 						}
@@ -144,7 +147,7 @@ func Dialog(c *ui.Context, open *bool, opts ...DialogOptions) {
 							case "general":
 								dialogLanguageRow(c)
 								dialogSettingRow(c, locales.DataMode(), locales.DataModeDesc(), locales.OfflineMode())
-								dialogSettingRow(c, "HTTP version", "Select the HTTP version to use for sending requests.", "Auto")
+								dialogSettingRow(c, locales.SettingsHttpVersion(), locales.SettingsHttpVersionDesc(), locales.SettingsAuto())
 							case "themes":
 								dialogThemeRow(c, opt.ThemeMode, opt.OnThemeMode)
 								dialogAccentRow(c)
@@ -156,10 +159,10 @@ func Dialog(c *ui.Context, open *bool, opts ...DialogOptions) {
 								if opt.DataDir != "" {
 									storageVal = opt.DataDir
 								}
-								dialogSettingRow(c, "Workspace storage", "Each workspace stores collections, environments, and icons locally.", storageVal)
+								dialogSettingRow(c, locales.SettingsStorage(), locales.SettingsStorageDesc(), storageVal)
 							case "about":
-								dialogSettingRow(c, "Application", "Offline-first API client built with Go & MyGo.", "rddPostman")
-								dialogSettingRow(c, "Version", "Current desktop application build version.", fmt.Sprintf("v%s", config.Version))
+								dialogSettingRow(c, locales.SettingsApp(), locales.SettingsAppDesc(), "rddPostman")
+								dialogSettingRow(c, locales.SettingsVersion(), locales.SettingsVersionDesc(), fmt.Sprintf("v%s", config.Version))
 							}
 						})
 					})
@@ -195,7 +198,7 @@ func dialogThemeRow(c *ui.Context, mode ThemeMode, onChange func(ThemeMode)) {
 			ui.Text(c, locales.AppearanceDesc()).FontSize(m.FontXS).TextColor(tk.TextMuted)
 		})
 		seg := ui.Segmented(c.Key("settings-dialog-theme"), localChoice,
-			locales.FollowSystem(), "Light", "Dark")
+			locales.FollowSystem(), locales.ThemeLight(), locales.ThemeDark())
 		if seg.Changed() && onChange != nil {
 			next := ThemeSystem
 			switch *localChoice {
@@ -238,22 +241,22 @@ func dialogShortcutsList(c *ui.Context) {
 	items := []struct {
 		name, desc, keys string
 	}{
-		{locales.GlobalSearch(), "Open quick search across workspaces, collections, and requests.", join(mod, "K")},
-		{locales.ShowAllCommands(), "Open command palette in quick search.", join(mod, "Shift", "P")},
-		{"Settings", "Open global settings dialog.", join(mod, ",")},
-		{locales.NewRequest(), "Create a new HTTP request in the active workspace.", join(mod, "N")},
-		{locales.NewCollection(), "Create a new collection in the active workspace.", join(mod, "Shift", "N") + " / " + join(mod, "B")},
-		{"Import", "Open Postman / cURL import dialog.", join(mod, "O")},
-		{"Globals", "Open workspace-shared global variables editor.", join(mod, "Shift", "G")},
-		{"Save Request", "Persist current request changes to disk.", join(mod, "S")},
-		{"Send Request", "Send the active HTTP request.", join(mod, "Enter")},
-		{"Focus URL Bar", "Focus the request URL input bar.", join(mod, "L")},
-		{"Close Tab", "Close the currently active workbench tab.", join(mod, "W")},
-		{"Next / Previous Tab", "Cycle through open workbench tabs.", "Ctrl+Tab / Ctrl+Shift+Tab"},
-		{"Switch Sidebar Panel", "Switch between Collections, Environments, History, and Tools.", join(mod, "1") + " / 2 / 3 / 4"},
-		{locales.SwitchEnvironment(), "Jump to workspace environments.", join(mod, "E")},
-		{"Navigate Back / Forward", "Move back or forward in navigation history.", alt + "+← / " + alt + "+→"},
-		{"Close Modal", "Dismiss active search, settings, or utility dialog.", "Esc"},
+		{locales.GlobalSearch(), locales.ScGlobalSearchDesc(), join(mod, "K")},
+		{locales.ShowAllCommands(), locales.ScShowCommandsDesc(), join(mod, "Shift", "P")},
+		{locales.SettingsTitle(), locales.ScSettingsDesc(), join(mod, ",")},
+		{locales.NewRequest(), locales.ScNewReqDesc(), join(mod, "N")},
+		{locales.NewCollection(), locales.ScNewCollDesc(), join(mod, "Shift", "N") + " / " + join(mod, "B")},
+		{locales.ScImport(), locales.ScImportDesc(), join(mod, "O")},
+		{locales.Globals(), locales.ScGlobalsDesc(), join(mod, "Shift", "G")},
+		{locales.ScSaveRequest(), locales.ScSaveRequestDesc(), join(mod, "S")},
+		{locales.ScSendRequest(), locales.ScSendRequestDesc(), join(mod, "Enter")},
+		{locales.ScFocusURL(), locales.ScFocusURLDesc(), join(mod, "L")},
+		{locales.ScCloseTab(), locales.ScCloseTabDesc(), join(mod, "W")},
+		{locales.ScCycleTabs(), locales.ScCycleTabsDesc(), "Ctrl+Tab / Ctrl+Shift+Tab"},
+		{locales.ScSwitchSidebar(), locales.ScSwitchSidebarDesc(), join(mod, "1") + " / 2 / 3 / 4"},
+		{locales.SwitchEnvironment(), locales.ScSwitchEnvDesc(), join(mod, "E")},
+		{locales.ScNavHistory(), locales.ScNavHistoryDesc(), alt + "+← / " + alt + "+→"},
+		{locales.ScCloseModal(), locales.ScCloseModalDesc(), "Esc"},
 	}
 
 	for _, it := range items {
@@ -282,8 +285,8 @@ func dialogAccentRow(c *ui.Context) {
 		AlignItems(ui.Center).
 		BorderWidth(0, 0, m.Border, 0).BorderColor(tk.Border).Children(func() {
 		ui.Column(c).Grow(1).Gap(2).Children(func() {
-			ui.Text(c, "Accent color").FontSize(m.FontSM).FontWeight(500).TextColor(tk.TextPrimary)
-			ui.Text(c, "Synchronized with Pixso Theme variables (Light / Dark).").
+			ui.Text(c, locales.SettingsAccentColor()).FontSize(m.FontSM).FontWeight(500).TextColor(tk.TextPrimary)
+			ui.Text(c, locales.SettingsAccentColorDesc()).
 				FontSize(m.FontXS).TextColor(tk.TextMuted)
 		})
 		ui.Row(c).AlignItems(ui.Center).Gap(m.Space2).Children(func() {

@@ -2,10 +2,12 @@ package tools
 
 import (
 	"fmt"
+	"strconv"
 
 	thV2 "rddpostman/components/theme/v2"
 	"rddpostman/components/v1/icons"
 	"rddpostman/internal/devtools"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
@@ -30,7 +32,6 @@ type codecToolState struct {
 	errMsg       string
 	copied       bool
 	copiedParam  string
-	editing      bool
 }
 
 func sampleForCodec(mode int, decode bool) string {
@@ -64,6 +65,7 @@ func renderCodecTool(c *ui.Context, keySuffix string, initialMode int) {
 				Buffer:      editor.NewBuffer(""),
 				SoftWrap:    true,
 				LineNumbers: editor.LineNumbersOff,
+				Label:       "Codec input",
 			},
 			outputEd: &editor.State{
 				Buffer:      editor.NewBuffer(""),
@@ -73,6 +75,7 @@ func renderCodecTool(c *ui.Context, keySuffix string, initialMode int) {
 			},
 		}
 	})
+	st.inputEd.Placeholder = locales.CodecEmptyTitle() + " · " + locales.CodecEmptyDesc()
 
 	recompute := func(force bool) {
 		raw := st.inputEd.Buffer.String()
@@ -144,18 +147,16 @@ func renderCodecTool(c *ui.Context, keySuffix string, initialMode int) {
 
 	root.Children(func() {
 		// 1. Header (48px)
-		toolHeader(c, icons.Link, "编解码工作台", "Base64 (Standard / URL-Safe) · URL Query/Path · Unicode 转义", func() {
-			if toolBtn(c, toolBtnOpts{Key: "codec-sample", Label: "载入示例", Icon: icons.Sparkles, Variant: btnGhost, Height: 26}).Clicked() {
+		toolHeader(c, icons.Link, locales.ToolCodecName(), locales.ToolCodecDesc(), func() {
+			if toolBtn(c, toolBtnOpts{Key: "codec-sample", Label: locales.LoadSample(), Icon: icons.Sparkles, Variant: btnGhost, Height: 26}).Clicked() {
 				st.inputEd.Buffer.Reset(sampleForCodec(st.mode, st.decodeDir))
-				st.editing = true
 				recompute(true)
 			}
-			if toolBtn(c, toolBtnOpts{Key: "codec-clear", Label: "清空", Icon: icons.Trash, Variant: btnGhost, Height: 26}).Clicked() {
+			if toolBtn(c, toolBtnOpts{Key: "codec-clear", Label: locales.Clear(), Icon: icons.Trash, Variant: btnGhost, Height: 26}).Clicked() {
 				st.inputEd.Buffer.Reset("")
 				st.outputEd.Buffer.Reset("")
 				st.errMsg = ""
 				st.copied = false
-				st.editing = false
 				st.lastSig = ""
 			}
 		})
@@ -167,7 +168,7 @@ func renderCodecTool(c *ui.Context, keySuffix string, initialMode int) {
 				recompute(true)
 			})
 			toolDividerV(c)
-			toolSegmented(c, "codec-dir", []string{"编码 Encode", "解码 Decode"}, dirIdx, func(idx int) {
+			toolSegmented(c, "codec-dir", []string{locales.CodecDirEncode(), locales.CodecDirDecode()}, dirIdx, func(idx int) {
 				st.decodeDir = idx == 1
 				recompute(true)
 			})
@@ -186,7 +187,7 @@ func renderCodecTool(c *ui.Context, keySuffix string, initialMode int) {
 				if st.omitPadding {
 					opVar = btnActive
 				}
-				if toolBtn(c, toolBtnOpts{Key: "codec-nopad", Label: "省略 =", Variant: opVar}).Clicked() {
+				if toolBtn(c, toolBtnOpts{Key: "codec-nopad", Label: locales.CodecOmitPadding(), Variant: opVar}).Clicked() {
 					st.omitPadding = !st.omitPadding
 					recompute(true)
 				}
@@ -195,7 +196,7 @@ func renderCodecTool(c *ui.Context, keySuffix string, initialMode int) {
 				if st.urlFullURI {
 					uIdx = 1
 				}
-				toolSegmented(c, "codec-url-scope", []string{"Query 参数", "完整 URI"}, uIdx, func(idx int) {
+				toolSegmented(c, "codec-url-scope", []string{locales.CodecURLQuery(), locales.CodecURLFull()}, uIdx, func(idx int) {
 					st.urlFullURI = idx == 1
 					recompute(true)
 				})
@@ -204,26 +205,25 @@ func renderCodecTool(c *ui.Context, keySuffix string, initialMode int) {
 				if st.nonASCIIOnly {
 					naVar = btnActive
 				}
-				if toolBtn(c, toolBtnOpts{Key: "codec-nonascii", Label: "仅转义非 ASCII", Variant: naVar}).Clicked() {
+				if toolBtn(c, toolBtnOpts{Key: "codec-nonascii", Label: locales.CodecNonASCIIOnly(), Variant: naVar}).Clicked() {
 					st.nonASCIIOnly = !st.nonASCIIOnly
 					recompute(true)
 				}
 			}
 		}, func() {
-			if toolBtn(c, toolBtnOpts{Key: "codec-swap", Label: "互换方向", Icon: icons.ArrowLeft, Variant: btnSecondary, Disabled: rawOut == ""}).Clicked() {
+			if toolBtn(c, toolBtnOpts{Key: "codec-swap", Label: locales.CodecSwapDir(), Icon: icons.ArrowLeft, Variant: btnSecondary, Disabled: rawOut == ""}).Clicked() {
 				if rawOut != "" {
 					st.decodeDir = !st.decodeDir
 					st.inputEd.Buffer.Reset(rawOut)
-					st.editing = true
 					recompute(true)
 				}
 			}
 			copyVar := btnPrimary
-			copyLbl := "复制结果"
+			copyLbl := locales.JsonCopyResult()
 			copyIc := icons.Copy
 			if st.copied {
 				copyVar = btnSuccess
-				copyLbl = "已复制"
+				copyLbl = locales.Copied()
 				copyIc = icons.Check
 			}
 			if toolBtn(c, toolBtnOpts{Key: "codec-copy", Label: copyLbl, Icon: copyIc, Variant: copyVar, Disabled: rawOut == ""}).Clicked() {
@@ -266,64 +266,42 @@ func renderCodecTool(c *ui.Context, keySuffix string, initialMode int) {
 						inMeta = fmt.Sprintf("%d B · %d chars", inBytes, len([]rune(rawIn)))
 					}
 					toolPaneHeader(c, inTitle, inMeta, func() {
+						if toolBtn(c, toolBtnOpts{Key: "codec-in-paste", Label: locales.PasteFromClipboard(), Icon: icons.Copy, Variant: btnGhost, Height: 22, PadX: 7}).Clicked() {
+							if clip := c.Services().ReadClipboard(); clip != "" {
+								st.inputEd.Buffer.Reset(clip)
+								recompute(true)
+							}
+						}
 						if isEmpty {
-							toolPill(c, "等待输入", pillNeutral, false)
+							toolPill(c, locales.WaitingForInput(), pillNeutral, false)
 						} else if st.errMsg != "" {
-							toolPill(c, "包含非法字符", pillDanger, true)
+							toolPill(c, locales.CodecInvalidChars(), pillDanger, true)
 						} else {
 							toolPill(c, "UTF-8", pillNeutral, false)
 						}
 					})
 
-					if isEmpty && !st.editing {
-						ui.Column(c).Grow(1).FillWidth().Center().Padding(m.Space6).Gap(10).Background(tk.BgBase).Children(func() {
-							ui.Box(c).Size(44, 44).Radius(10).Background(tk.AccentSoft).Border(m.Border, tk.Accent.Alpha(0.25)).Center().Children(func() {
-								ui.Icon(c, icons.LinkBoldDuotone).FontSize(22).TextColor(tk.Accent)
-							})
-							ui.Text(c, "输入或粘贴需要编解码的文本").FontSize(13).FontWeight(500).TextColor(tk.TextPrimary)
-							ui.Text(c, "输入时自动实时转换，支持 UTF-8 中文、URL-Safe 与 Unicode 序列").FontSize(m.FontSM).TextColor(tk.TextMuted)
-							ui.Row(c).Gap(8).Padding(4, 0, 0, 0).Children(func() {
-								if toolBtn(c, toolBtnOpts{Key: "codec-empty-paste", Label: "从剪贴板粘贴", Icon: icons.Copy, Variant: btnPrimary}).Clicked() {
-									clip := c.Services().ReadClipboard()
-									st.editing = true
-									if clip != "" {
-										st.inputEd.Buffer.Reset(clip)
+					ui.Column(c).Grow(1).FillWidth().Children(func() {
+						ui.Box(c.Key("codec-in-ed")).Grow(1).FillWidth().Padding(8, 12).Background(tk.BgBase).Clip().Children(func() {
+							editor.View(c, st.inputEd).Fill()
+						})
+						if st.errMsg != "" {
+							ui.Box(c).FillWidth().Padding(8, 12, 12, 12).Children(func() {
+								act := ""
+								var actFn func()
+								if st.mode == codecModeBase64 && st.decodeDir {
+									act = locales.CodecAutoClean()
+									actFn = func() {
+										cleaned := devtools.CleanBase64(st.inputEd.Buffer.String())
+										st.inputEd.Buffer.Reset(cleaned)
 										recompute(true)
 									}
 								}
-								if toolBtn(c, toolBtnOpts{Key: "codec-empty-sample", Label: "载入示例", Icon: icons.Sparkles, Variant: btnSecondary}).Clicked() {
-									st.inputEd.Buffer.Reset(sampleForCodec(st.mode, st.decodeDir))
-									st.editing = true
-									recompute(true)
-								}
-								if toolBtn(c, toolBtnOpts{Key: "codec-empty-edit", Label: "手动输入", Variant: btnGhost}).Clicked() {
-									st.editing = true
-								}
+								toolInlineErrorCard(c, "codec-err-card", st.errMsg,
+									locales.CodecBase64Hint(), act, actFn)
 							})
-						})
-					} else {
-						ui.Column(c).Grow(1).FillWidth().Children(func() {
-							ui.Box(c.Key("codec-in-ed")).Grow(1).FillWidth().Padding(8, 12).Background(tk.BgBase).Clip().Children(func() {
-								editor.View(c, st.inputEd).Fill()
-							})
-							if st.errMsg != "" {
-								ui.Box(c).FillWidth().Padding(8, 12, 12, 12).Children(func() {
-									act := ""
-									var actFn func()
-									if st.mode == codecModeBase64 && st.decodeDir {
-										act = "自动清理"
-										actFn = func() {
-											cleaned := devtools.CleanBase64(st.inputEd.Buffer.String())
-											st.inputEd.Buffer.Reset(cleaned)
-											recompute(true)
-										}
-									}
-									toolInlineErrorCard(c, "codec-err-card", st.errMsg,
-										"标准 Base64 仅允许 A-Z、a-z、0-9、+、/ 及末尾填充符 =", act, actFn)
-								})
-							}
-						})
-					}
+						}
+					})
 				})
 
 				ui.Box(c).Width(1).FillHeight().Background(tk.Border)
@@ -332,7 +310,7 @@ func renderCodecTool(c *ui.Context, keySuffix string, initialMode int) {
 				ui.Column(c).Grow(1).Basis(0).FillHeight().Children(func() {
 					outMeta := "0 chars"
 					if st.errMsg != "" {
-						outMeta = "解码失败"
+						outMeta = locales.CodecDecodeFailed()
 					} else if rawOut != "" {
 						if st.mode == codecModeBase64 && !st.decodeDir && inBytes > 0 {
 							delta := int(float64(len(rawOut)-inBytes) / float64(inBytes) * 100)
@@ -343,7 +321,7 @@ func renderCodecTool(c *ui.Context, keySuffix string, initialMode int) {
 					}
 					toolPaneHeader(c, outTitle, outMeta, func() {
 						if st.errMsg != "" {
-							toolPill(c, "已停止", pillNeutral, false)
+							toolPill(c, locales.CodecStopped(), pillNeutral, false)
 						} else if rawOut != "" {
 							switch {
 							case st.mode == codecModeBase64 && st.urlSafe && !st.decodeDir:
@@ -351,11 +329,11 @@ func renderCodecTool(c *ui.Context, keySuffix string, initialMode int) {
 							case st.mode == codecModeURL && !st.decodeDir:
 								toolPill(c, "RFC 3986", pillSuccess, true)
 							case st.copied:
-								toolPill(c, "已复制", pillSuccess, true)
+								toolPill(c, locales.Copied(), pillSuccess, true)
 							default:
-								lbl := "已编码"
+								lbl := locales.CodecEncoded()
 								if st.decodeDir {
-									lbl = "已解码"
+									lbl = locales.CodecDecoded()
 								}
 								toolPill(c, lbl, pillSuccess, true)
 							}
@@ -368,13 +346,13 @@ func renderCodecTool(c *ui.Context, keySuffix string, initialMode int) {
 							ui.Box(c).Size(40, 40).Radius(10).Background(tk.DangerSoft).Border(m.Border, tk.Danger.Alpha(0.35)).Center().Children(func() {
 								ui.Icon(c, icons.TriangleAlert).FontSize(18).TextColor(tk.Danger)
 							})
-							ui.Text(c, "解码失败").FontSize(13).FontWeight(500).TextColor(tk.TextPrimary)
-							ui.Text(c, "请修正左侧非法字符，或点击“自动清理”跳过非法符号").FontSize(m.FontSM).TextColor(tk.TextMuted)
+							ui.Text(c, locales.CodecDecodeFailed()).FontSize(13).FontWeight(500).TextColor(tk.TextPrimary)
+							ui.Text(c, locales.CodecErrHint()).FontSize(m.FontSM).TextColor(tk.TextMuted)
 						})
 					case rawOut == "":
 						ui.Column(c).Grow(1).FillWidth().Center().Padding(m.Space6).Gap(8).Background(tk.BgApp).Children(func() {
-							ui.Text(c, "转换结果将在此处实时生成").FontSize(m.FontSM).TextColor(tk.TextMuted)
-							ui.Text(c, "支持 Base64 / URL / Unicode 三模式无缝切换").FontSize(m.FontXS).TextColor(tk.TextDisabled)
+							ui.Text(c, locales.CodecOutputEmptyTitle()).FontSize(m.FontSM).TextColor(tk.TextMuted)
+							ui.Text(c, locales.CodecOutputEmptyDesc()).FontSize(m.FontXS).TextColor(tk.TextDisabled)
 						})
 					default:
 						ui.Column(c).Grow(1).FillWidth().Children(func() {
@@ -387,12 +365,12 @@ func renderCodecTool(c *ui.Context, keySuffix string, initialMode int) {
 								ui.Box(c).FillWidth().Padding(0, 12, 12, 12).Children(func() {
 									ui.Column(c).FillWidth().Padding(10, 12).Gap(8).Radius(m.RadiusMD).
 										Background(tk.AccentSoft).Border(m.Border, tk.Accent.Alpha(0.3)).Children(func() {
-										ui.Text(c, "URL-Safe 安全替换摘要").FontSize(m.FontSM).FontWeight(600).TextColor(tk.Accent)
+										ui.Text(c, locales.CodecURLSafeSummary()).FontSize(m.FontSM).FontWeight(600).TextColor(tk.Accent)
 										ui.Row(c).Gap(8).Children(func() {
-											toolPill(c, fmt.Sprintf("'+' → '-' (%d 处)", diff.PlusReplaced), pillNeutral, false)
-											toolPill(c, fmt.Sprintf("'/' → '_' (%d 处)", diff.SlashReplaced), pillAccent, false)
+											toolPill(c, locales.CodecPlusReplaced(strconv.Itoa(diff.PlusReplaced)), pillNeutral, false)
+											toolPill(c, locales.CodecSlashReplaced(strconv.Itoa(diff.SlashReplaced)), pillAccent, false)
 											if st.omitPadding {
-												toolPill(c, fmt.Sprintf("已省略 %d 个 '=' 填充", diff.PadOmitted), pillSuccess, false)
+												toolPill(c, locales.CodecPadOmitted(strconv.Itoa(diff.PadOmitted)), pillSuccess, false)
 											}
 										})
 									})
@@ -409,9 +387,9 @@ func renderCodecTool(c *ui.Context, keySuffix string, initialMode int) {
 				ui.Column(c).FillWidth().MaxHeight(196).Background(tk.BgBase).Children(func() {
 					ui.Row(c).FillWidth().Height(32).Padding(0, 16).AlignItems(ui.Center).Justify(ui.SpaceBetween).
 						Background(tk.BgApp).BorderWidth(0, 0, m.Border, 0).BorderColor(tk.Border).Children(func() {
-						ui.Text(c, fmt.Sprintf("QUERY PARAMS 自动解析预览 (%d 项)", len(queryPreview))).
+						ui.Text(c, locales.CodecQueryPreviewHeader(strconv.Itoa(len(queryPreview)))).
 							FontSize(m.FontXS).FontWeight(600).TextColor(tk.TextSecondary)
-						ui.Text(c, "点击任意行复制参数值").FontSize(m.FontXS).TextColor(tk.TextMuted)
+						ui.Text(c, locales.CodecQueryClickCopy()).FontSize(m.FontXS).TextColor(tk.TextMuted)
 					})
 					ui.Scroll(c).FillWidth().MaxHeight(164).Children(func() {
 						ui.Column(c).FillWidth().Children(func() {
@@ -441,7 +419,7 @@ func renderCodecTool(c *ui.Context, keySuffix string, initialMode int) {
 									ui.Text(c, item.EncodedValue).Font("monospace").FontSize(m.FontXS).
 										TextColor(tk.TextSecondary).SingleLine().Grow(1)
 									if isCopied {
-										ui.Text(c, "已复制 ✓").FontSize(m.FontXS).TextColor(tk.Success).SingleLine()
+										ui.Text(c, locales.CodecCopiedTick()).FontSize(m.FontXS).TextColor(tk.Success).SingleLine()
 									}
 								})
 							}
@@ -452,18 +430,18 @@ func renderCodecTool(c *ui.Context, keySuffix string, initialMode int) {
 		})
 
 		// 4. Footer (26px)
-		fTxt := "就绪 · 实时双向编解码"
+		fTxt := locales.CodecFooterReady()
 		fCol := tk.TextMuted
 		if st.errMsg != "" {
-			fTxt = "解码失败 · " + st.errMsg
+			fTxt = locales.CodecFooterErr(st.errMsg)
 			fCol = tk.Danger
 		} else if st.copied {
-			fTxt = fmt.Sprintf("已复制 %d 个字符到剪贴板", outRunes)
+			fTxt = locales.CodecFooterCopied(strconv.Itoa(outRunes))
 			fCol = tk.Success
 		} else if rawOut != "" {
-			fTxt = "转换成功 · UTF-8 字节精准对齐"
+			fTxt = locales.CodecFooterOK()
 			fCol = tk.Success
 		}
-		toolFooter(c, fTxt, fCol, "字符编码: UTF-8")
+		toolFooter(c, fTxt, fCol, locales.CodecFooterCharset())
 	})
 }

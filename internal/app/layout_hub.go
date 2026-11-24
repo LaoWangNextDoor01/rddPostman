@@ -42,32 +42,32 @@ func (a *App) hubLayout(c *ui.Context, r *ui.Route) {
 					sub.Title(locales.WorkspaceTitle())
 					workspace.ListView(c, a.store, a.router)
 				case sub.Match(routes.SubWorkspaceNew):
-					sub.Title("Create Workspace")
+					sub.Title(locales.HubCreateWorkspaceTitle())
 					workspace.CreateView(c, a.store, a.router)
 				case sub.Match(routes.SubHome):
-					sub.Title("Home")
-					hubPlaceholder(c, "Home", "Recent workspaces and team activity will appear here.", icons.House)
+					sub.Title(locales.RailHome())
+					hubPlaceholder(c, locales.RailHome(), locales.HubHomeDesc(), icons.House)
 				case sub.Match(routes.SubInventory):
-					sub.Title("Application Inventory")
-					hubPlaceholder(c, "Application Inventory", "Discover and track applications across your team.", icons.Boxes)
+					sub.Title(locales.HubInventory())
+					hubPlaceholder(c, locales.HubInventory(), locales.HubInventoryDesc(), icons.Boxes)
 				case sub.Match(routes.SubAPICatalog):
-					sub.Title("API Catalog")
-					hubPlaceholder(c, "API Catalog", "Browse and manage your organization's API catalog.", icons.BookOpen)
+					sub.Title(locales.HubAPICatalog())
+					hubPlaceholder(c, locales.HubAPICatalog(), locales.HubAPICatalogDesc(), icons.BookOpen)
 				case sub.Match(routes.SubPrivateNetwork):
-					sub.Title("Private API Network")
-					hubPlaceholder(c, "Private API Network", "Share internal APIs, collections, and workspaces with your team.", icons.Lock)
+					sub.Title(locales.HubPrivateNetwork())
+					hubPlaceholder(c, locales.HubPrivateNetwork(), locales.HubPrivateNetworkDesc(), icons.Lock)
 				case sub.Match(routes.SubPublicNetwork):
-					sub.Title("Public API Network")
-					hubPlaceholder(c, "Public API Network", "Explore and publish public APIs for the community.", icons.Globe)
+					sub.Title(locales.HubPublicNetwork())
+					hubPlaceholder(c, locales.HubPublicNetwork(), locales.HubPublicNetworkDesc(), icons.Globe)
 				case sub.Match(routes.SubAgentContext):
-					sub.Title("Agent Context")
-					hubPlaceholder(c, "Agent Context", "Configure context and tools for AI agents.", icons.Sparkles)
+					sub.Title(locales.HubAgentContext())
+					hubPlaceholder(c, locales.HubAgentContext(), locales.HubAgentContextDesc(), icons.Sparkles)
 				case sub.Match(routes.SubIntegrations):
-					sub.Title("Integrations")
-					hubPlaceholder(c, "Integrations", "Connect third-party services and automate workflows.", icons.Plug)
+					sub.Title(locales.HubIntegrations())
+					hubPlaceholder(c, locales.HubIntegrations(), locales.HubIntegrationsDesc(), icons.Plug)
 				case sub.Match(routes.SubReports):
-					sub.Title("Reports")
-					hubPlaceholder(c, "Reports", "Review API usage, test runs, and workspace metrics.", icons.ChartColumn)
+					sub.Title(locales.HubReports())
+					hubPlaceholder(c, locales.HubReports(), locales.HubReportsDesc(), icons.ChartColumn)
 				default:
 					sub.Title(locales.WorkspaceTitle())
 					workspace.ListView(c, a.store, a.router)
@@ -84,12 +84,12 @@ func (a *App) hubSidebar(c *ui.Context) {
 	ui.Column(c).Fill().MinWidth(hubMinSidebarWidth).Background(tk.BgBase).Children(func() {
 		// 1. 团队信息栏 (48px)
 		ui.Row(c).FillWidth().Height(48).AlignItems(ui.Center).Padding(m.Space2, m.Space3).Gap(m.Space2).Children(func() {
-			ui.Avatar(c, "W", nil).Size(26, 26).Border(1, tk.BorderPopover).
+			ui.Avatar(c, "YT", nil).Size(26, 26).Border(1, tk.BorderPopover).
 				Background(tk.BgSubtle).TextColor(tk.TextSecondary)
 
 			ui.Column(c).Children(func() {
-				ui.Text(c, "wang's Team").FontSize(13).FontWeight(600).TextColor(tk.TextPrimary).SingleLine()
-				ui.Text(c, "1 member").FontSize(m.FontXS).TextColor(tk.TextMuted).SingleLine()
+				ui.Text(c, locales.HubYourTeam()).FontSize(13).FontWeight(600).TextColor(tk.TextPrimary).SingleLine()
+				ui.Text(c, locales.HubMemberCount(1)).FontSize(m.FontXS).TextColor(tk.TextMuted).SingleLine()
 			})
 
 			ui.Spacer(c)
@@ -99,7 +99,7 @@ func (a *App) hubSidebar(c *ui.Context) {
 				Border(m.Border, tk.BorderPopover).
 				Cursor(ui.CursorPointer).
 				Role(ui.RoleButton).
-				Label("Invite").
+				Label(locales.HubInvite()).
 				AlignItems(ui.Center).
 				Justify(ui.Center).
 				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
@@ -109,7 +109,7 @@ func (a *App) hubSidebar(c *ui.Context) {
 				inviteBtn.TextColor(tk.TextSecondary)
 			}
 			inviteBtn.Children(func() {
-				ui.Text(c, "Invite").FontSize(m.FontXS).SingleLine()
+				ui.Text(c, locales.HubInvite()).FontSize(m.FontXS).SingleLine()
 			})
 		})
 
@@ -131,23 +131,23 @@ func (a *App) hubSidebar(c *ui.Context) {
 			}
 
 			// Group 1
-			menuItem("home", "Home", routes.HubHome, icons.House)
-			menuItem("workspaces", "Workspaces", routes.HubWorkspaces, icons.LayoutGrid)
-			menuItem("inventory", "Application Inventory", routes.HubInventory, icons.Boxes)
-			menuItem("catalog", "API Catalog", routes.HubAPICatalog, icons.BookOpen)
+			menuItem("home", locales.RailHome(), routes.HubHome, icons.House)
+			menuItem("workspaces", locales.HubWorkspaces(), routes.HubWorkspaces, icons.LayoutGrid)
+			menuItem("inventory", locales.HubInventory(), routes.HubInventory, icons.Boxes)
+			menuItem("catalog", locales.HubAPICatalog(), routes.HubAPICatalog, icons.BookOpen)
 
 			ui.Divider(c).BorderColor(tk.BgSubtle).MarginX(m.Space1).MarginY(m.Space15)
 
 			// Group 2
-			menuItem("private-network", "Private API Network", routes.HubPrivateNetwork, icons.Lock)
-			menuItem("public-network", "Public API Network", routes.HubPublicNetwork, icons.Globe)
+			menuItem("private-network", locales.HubPrivateNetwork(), routes.HubPrivateNetwork, icons.Lock)
+			menuItem("public-network", locales.HubPublicNetwork(), routes.HubPublicNetwork, icons.Globe)
 
 			ui.Divider(c).BorderColor(tk.BgSubtle).MarginX(m.Space1).MarginY(m.Space15)
 
 			// Group 3
-			menuItem("agent-context", "Agent Context", routes.HubAgentContext, icons.Sparkles)
-			menuItem("integrations", "Integrations", routes.HubIntegrations, icons.Plug)
-			menuItem("reports", "Reports", routes.HubReports, icons.ChartColumn)
+			menuItem("agent-context", locales.HubAgentContext(), routes.HubAgentContext, icons.Sparkles)
+			menuItem("integrations", locales.HubIntegrations(), routes.HubIntegrations, icons.Plug)
+			menuItem("reports", locales.HubReports(), routes.HubReports, icons.ChartColumn)
 		})
 
 		// 3. 弹性空白
@@ -160,21 +160,24 @@ func (a *App) hubSidebar(c *ui.Context) {
 
 func hubBottomLinks(c *ui.Context) {
 	m, tk := thV2.Metrics, thV2.Of(c)
-	links := []string{
-		"What is Postman",
-		"How to Publish",
-		"Learning Center",
-		"Support Center",
-		"Postman Enterprise",
+	links := []struct {
+		key   string
+		title string
+	}{
+		{"what-is", locales.HubLinkWhatIs()},
+		{"how-to-publish", locales.HubLinkHowToPublish()},
+		{"learning-center", locales.HubLinkLearningCenter()},
+		{"support-center", locales.HubLinkSupportCenter()},
+		{"enterprise", locales.HubLinkEnterprise()},
 	}
 
 	ui.Column(c).Padding(0, m.Space4, 14, m.Space4).Gap(9).Children(func() {
-		for _, title := range links {
-			t := title
-			link := ui.ButtonBase(c.Key("hub-link-" + t)).
+		for _, item := range links {
+			it := item
+			link := ui.ButtonBase(c.Key("hub-link-" + it.key)).
 				Role(ui.RoleLink).
 				Cursor(ui.CursorPointer).
-				Label(t).
+				Label(it.title).
 				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast}).
 				Justify(ui.Start)
 
@@ -185,7 +188,7 @@ func hubBottomLinks(c *ui.Context) {
 			}
 
 			link.Children(func() {
-				ui.Text(c, t).FontSize(m.FontMicro).SingleLine()
+				ui.Text(c, it.title).FontSize(m.FontMicro).SingleLine()
 			})
 		}
 	})

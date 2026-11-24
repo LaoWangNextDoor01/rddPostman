@@ -3,6 +3,7 @@ package v2
 import (
 	themv2 "rddpostman/components/theme/v2"
 	"rddpostman/components/v1/icons"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -32,11 +33,11 @@ func ConfirmDialog(c *ui.Context, open *bool, opts ConfirmDialogOpts) {
 	}
 	confirmLbl := opts.ConfirmLabel
 	if confirmLbl == "" {
-		confirmLbl = "确认删除"
+		confirmLbl = locales.ConfirmDelete()
 	}
 	cancelLbl := opts.CancelLabel
 	if cancelLbl == "" {
-		cancelLbl = "取消"
+		cancelLbl = locales.Cancel()
 	}
 
 	ui.DialogBase(c, open, func(backdrop, panel ui.Element) {

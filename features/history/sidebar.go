@@ -11,11 +11,13 @@ import (
 	"rddpostman/internal/domain"
 	"rddpostman/internal/logger"
 	"rddpostman/internal/store"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
 
 type historyDayGroup struct {
+	key     string
 	label   string
 	entries []domain.HistoryEntry
 }
@@ -60,12 +62,12 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openRequest fun
 				ui.Icon(c, icons.ListFilter).FontSize(13).TextColor(tk.TextMuted)
 				ui.TextInputBase(c.Key("hist-sb-search-input"), search).Grow(1).
 					FontSize(m.FontSM).TextColor(tk.TextPrimary).
-					Placeholder("Search").PlaceholderColor(tk.TextMuted).
-					Label("Filter history")
+					Placeholder(locales.Search()).PlaceholderColor(tk.TextMuted).
+					Label(locales.HistFilterLabel())
 				if *search != "" {
 					clr := v2.IconButton(c, v2.IconButtonOpts{
 						Key:      "hist-sb-search-clear",
-						Label:    "Clear filter",
+						Label:    locales.ClearFilter(),
 						Icon:     icons.X,
 						Size:     18,
 						IconSize: 11,
@@ -80,8 +82,8 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openRequest fun
 			if len(entries) > 0 && db != nil {
 				clearBtn := v2.IconButton(c, v2.IconButtonOpts{
 					Key:      "wb-history-clear",
-					Label:    "Clear history",
-					Tooltip:  "Clear history",
+					Label:    locales.HistClear(),
+					Tooltip:  locales.HistClear(),
 					Icon:     icons.Trash,
 					Size:     24,
 					IconSize: 14,
@@ -96,10 +98,10 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openRequest fun
 
 		v2.ConfirmDialog(c, clearOpen, v2.ConfirmDialogOpts{
 			Key:          "hist-clear-confirm",
-			Title:        "清空请求历史",
-			Description:  "确定要清空当前工作区的全部请求历史记录吗？此操作不可撤销。",
-			ConfirmLabel: "确认清空",
-			CancelLabel:  "取消",
+			Title:        locales.HistClearTitle(),
+			Description:  locales.HistClearDesc(),
+			ConfirmLabel: locales.ConfirmClear(),
+			CancelLabel:  locales.Cancel(),
 			Danger:       true,
 			OnConfirm: func() {
 				if db == nil {
@@ -116,8 +118,8 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openRequest fun
 		if len(entries) == 0 {
 			ui.Column(c).Grow(1).FillWidth().Center().Padding(m.Space4).Gap(m.Space2).Children(func() {
 				ui.Icon(c, icons.Clock).FontSize(22).TextColor(tk.TextMuted)
-				ui.Text(c, "No request history yet").FontSize(m.FontSM).FontWeight(500).TextColor(tk.TextSecondary)
-				ui.Text(c, "Requests you send in this workspace will appear here.").
+				ui.Text(c, locales.HistEmptyTitle()).FontSize(m.FontSM).FontWeight(500).TextColor(tk.TextSecondary)
+				ui.Text(c, locales.HistEmptyDesc()).
 					FontSize(m.FontXS).TextColor(tk.TextMuted)
 			})
 			return
@@ -134,7 +136,7 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openRequest fun
 
 		if len(filtered) == 0 {
 			ui.Column(c).Grow(1).FillWidth().Center().Padding(m.Space4).Gap(m.Space1).Children(func() {
-				ui.Text(c, "No matching history").FontSize(m.FontXS).TextColor(tk.TextMuted)
+				ui.Text(c, locales.HistNoMatch()).FontSize(m.FontXS).TextColor(tk.TextMuted)
 			})
 			return
 		}
@@ -144,10 +146,10 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openRequest fun
 			ui.Column(c).FillWidth().Padding(6, m.Space2, m.Space4, m.Space2).Gap(6).Children(func() {
 				for _, g := range groups {
 					group := g
-					isOpen := kw != "" || !(*collapsed)[group.label]
+					isOpen := kw != "" || !(*collapsed)[group.key]
 
 					ui.Column(c).FillWidth().Gap(2).Children(func() {
-						hdr := ui.ButtonBase(c.Key("hist-day-"+group.label)).
+						hdr := ui.ButtonBase(c.Key("hist-day-"+group.key)).
 							FillWidth().Height(m.RowHeight).Padding(0, 8).Gap(5).
 							Radius(m.RadiusSM).AlignItems(ui.Center).Justify(ui.Start).
 							Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(group.label).
@@ -156,7 +158,7 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openRequest fun
 							hdr.Background(tk.BgSubtle)
 						}
 						if hdr.Clicked() {
-							(*collapsed)[group.label] = isOpen
+							(*collapsed)[group.key] = isOpen
 						}
 						hdr.Children(func() {
 							arrow := ui.Icon(c, icons.ChevronDown).FontSize(11).TextColor(tk.TextMuted)
@@ -184,7 +186,7 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openRequest fun
 							displayURL = strings.TrimPrefix(displayURL, "https://")
 							displayURL = strings.TrimPrefix(displayURL, "http://")
 							if displayURL == "" {
-								displayURL = "(empty URL)"
+								displayURL = locales.HistEmptyURL()
 							}
 
 							isSel := *selectedID == it.ID
@@ -225,7 +227,7 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openRequest fun
 
 								moreBtn := v2.IconButton(c, v2.IconButtonOpts{
 									Key:      "wb-hist-more-" + string(it.ID),
-									Label:    "History actions",
+									Label:    locales.HistActions(),
 									Icon:     icons.Ellipsis,
 									Size:     20,
 									IconSize: 12,
@@ -241,14 +243,14 @@ func SidebarView(c *ui.Context, db *store.Store, wsID domain.ID, openRequest fun
 									ui.Column(c).Padding(4).Gap(2).Children(func() {
 										if it.RequestID != "" && openRequest != nil {
 											if v2.MenuButton(c, v2.MenuButtonProps{
-												Icon: icons.Send, Key: "hist-open-" + string(it.ID), Label: "Open Request",
+												Icon: icons.Send, Key: "hist-open-" + string(it.ID), Label: locales.HistOpenRequest(),
 											}).Clicked() {
 												openRequest(string(it.RequestID))
 												*menuOpen = false
 											}
 										}
 										if v2.MenuButton(c, v2.MenuButtonProps{
-											Icon: icons.Copy, Key: "hist-copy-" + string(it.ID), Label: "Copy URL",
+											Icon: icons.Copy, Key: "hist-copy-" + string(it.ID), Label: locales.TreeCopyURL(),
 										}).Clicked() {
 											c.Services().WriteClipboard(it.URL)
 											*menuOpen = false
@@ -271,23 +273,27 @@ func groupHistoryByDay(entries []domain.HistoryEntry, now time.Time) []historyDa
 	var groups []historyDayGroup
 	index := make(map[string]int)
 	for _, e := range entries {
-		label := "Earlier"
+		key := "earlier"
+		label := locales.HistEarlier()
 		if !e.At.IsZero() {
 			y, m, d := e.At.Local().Date()
 			switch {
 			case y == todayY && m == todayM && d == todayD:
-				label = "Today"
+				key = "today"
+				label = locales.HistToday()
 			case y == yestY && m == yestM && d == yestD:
-				label = "Yesterday"
+				key = "yesterday"
+				label = locales.HistYesterday()
 			default:
+				key = e.At.Local().Format("2006-01-02")
 				label = e.At.Local().Format("Jan 2")
 			}
 		}
-		if idx, ok := index[label]; ok {
+		if idx, ok := index[key]; ok {
 			groups[idx].entries = append(groups[idx].entries, e)
 		} else {
-			index[label] = len(groups)
-			groups = append(groups, historyDayGroup{label: label, entries: []domain.HistoryEntry{e}})
+			index[key] = len(groups)
+			groups = append(groups, historyDayGroup{key: key, label: label, entries: []domain.HistoryEntry{e}})
 		}
 	}
 	return groups

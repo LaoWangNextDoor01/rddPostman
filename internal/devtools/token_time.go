@@ -9,12 +9,15 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash"
 	"math"
 	"strconv"
 	"strings"
 	"time"
+
+	"rddpostman/locales"
 )
 
 // JWTDecoded 是解析后的 JWT 结构视图。
@@ -52,21 +55,21 @@ type JWTSegmentDiag struct {
 func DecodeJWT(raw string) (*JWTDecoded, error) {
 	token := stripBearer(raw)
 	if token == "" {
-		return nil, fmt.Errorf("请输入 JWT Token")
+		return nil, errors.New(locales.DtErrJWTEmpty())
 	}
 
 	parts := strings.Split(token, ".")
 	if len(parts) < 2 || len(parts) > 3 {
-		return nil, fmt.Errorf("JWT 格式无效：标准 JWT 须由 '.' 分隔为 3 段，当前检测到 %d 段", len(parts))
+		return nil, errors.New(locales.DtErrJWTSegments(strconv.Itoa(len(parts))))
 	}
 
 	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
-		return nil, fmt.Errorf("解码 JWT Header 失败: %w", err)
+		return nil, errors.New(locales.DtErrJWTHeader(err.Error()))
 	}
 	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return nil, fmt.Errorf("解码 JWT Payload 失败: %w", err)
+		return nil, errors.New(locales.DtErrJWTPayload(err.Error()))
 	}
 
 	headerPretty, err := FormatJSON(string(headerBytes), 2, false)
@@ -116,9 +119,9 @@ func DecodeJWT(raw string) (*JWTDecoded, error) {
 			res.ExpiresAt = t.Local().Format("2006-01-02 15:04:05")
 			res.Expired = now.After(t)
 			if res.Expired {
-				res.ExpiresRel = "已过期 " + formatAbsDuration(now.Sub(t))
+				res.ExpiresRel = locales.DtExpiredAgo(formatAbsDuration(now.Sub(t)))
 			} else {
-				res.ExpiresRel = "剩余 " + formatAbsDuration(t.Sub(now))
+				res.ExpiresRel = locales.DtExpiresIn(formatAbsDuration(t.Sub(now)))
 			}
 		}
 	}
@@ -135,32 +138,32 @@ func DiagnoseJWT(raw string) []JWTSegmentDiag {
 	// Segment 1: Header
 	if len(parts) >= 1 && parts[0] != "" {
 		if b, err := base64.RawURLEncoding.DecodeString(parts[0]); err == nil && json.Valid(b) {
-			out[0] = JWTSegmentDiag{Title: "Segment 1 · HEADER", OK: true, Badge: "解析正常", Detail: string(b)}
+			out[0] = JWTSegmentDiag{Title: "Segment 1 · HEADER", OK: true, Badge: locales.DtDiagOK(), Detail: string(b)}
 		} else {
-			out[0] = JWTSegmentDiag{Title: "Segment 1 · HEADER", OK: false, Badge: "Base64Url / JSON 损坏", Detail: "第 1 段无法解码为有效 JSON Header"}
+			out[0] = JWTSegmentDiag{Title: "Segment 1 · HEADER", OK: false, Badge: locales.DtDiagHeaderBad(), Detail: locales.DtDiagHeaderBadDesc()}
 		}
 	} else {
-		out[0] = JWTSegmentDiag{Title: "Segment 1 · HEADER", OK: false, Badge: "缺失", Detail: "未检测到 Header 内容"}
+		out[0] = JWTSegmentDiag{Title: "Segment 1 · HEADER", OK: false, Badge: locales.DtDiagMissing(), Detail: locales.DtDiagHeaderMissing()}
 	}
 
 	// Segment 2: Payload
 	if len(parts) >= 2 && parts[1] != "" {
 		if b, err := base64.RawURLEncoding.DecodeString(parts[1]); err == nil && json.Valid(b) {
-			out[1] = JWTSegmentDiag{Title: "Segment 2 · PAYLOAD", OK: true, Badge: "解析正常", Detail: string(b)}
+			out[1] = JWTSegmentDiag{Title: "Segment 2 · PAYLOAD", OK: true, Badge: locales.DtDiagOK(), Detail: string(b)}
 		} else {
-			out[1] = JWTSegmentDiag{Title: "Segment 2 · PAYLOAD", OK: false, Badge: "Base64Url 损坏", Detail: "第 2 段包含非法 Base64Url 字符或非有效 JSON 载荷"}
+			out[1] = JWTSegmentDiag{Title: "Segment 2 · PAYLOAD", OK: false, Badge: locales.DtDiagPayloadBad(), Detail: locales.DtDiagPayloadBadDesc()}
 		}
 	} else {
-		out[1] = JWTSegmentDiag{Title: "Segment 2 · PAYLOAD", OK: false, Badge: "缺失", Detail: "未检测到 '.' 分隔符与 Payload 载荷"}
+		out[1] = JWTSegmentDiag{Title: "Segment 2 · PAYLOAD", OK: false, Badge: locales.DtDiagMissing(), Detail: locales.DtDiagPayloadMissing()}
 	}
 
 	// Segment 3: Signature
 	if len(parts) == 3 && parts[2] != "" {
-		out[2] = JWTSegmentDiag{Title: "Segment 3 · SIGNATURE", OK: true, Badge: "结构存在", Detail: parts[2]}
+		out[2] = JWTSegmentDiag{Title: "Segment 3 · SIGNATURE", OK: true, Badge: locales.DtDiagSigPresent(), Detail: parts[2]}
 	} else if len(parts) > 3 {
-		out[2] = JWTSegmentDiag{Title: "Segment 3 · SIGNATURE", OK: false, Badge: "段数超出", Detail: fmt.Sprintf("检测到 %d 段，标准 JWT 仅包含 3 段", len(parts))}
+		out[2] = JWTSegmentDiag{Title: "Segment 3 · SIGNATURE", OK: false, Badge: locales.DtDiagSigExtra(), Detail: locales.DtDiagSigExtraDesc(strconv.Itoa(len(parts)))}
 	} else {
-		out[2] = JWTSegmentDiag{Title: "Segment 3 · SIGNATURE", OK: false, Badge: "缺失", Detail: "未检测到第二个 '.' 分隔符与签名内容"}
+		out[2] = JWTSegmentDiag{Title: "Segment 3 · SIGNATURE", OK: false, Badge: locales.DtDiagMissing(), Detail: locales.DtDiagSigMissing()}
 	}
 	return out
 }
@@ -170,7 +173,7 @@ func VerifyJWTHS(rawToken, secret string, secretBase64 bool) (bool, string, erro
 	token := stripBearer(rawToken)
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 || parts[2] == "" {
-		return false, "", fmt.Errorf("令牌缺少签名段，无法验签")
+		return false, "", errors.New(locales.DtErrJWTNoSig())
 	}
 	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
@@ -190,7 +193,7 @@ func VerifyJWTHS(rawToken, secret string, secretBase64 bool) (bool, string, erro
 	case "HS512":
 		fn = sha512.New
 	default:
-		return false, alg, fmt.Errorf("本地对称验签仅支持 HS256/HS384/HS512（当前算法: %s）", alg)
+		return false, alg, errors.New(locales.DtErrJWTAlg(alg))
 	}
 
 	keyBytes := []byte(secret)
@@ -199,7 +202,7 @@ func VerifyJWTHS(rawToken, secret string, secretBase64 bool) (bool, string, erro
 		if err != nil {
 			decodedKey, err = base64.RawURLEncoding.DecodeString(strings.TrimSpace(secret))
 			if err != nil {
-				return false, alg, fmt.Errorf("密钥 Base64 解码失败: %w", err)
+				return false, alg, errors.New(locales.DtErrJWTSecretB64(err.Error()))
 			}
 		}
 		keyBytes = decodedKey
@@ -229,10 +232,15 @@ func SignJWTHS256(headerJSON, payloadJSON, secret string) string {
 
 func stripBearer(raw string) string {
 	token := strings.TrimSpace(raw)
+	if len(token) >= 14 && strings.EqualFold(token[:14], "authorization:") {
+		token = strings.TrimSpace(token[14:])
+	}
 	if len(token) >= 7 && strings.EqualFold(token[:7], "bearer ") {
 		token = strings.TrimSpace(token[7:])
 	}
-	return token
+	// 多行输入框中粘贴的折行 JWT 自动合并换行符，避免分段解码失败。
+	token = strings.NewReplacer("\r", "", "\n", "").Replace(token)
+	return strings.TrimSpace(token)
 }
 
 func parseJWTNumericTime(v any) (time.Time, bool) {
@@ -271,11 +279,11 @@ func TimestampToDateTime(raw string) (TimestampInfo, error) {
 func TimestampToDateTimeInZone(raw, unit string, loc *time.Location) (TimestampInfo, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
-		return TimestampInfo{}, fmt.Errorf("请输入时间戳")
+		return TimestampInfo{}, errors.New(locales.DtErrTSEmpty())
 	}
 	val, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
-		return TimestampInfo{}, fmt.Errorf("无效的整数时间戳: %w", err)
+		return TimestampInfo{}, errors.New(locales.DtErrTSInvalid(err.Error()))
 	}
 	var t time.Time
 	switch unit {
@@ -302,7 +310,7 @@ func DateTimeToTimestamp(raw string) (TimestampInfo, error) {
 func DateTimeToTimestampInZone(raw string, loc *time.Location) (TimestampInfo, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
-		return TimestampInfo{}, fmt.Errorf("请输入日期时间")
+		return TimestampInfo{}, errors.New(locales.DtErrDTEmpty())
 	}
 	if loc == nil {
 		loc = time.Local
@@ -329,7 +337,7 @@ func DateTimeToTimestampInZone(raw string, loc *time.Location) (TimestampInfo, e
 			return FromTimeInZone(t, loc), nil
 		}
 	}
-	return TimestampInfo{}, fmt.Errorf("无法识别的时间格式（示例: 2026-11-23 16:00:55 或 RFC3339）")
+	return TimestampInfo{}, errors.New(locales.DtErrDTInvalid())
 }
 
 // FromTime 将 time.Time 规范化为 TimestampInfo。
@@ -355,7 +363,7 @@ func FromTimeInZone(t time.Time, loc *time.Location) TimestampInfo {
 	}
 }
 
-// FormatRelativeDuration 将时间差格式化为中文相对时间表达（如 "刚刚"、"2 小时前"、"38 天 7 小时后"）。
+// FormatRelativeDuration 将时间差格式化为当前语言的相对时间表达。
 func FormatRelativeDuration(d time.Duration) string {
 	abs := d
 	future := d > 0
@@ -363,41 +371,41 @@ func FormatRelativeDuration(d time.Duration) string {
 		abs = -abs
 	}
 	if abs < 5*time.Second {
-		return "刚刚 (0 秒前)"
+		return locales.DtJustNowZero()
 	}
-	suffix := "前"
+	dur := formatAbsDuration(abs)
 	if future {
-		suffix = "后"
+		return locales.DtIn(dur)
 	}
-	return formatAbsDuration(abs) + suffix
+	return locales.DtAgo(dur)
 }
 
 func formatAbsDuration(abs time.Duration) string {
 	if abs < time.Minute {
-		return fmt.Sprintf("%d 秒", int(abs.Seconds()))
+		return locales.DtDurSec(strconv.Itoa(int(abs.Seconds())))
 	}
 	if abs < time.Hour {
 		m := int(abs.Minutes())
 		s := int(abs.Seconds()) % 60
 		if s == 0 {
-			return fmt.Sprintf("%d 分钟", m)
+			return locales.DtDurMin(strconv.Itoa(m))
 		}
-		return fmt.Sprintf("%d 分 %d 秒", m, s)
+		return locales.DtDurMinSec(strconv.Itoa(m), strconv.Itoa(s))
 	}
 	if abs < 24*time.Hour {
 		h := int(abs.Hours())
 		m := int(abs.Minutes()) % 60
 		if m == 0 {
-			return fmt.Sprintf("%d 小时", h)
+			return locales.DtDurHour(strconv.Itoa(h))
 		}
-		return fmt.Sprintf("%d 小时 %d 分钟", h, m)
+		return locales.DtDurHourMin(strconv.Itoa(h), strconv.Itoa(m))
 	}
 	days := int(abs.Hours()) / 24
 	hours := int(abs.Hours()) % 24
 	if hours == 0 {
-		return fmt.Sprintf("%d 天", days)
+		return locales.DtDurDay(strconv.Itoa(days))
 	}
-	return fmt.Sprintf("%d 天 %d 小时", days, hours)
+	return locales.DtDurDayHour(strconv.Itoa(days), strconv.Itoa(hours))
 }
 
 // NewUUIDv4 生成标准 RFC 4122 UUID v4。

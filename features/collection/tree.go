@@ -29,38 +29,76 @@ type treeNode struct {
 	id       string
 	name     string
 	kind     treeKind
+	collID   string
+	parentID string
+	index    int // 在原始父容器子列表中的下标，过滤后仍保持真实顺序下标
 	method   string
 	url      string
 	children []*treeNode
 }
 
+// treeDragItem 是拖拽树节点时携带的不可变载荷。
+type treeDragItem struct {
+	id       string
+	collID   string
+	parentID string
+	index    int
+	kind     treeKind
+}
+
+// dropPosition 表示拖拽放置相对目标行的位置。
+type dropPosition uint8
+
+const (
+	dropNone dropPosition = iota
+	dropBefore
+	dropInside
+	dropAfter
+)
+
 // treeActions 是树行操作的外置回调，由页面负责接到 store。
 type treeActions struct {
-	create    func(row *treeNode, kind treeKind)
-	remove    func(row *treeNode)
-	open      func(row *treeNode)
-	copy      func(text string)
-	duplicate func(row *treeNode)
+	collections    []*domain.Collection
+	create         func(row *treeNode, kind treeKind)
+	remove         func(row *treeNode)
+	open           func(row *treeNode)
+	copy           func(text string)
+	duplicate      func(row *treeNode)
+	move           func(srcCollID, nodeID, dstCollID, dstParentID string, dstIndex int)
+	moveCollection func(collID string, dstIndex int)
+	openMoveDialog func(row *treeNode)
 }
 
 // buildTree 把数据层的集合树转换成纯 UI 行模型。
 func buildTree(collections []*domain.Collection) []*treeNode {
 	out := make([]*treeNode, 0, len(collections))
-	for _, coll := range collections {
+	for i, coll := range collections {
+		collID := string(coll.ID)
 		out = append(out, &treeNode{
-			id:       string(coll.ID),
+			id:       collID,
 			name:     coll.Name,
 			kind:     treeCollection,
-			children: buildNodes(coll.Items),
+			collID:   collID,
+			parentID: "",
+			index:    i,
+			children: buildNodes(collID, "", coll.Items),
 		})
 	}
 	return out
 }
 
-func buildNodes(nodes []*domain.Node) []*treeNode {
+func buildNodes(collID, parentID string, nodes []*domain.Node) []*treeNode {
 	out := make([]*treeNode, 0, len(nodes))
-	for _, n := range nodes {
-		row := &treeNode{id: string(n.ID), name: n.Name, kind: treeFolder}
+	for i, n := range nodes {
+		id := string(n.ID)
+		row := &treeNode{
+			id:       id,
+			name:     n.Name,
+			kind:     treeFolder,
+			collID:   collID,
+			parentID: parentID,
+			index:    i,
+		}
 		if n.Kind == domain.KindRequest {
 			row.kind = treeRequest
 			if n.Request != nil {
@@ -68,18 +106,162 @@ func buildNodes(nodes []*domain.Node) []*treeNode {
 				row.url = n.Request.URL
 			}
 		} else {
-			row.children = buildNodes(n.Children)
+			row.children = buildNodes(collID, id, n.Children)
 		}
 		out = append(out, row)
 	}
 	return out
 }
 
-// collectionTree 用 TreeBase 画工作区里的集合树，点击行选中并打开对应内容。
+// rowDropPosition 根据指针在目标行内的纵坐标判定放置区域（上方插入 / 移入内部 / 下方插入）。
+func rowDropPosition(src treeDragItem, target *treeNode, py, h float32) dropPosition {
+	if target == nil {
+		return dropNone
+	}
+	if h <= 0 {
+		h = thV2.Metrics.RowHeight
+	}
+	if src.kind == treeCollection {
+		if target.kind != treeCollection {
+			return dropNone
+		}
+		if py < h*0.5 {
+			return dropBefore
+		}
+		return dropAfter
+	}
+	switch target.kind {
+	case treeCollection:
+		return dropInside
+	case treeFolder:
+		if py < h*0.25 {
+			return dropBefore
+		}
+		if py > h*0.75 {
+			return dropAfter
+		}
+		return dropInside
+	case treeRequest:
+		if py < h*0.5 {
+			return dropBefore
+		}
+		return dropAfter
+	default:
+		return dropNone
+	}
+}
+
+func isNodeSelfOrDescendant(collections []*domain.Collection, collID, ancestorID, targetID string) bool {
+	if ancestorID == "" || targetID == "" {
+		return false
+	}
+	if ancestorID == targetID {
+		return true
+	}
+	for _, c := range collections {
+		if string(c.ID) != collID {
+			continue
+		}
+		anc := domain.FindIn(c.Items, domain.ID(ancestorID))
+		if anc == nil {
+			return false
+		}
+		return anc.Find(domain.ID(targetID)) != nil
+	}
+	return false
+}
+
+// canDropTreeItem 校验 src 节点是否允许以 pos 方式放置到 target 上，
+// 自动拦截自身、目录循环嵌套以及不会产生任何位置变化的空操作。
+func canDropTreeItem(src treeDragItem, target *treeNode, pos dropPosition, collections []*domain.Collection) bool {
+	if pos == dropNone || target == nil || src.id == "" || src.id == target.id {
+		return false
+	}
+	if src.kind == treeCollection {
+		if target.kind != treeCollection || (pos != dropBefore && pos != dropAfter) {
+			return false
+		}
+		dstIdx := target.index
+		if pos == dropAfter {
+			dstIdx++
+		}
+		return dstIdx != src.index && dstIdx != src.index+1
+	}
+
+	if src.kind == treeFolder && target.collID == src.collID && target.kind != treeCollection {
+		if isNodeSelfOrDescendant(collections, src.collID, src.id, target.id) {
+			return false
+		}
+	}
+
+	switch pos {
+	case dropInside:
+		switch target.kind {
+		case treeCollection:
+			return !(src.collID == target.id && src.parentID == "")
+		case treeFolder:
+			return !(src.collID == target.collID && src.parentID == target.id)
+		default:
+			return false
+		}
+	case dropBefore, dropAfter:
+		if target.kind == treeCollection {
+			return false
+		}
+		if src.collID == target.collID && src.parentID == target.parentID {
+			dstIdx := target.index
+			if pos == dropAfter {
+				dstIdx++
+			}
+			if dstIdx == src.index || dstIdx == src.index+1 {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+// collectionTree 用 TreeBase 画工作区里的集合树，点击行选中并打开对应内容，
+// 同时支持拖拽节点进行排序、跨目录/跨集合移动，以及通过菜单移动到指定容器。
 // 全量对齐 theme/v2 统一侧栏规范：26px 行高、中性灰选中态、12px 字号与平滑过渡。
 func collectionTree(c *ui.Context, state *workspace, rows []*treeNode, actions treeActions) {
 	m, tk := thV2.Metrics, thV2.Of(c)
 	tree := ui.TreeBase(c)
+	var pendingDrop func()
+
+	scheduleDrop := func(src treeDragItem, target treeNode, pos dropPosition) {
+		pendingDrop = func() {
+			if src.kind == treeCollection {
+				if actions.moveCollection == nil {
+					return
+				}
+				dstIdx := target.index
+				if pos == dropAfter {
+					dstIdx++
+				}
+				actions.moveCollection(src.id, dstIdx)
+				return
+			}
+			if actions.move == nil {
+				return
+			}
+			switch pos {
+			case dropInside:
+				if target.kind == treeCollection {
+					actions.move(src.collID, src.id, target.id, "", -1)
+				} else {
+					actions.move(src.collID, src.id, target.collID, target.id, -1)
+				}
+			case dropBefore:
+				actions.move(src.collID, src.id, target.collID, target.parentID, target.index)
+			case dropAfter:
+				actions.move(src.collID, src.id, target.collID, target.parentID, target.index+1)
+			}
+		}
+	}
+
 	tree.Root.Grow(1).Gap(2).Children(func() {
 		var add func(n *treeNode, depth int)
 		add = func(n *treeNode, depth int) {
@@ -98,13 +280,99 @@ func collectionTree(c *ui.Context, state *workspace, rows []*treeNode, actions t
 				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
 			selected := state.selected == n.id
 			menuOpen := ui.Local(row, "tree-menu-open", func() bool { return false })
+			lastDropPos := ui.Local(row, "tree-last-drop-pos", func() dropPosition { return dropNone })
+
+			canDrag := !*menuOpen && ((n.kind == treeCollection && actions.moveCollection != nil) ||
+				(n.kind != treeCollection && actions.move != nil))
+			if canDrag {
+				row.Drag(treeDragItem{
+					id:       n.id,
+					collID:   n.collID,
+					parentID: n.parentID,
+					index:    n.index,
+					kind:     n.kind,
+				})
+			}
+
+			draggingSelf := row.Dragging()
+			if draggingSelf {
+				row.Opacity(0.45)
+			}
+
+			overItem, isDragOver := ui.DragOver[treeDragItem](row)
+			droppedItem, isDropped := ui.Drop[treeDragItem](row)
+			dropPos := dropNone
+			if isDragOver || isDropped {
+				src := overItem
+				if isDropped {
+					src = droppedItem
+				}
+				_, py, pointerOver := row.PointerPosition()
+				h := row.Bounds().H
+				if h <= 0 {
+					h = m.RowHeight
+				}
+				if isDropped && !pointerOver && *lastDropPos != dropNone {
+					if canDropTreeItem(src, n, *lastDropPos, actions.collections) {
+						dropPos = *lastDropPos
+					}
+				} else {
+					cand := rowDropPosition(src, n, py, h)
+					if canDropTreeItem(src, n, cand, actions.collections) {
+						dropPos = cand
+					}
+				}
+			}
+			if isDragOver {
+				*lastDropPos = dropPos
+			} else if isDropped {
+				if dropPos != dropNone {
+					scheduleDrop(droppedItem, *n, dropPos)
+				}
+				*lastDropPos = dropNone
+			} else if *lastDropPos != dropNone {
+				*lastDropPos = dropNone
+			}
+
 			rowHovered := row.Hovered() || *menuOpen
 			switch {
+			case isDragOver && dropPos == dropInside:
+				row.Background(tk.AccentSoft)
 			case row.Pressed(), selected:
 				row.Background(tk.BgSelected)
 			case rowHovered:
 				row.Background(tk.BgHover)
 			}
+
+			if isDragOver && dropPos != dropNone {
+				pos := dropPos
+				indentX := float32(8) + 16*float32(depth)
+				accent := tk.Accent
+				radius := m.RadiusSM
+				row.DrawOver(func(p *ui.Painter, r ui.Rect) {
+					switch pos {
+					case dropInside:
+						p.Stroke(r, accent, radius, 1.5)
+					case dropBefore:
+						y := r.Y
+						x0 := r.X + indentX
+						if x0 > r.X+r.W-12 {
+							x0 = r.X + 8
+						}
+						p.Fill(ui.Rect{X: x0 + 3, Y: y, W: r.X + r.W - 4 - (x0 + 3), H: 2}, accent, 1)
+						p.Fill(ui.Rect{X: x0, Y: y - 1.5, W: 5, H: 5}, accent, 2.5)
+					case dropAfter:
+						y := r.Y + r.H - 2
+						x0 := r.X + indentX
+						if x0 > r.X+r.W-12 {
+							x0 = r.X + 8
+						}
+						p.Fill(ui.Rect{X: x0 + 3, Y: y, W: r.X + r.W - 4 - (x0 + 3), H: 2}, accent, 1)
+						p.Fill(ui.Rect{X: x0, Y: y - 1.5, W: 5, H: 5}, accent, 2.5)
+					}
+				})
+			}
+
 			if row.Clicked() {
 				actions.open(n)
 			}
@@ -158,7 +426,7 @@ func collectionTree(c *ui.Context, state *workspace, rows []*treeNode, actions t
 					Radius:   m.RadiusSM,
 					Selected: *menuOpen,
 				})
-				if !rowHovered {
+				if !rowHovered || draggingSelf {
 					more.Opacity(0).IgnoreInput(true)
 				}
 				if more.Clicked() {
@@ -171,7 +439,9 @@ func collectionTree(c *ui.Context, state *workspace, rows []*treeNode, actions t
 			if expandable {
 				item.Group(func() {
 					if len(n.children) == 0 {
-						renderTreeEmptyNode(c, n, depth+1, actions)
+						renderTreeEmptyNode(c, n, depth+1, actions, func(src treeDragItem, target treeNode) {
+							scheduleDrop(src, target, dropInside)
+						})
 					} else {
 						for _, ch := range n.children {
 							add(ch, depth+1)
@@ -185,6 +455,10 @@ func collectionTree(c *ui.Context, state *workspace, rows []*treeNode, actions t
 			add(n, 0)
 		}
 	})
+
+	if pendingDrop != nil {
+		pendingDrop()
+	}
 }
 
 // renderTreeRowMenu 使用统一的 v2.Popover + v2.MenuButton + v2.PopoverDivider 渲染节点操作菜单，
@@ -213,6 +487,12 @@ func renderTreeRowMenu(c *ui.Context, n *treeNode, state *workspace, actions tre
 				*flag = !*flag
 				*open = false
 			}
+			if n.kind == treeFolder && actions.openMoveDialog != nil && v2.MenuButton(c, v2.MenuButtonProps{
+				Icon: icons.ArrowRight, Key: "tm-move-" + n.id, Label: locales.TreeMoveTo(),
+			}).Clicked() {
+				actions.openMoveDialog(n)
+				*open = false
+			}
 			if v2.MenuButton(c, v2.MenuButtonProps{
 				Icon: icons.Copy, Key: "tm-copy-name-" + n.id, Label: locales.TreeCopyName(),
 			}).Clicked() {
@@ -234,9 +514,15 @@ func renderTreeRowMenu(c *ui.Context, n *treeNode, state *workspace, actions tre
 				*open = false
 			}
 			if actions.duplicate != nil && v2.MenuButton(c, v2.MenuButtonProps{
-				Icon: icons.Copy, Key: "tm-dup-" + n.id, Label: "复制请求",
+				Icon: icons.Copy, Key: "tm-dup-" + n.id, Label: locales.CollDuplicateRequest(),
 			}).Clicked() {
 				actions.duplicate(n)
+				*open = false
+			}
+			if actions.openMoveDialog != nil && v2.MenuButton(c, v2.MenuButtonProps{
+				Icon: icons.ArrowRight, Key: "tm-move-" + n.id, Label: locales.TreeMoveTo(),
+			}).Clicked() {
+				actions.openMoveDialog(n)
 				*open = false
 			}
 			v2.PopoverDivider(c)
@@ -309,14 +595,20 @@ func filterTree(nodes []*treeNode, keyword string, state *workspace) []*treeNode
 }
 
 // renderTreeEmptyNode 绘制空集合 / 空目录的紧凑引导区：
-// 柔和次级灰标题 + 简短说明 + 横排紧凑带图标小按钮，整块区域支持 Hover 背景高亮。
-func renderTreeEmptyNode(c *ui.Context, n *treeNode, depth int, actions treeActions) {
+// 柔和次级灰标题 + 简短说明 + 横排紧凑带图标小按钮，整块区域支持 Hover 背景高亮以及拖拽放入。
+func renderTreeEmptyNode(
+	c *ui.Context,
+	n *treeNode,
+	depth int,
+	actions treeActions,
+	onDrop func(src treeDragItem, target treeNode),
+) {
 	m, tk := thV2.Metrics, thV2.Of(c)
-	title := "Collection is empty"
-	desc := "Add a request or folder to structure your API workflow."
+	title := locales.CollEmptyNodeTitle()
+	desc := locales.CollEmptyNodeDesc()
 	if n.kind == treeFolder {
-		title = "Folder is empty"
-		desc = "Add a request, a folder, or drag items here to group them together."
+		title = locales.FolderEmptyNodeTitle()
+		desc = locales.FolderEmptyNodeDesc()
 	}
 	// 容器左外边距留出 8px 内边距后，文字与父级图标左边缘（25 + 16*(depth-1)）精确对齐
 	indent := float32(17)
@@ -329,9 +621,24 @@ func renderTreeEmptyNode(c *ui.Context, n *treeNode, depth int, actions treeActi
 			Padding(8, 8).Gap(4).AlignItems(ui.Start).
 			Radius(m.RadiusMD).
 			Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
-		if box.Hovered() {
+
+		overItem, isDragOver := ui.DragOver[treeDragItem](box)
+		droppedItem, isDropped := ui.Drop[treeDragItem](box)
+		canAcceptOver := isDragOver && actions.move != nil && canDropTreeItem(overItem, n, dropInside, actions.collections)
+		if isDropped && actions.move != nil && onDrop != nil && canDropTreeItem(droppedItem, n, dropInside, actions.collections) {
+			onDrop(droppedItem, *n)
+		}
+
+		switch {
+		case canAcceptOver:
+			box.Background(tk.AccentSoft)
+			accent, radius := tk.Accent, m.RadiusMD
+			box.DrawOver(func(p *ui.Painter, r ui.Rect) {
+				p.Stroke(r, accent, radius, 1.5)
+			})
+		case box.Hovered():
 			box.Background(tk.BgHover)
-		} else {
+		default:
 			box.Background(ui.Transparent)
 		}
 
@@ -340,12 +647,12 @@ func renderTreeEmptyNode(c *ui.Context, n *treeNode, depth int, actions treeActi
 			ui.Text(c, desc).FontSize(11).FixedLineHeight(16).TextColor(tk.TextMuted).FillWidth()
 
 			ui.Row(c).FillWidth().Padding(4, 0, 0, 0).Gap(6).AlignItems(ui.Center).Wrap().Children(func() {
-				treeEmptyOutlineBtn(c, "tree-empty-add-req-"+n.id, icons.Send, "Add request", func() {
+				treeEmptyOutlineBtn(c, "tree-empty-add-req-"+n.id, icons.Send, locales.AddRequest(), func() {
 					if actions.create != nil {
 						actions.create(n, treeRequest)
 					}
 				})
-				treeEmptyOutlineBtn(c, "tree-empty-add-folder-"+n.id, icons.FolderPlus, "Add folder", func() {
+				treeEmptyOutlineBtn(c, "tree-empty-add-folder-"+n.id, icons.FolderPlus, locales.AddFolder(), func() {
 					if actions.create != nil {
 						actions.create(n, treeFolder)
 					}

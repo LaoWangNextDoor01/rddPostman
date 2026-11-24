@@ -63,11 +63,11 @@ func (a *App) workbenchLayout(c *ui.Context, r *ui.Route) {
 								sub.Title(locales.EnvironmentTitle())
 								environment.SidebarView(c, a.store, wsID, openEnv)
 							case sub.Match(routes.SectionTools):
-								sub.Title("Dev Tools")
+								sub.Title(locales.WbDevTools())
 								tools.SidebarView(c, activeToolID, openTool)
 							case sub.Match(routes.SectionSpecs), sub.Match(routes.SectionDocs):
 								sub.Title(locales.DocsTitle())
-								workbenchSidebarPlaceholder(c, "SPECS & DOCS", "API specifications and workspace documentation will appear here.", icons.File, m, tk)
+								workbenchSidebarPlaceholder(c, locales.WbSpecsDocs(), locales.WbSpecsDocsDesc(), icons.File, m, tk)
 							default:
 								sub.Title(locales.CollectionsTitle())
 								renderCollections()
@@ -101,10 +101,10 @@ func (a *App) workbenchSidebarTabs(c *ui.Context, wsID string) {
 		icon    *ui.SVG
 	}
 	items := []tabItem{
-		{key: "collections", label: "Collections", target: routes.WorkbenchCollectionsOf(wsID), section: routes.SectionCollections, icon: icons.Layers},
-		{key: "environments", label: "Environments", target: routes.WorkbenchEnvironmentsOf(wsID), section: routes.SectionEnvironments, icon: icons.Globe},
-		{key: "history", label: "History", target: routes.WorkbenchHistoryOf(wsID), section: routes.SectionHistory, icon: icons.Clock},
-		{key: "tools", label: "Tools", target: routes.WorkbenchToolsOf(wsID), section: routes.SectionTools, icon: icons.Code},
+		{key: "collections", label: locales.CollectionsTitle(), target: routes.WorkbenchCollectionsOf(wsID), section: routes.SectionCollections, icon: icons.Layers},
+		{key: "environments", label: locales.EnvironmentTitle(), target: routes.WorkbenchEnvironmentsOf(wsID), section: routes.SectionEnvironments, icon: icons.Globe},
+		{key: "history", label: locales.HistoryTitle(), target: routes.WorkbenchHistoryOf(wsID), section: routes.SectionHistory, icon: icons.Clock},
+		{key: "tools", label: locales.StatusTools(), target: routes.WorkbenchToolsOf(wsID), section: routes.SectionTools, icon: icons.Code},
 	}
 
 	ui.Row(c).FillWidth().Height(36).Padding(0, m.Space3).Gap(m.Space1).

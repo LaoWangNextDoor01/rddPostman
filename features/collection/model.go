@@ -61,6 +61,11 @@ type workspace struct {
 	deleteConfirmOpen bool
 	deletePending     *treeNode
 
+	moveDialogOpen     bool
+	movePending        *treeNode
+	moveTargetCollID   domain.ID
+	moveTargetParentID domain.ID
+
 	sidebarFilter map[string]bool // 侧栏搜索筛选勾选状态（缺省全选）
 	open          map[string]*bool  // 目录展开状态，缺省展开
 	segs          map[string]string // 每个 tab 当前选中的分段

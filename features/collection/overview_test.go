@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"rddpostman/internal/domain"
+	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -164,7 +165,7 @@ func TestEditableDescriptionAutoSave(t *testing.T) {
 	tt.Frame()
 
 	// 点击“完成”按钮
-	if err := tt.Click("完成"); err != nil {
+	if err := tt.Click(locales.Done()); err != nil {
 		t.Fatalf("点击完成按钮失败: %v", err)
 	}
 	tt.Frame()
@@ -183,7 +184,7 @@ func TestEditableDescriptionAutoSave(t *testing.T) {
 	savedDesc = ""
 
 	tt.Frame()
-	if err := tt.Click("预览"); err != nil {
+	if err := tt.Click(locales.Preview()); err != nil {
 		t.Fatalf("点击预览按钮失败: %v", err)
 	}
 	tt.Frame()
