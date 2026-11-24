@@ -238,9 +238,9 @@ func renderJSONTool(c *ui.Context) {
 		ui.Row(c).Grow(1).FillWidth().AlignItems(ui.Stretch).Children(func() {
 			// 左栏：INPUT
 			ui.Column(c).Grow(1).Basis(0).FillHeight().Children(func() {
-				inMeta := "0 B"
+				inMeta := "0 B · UTF-8"
 				if !isEmpty {
-					inMeta = fmt.Sprintf("%d B · %d lines", inBytes, inLines)
+					inMeta = fmt.Sprintf("%s · %d lines · UTF-8", formatByteSize(inBytes), inLines)
 				}
 				toolPaneHeader(c, "INPUT", inMeta, func() {
 					if toolBtn(c, toolBtnOpts{Key: "json-in-paste", Label: locales.PasteFromClipboard(), Icon: icons.Copy, Variant: btnGhost, Height: 22, PadX: 7}).Clicked() {
@@ -249,12 +249,8 @@ func renderJSONTool(c *ui.Context) {
 							recompute(true)
 						}
 					}
-					if isEmpty {
-						toolPill(c, locales.WaitingForInput(), pillNeutral, false)
-					} else if st.errInfo != nil {
+					if !isEmpty && st.errInfo != nil {
 						toolPill(c, locales.JsonSyntaxErrCount(), pillDanger, true)
-					} else {
-						toolPill(c, "UTF-8", pillNeutral, false)
 					}
 				})
 
@@ -287,11 +283,11 @@ func renderJSONTool(c *ui.Context) {
 				} else if rawOutput != "" {
 					if st.mode == jsonModeMinify && inBytes > 0 {
 						pct := int(float64(inBytes-outBytes) / float64(inBytes) * 100)
-						outMeta = fmt.Sprintf("%d B · -%d%%", outBytes, pct)
+						outMeta = fmt.Sprintf("%s · -%d%%", formatByteSize(outBytes), pct)
 					} else if st.mode == jsonModeEscape {
 						outMeta = fmt.Sprintf("%d chars · Escaped", len([]rune(rawOutput)))
 					} else {
-						outMeta = fmt.Sprintf("%d B · %d lines", outBytes, outLines)
+						outMeta = fmt.Sprintf("%s · %d lines", formatByteSize(outBytes), outLines)
 					}
 				}
 
@@ -337,21 +333,6 @@ func renderJSONTool(c *ui.Context) {
 				}
 			})
 		})
-
-		// 4. 底部状态条 (26px)
-		stText := locales.JsonFooterReady()
-		stCol := tk.TextMuted
-		if st.errInfo != nil {
-			stText = locales.JsonFooterErr(st.errInfo.Summary)
-			stCol = tk.Danger
-		} else if st.copied {
-			stText = locales.JsonFooterCopied(strconv.Itoa(outBytes))
-			stCol = tk.Success
-		} else if rawOutput != "" {
-			stText = locales.JsonFooterValid()
-			stCol = tk.Success
-		}
-		toolFooter(c, stText, stCol, indOpt.short, locales.JsonFooterEncoding())
 	})
 }
 

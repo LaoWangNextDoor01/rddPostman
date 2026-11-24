@@ -222,3 +222,24 @@ func TestToolsSidebarTooltipRightSide(t *testing.T) {
 		t.Fatalf("expected tooltip to appear on the right of sidebar row: tip=%+v row=%+v", tipRect, rowRect)
 	}
 }
+
+func TestFormatByteSize(t *testing.T) {
+	cases := []struct {
+		n    int
+		want string
+	}{
+		{0, "0 B"},
+		{512, "512 B"},
+		{1023, "1023 B"},
+		{1024, "1.00 KB"},
+		{1536, "1.50 KB"},
+		{2 * 1024 * 1024, "2.00 MB"},
+		{5 * 1024 * 1024 / 2, "2.50 MB"},
+		{1024 * 1024 * 1024, "1.00 GB"},
+	}
+	for _, tc := range cases {
+		if got := formatByteSize(tc.n); got != tc.want {
+			t.Errorf("formatByteSize(%d) = %q, want %q", tc.n, got, tc.want)
+		}
+	}
+}

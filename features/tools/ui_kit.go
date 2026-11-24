@@ -1,11 +1,35 @@
 package tools
 
 import (
+	"fmt"
+
 	thV2 "rddpostman/components/theme/v2"
 	"rddpostman/components/v1/icons"
 
 	"github.com/egoist/mygo/ui"
 )
+
+// formatByteSize 将字节数按阈值自动升档为 B / KB / MB / GB，避免大文本时字节数过长。
+func formatByteSize(n int) string {
+	if n < 0 {
+		n = 0
+	}
+	const (
+		kb = 1024
+		mb = 1024 * kb
+		gb = 1024 * mb
+	)
+	switch {
+	case n < kb:
+		return fmt.Sprintf("%d B", n)
+	case n < mb:
+		return fmt.Sprintf("%.2f KB", float64(n)/float64(kb))
+	case n < gb:
+		return fmt.Sprintf("%.2f MB", float64(n)/float64(mb))
+	default:
+		return fmt.Sprintf("%.2f GB", float64(n)/float64(gb))
+	}
+}
 
 type btnVariant int
 
@@ -79,25 +103,6 @@ func toolToolbar(c *ui.Context, left, right func()) {
 func toolDividerV(c *ui.Context) {
 	tk := thV2.Of(c)
 	ui.Box(c).Size(1, 18).Background(tk.Border)
-}
-
-// toolFooter 绘制 26px 底部轻状态条（对齐 Pixso 设计稿）。
-func toolFooter(c *ui.Context, statusText string, statusColor ui.Color, rightItems ...string) {
-	m, tk := thV2.Metrics, thV2.Of(c)
-	ui.Row(c).FillWidth().Height(26).Padding(0, m.Space4).Gap(m.Space3).
-		AlignItems(ui.Center).Justify(ui.SpaceBetween).
-		Background(tk.BgApp).
-		BorderWidth(m.Border, 0, 0, 0).BorderColor(tk.Border).Children(func() {
-		ui.Text(c, statusText).FontSize(m.FontXS).FontWeight(500).TextColor(statusColor).SingleLine()
-		ui.Row(c).Gap(14).AlignItems(ui.Center).Children(func() {
-			for _, item := range rightItems {
-				if item == "" {
-					continue
-				}
-				ui.Text(c, item).FontSize(m.FontXS).TextColor(tk.TextMuted).SingleLine()
-			}
-		})
-	})
 }
 
 // toolPaneHeader 绘制双栏编辑器的 34px 栏头（INPUT / OUTPUT + 统计信息 + 状态胶囊）。

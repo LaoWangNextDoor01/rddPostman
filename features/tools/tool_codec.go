@@ -261,9 +261,9 @@ func renderCodecTool(c *ui.Context, keySuffix string, initialMode int) {
 			ui.Row(c).Grow(1).FillWidth().AlignItems(ui.Stretch).Children(func() {
 				// 左栏
 				ui.Column(c).Grow(1).Basis(0).FillHeight().Children(func() {
-					inMeta := "0 B"
+					inMeta := "0 B · UTF-8"
 					if !isEmpty {
-						inMeta = fmt.Sprintf("%d B · %d chars", inBytes, len([]rune(rawIn)))
+						inMeta = fmt.Sprintf("%s · %d chars · UTF-8", formatByteSize(inBytes), len([]rune(rawIn)))
 					}
 					toolPaneHeader(c, inTitle, inMeta, func() {
 						if toolBtn(c, toolBtnOpts{Key: "codec-in-paste", Label: locales.PasteFromClipboard(), Icon: icons.Copy, Variant: btnGhost, Height: 22, PadX: 7}).Clicked() {
@@ -272,12 +272,8 @@ func renderCodecTool(c *ui.Context, keySuffix string, initialMode int) {
 								recompute(true)
 							}
 						}
-						if isEmpty {
-							toolPill(c, locales.WaitingForInput(), pillNeutral, false)
-						} else if st.errMsg != "" {
+						if !isEmpty && st.errMsg != "" {
 							toolPill(c, locales.CodecInvalidChars(), pillDanger, true)
-						} else {
-							toolPill(c, "UTF-8", pillNeutral, false)
 						}
 					})
 
@@ -428,20 +424,5 @@ func renderCodecTool(c *ui.Context, keySuffix string, initialMode int) {
 				})
 			}
 		})
-
-		// 4. Footer (26px)
-		fTxt := locales.CodecFooterReady()
-		fCol := tk.TextMuted
-		if st.errMsg != "" {
-			fTxt = locales.CodecFooterErr(st.errMsg)
-			fCol = tk.Danger
-		} else if st.copied {
-			fTxt = locales.CodecFooterCopied(strconv.Itoa(outRunes))
-			fCol = tk.Success
-		} else if rawOut != "" {
-			fTxt = locales.CodecFooterOK()
-			fCol = tk.Success
-		}
-		toolFooter(c, fTxt, fCol, locales.CodecFooterCharset())
 	})
 }

@@ -490,7 +490,7 @@ func FormatDuration(d time.Duration) string {
 	return fmt.Sprintf("%.2f s", float64(d.Milliseconds())/1000.0)
 }
 
-// FormatSize 将字节数大小格式化为适合 UI 展示的字符串（如 512 B、1.85 KB 或 3.20 MB）
+// FormatSize 将字节数大小格式化为适合 UI 展示的字符串（如 512 B、1.85 KB、3.20 MB 或 1.25 GB）
 func FormatSize(bytes int64) string {
 	if bytes < 1024 {
 		return fmt.Sprintf("%d B", bytes)
@@ -498,7 +498,10 @@ func FormatSize(bytes int64) string {
 	if bytes < 1024*1024 {
 		return fmt.Sprintf("%.2f KB", float64(bytes)/1024.0)
 	}
-	return fmt.Sprintf("%.2f MB", float64(bytes)/(1024.0*1024.0))
+	if bytes < 1024*1024*1024 {
+		return fmt.Sprintf("%.2f MB", float64(bytes)/(1024.0*1024.0))
+	}
+	return fmt.Sprintf("%.2f GB", float64(bytes)/(1024.0*1024.0*1024.0))
 }
 
 // ApplyPathVariables 将 URL 中的路径变量（支持 :key 与 {key} 语法）替换为真实值。

@@ -443,15 +443,6 @@ func renderTimestampTool(c *ui.Context) {
 				})
 			})
 		})
-
-		// 3. Footer (26px)
-		fTxt := locales.TsFooterSynced(tz.name, tz.offset)
-		fCol := tk.Success
-		if st.paused {
-			fTxt = locales.TsFooterPaused()
-			fCol = tk.Warning
-		}
-		toolFooter(c, fTxt, fCol, "Epoch 1970-01-01T00:00:00Z")
 	})
 }
 
@@ -700,14 +691,5 @@ func renderUUIDTool(c *ui.Context) {
 				})
 			})
 		})
-
-		// 4. Footer (26px)
-		fTxt := locales.UuidFooterSource()
-		if st.copiedKey == "uuid-all" {
-			fTxt = locales.UuidFooterCopiedAll(strconv.Itoa(len(st.items)))
-		} else if st.copiedKey != "" {
-			fTxt = locales.UuidFooterCopiedOne()
-		}
-		toolFooter(c, fTxt, tk.Success, "RFC 4122 / RFC 9562 / CSPRNG")
 	})
 }

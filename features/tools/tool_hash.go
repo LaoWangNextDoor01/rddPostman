@@ -171,17 +171,15 @@ func renderHashTool(c *ui.Context) {
 				if isHmac {
 					inTitle = locales.HashMsgTitle()
 				}
-				inMeta := "0 B"
+				inMeta := "0 B · UTF-8"
 				if st.input != "" {
-					inMeta = fmt.Sprintf("%d B · UTF-8", len([]byte(st.input)))
+					inMeta = fmt.Sprintf("%s · UTF-8", formatByteSize(len([]byte(st.input))))
 				}
 				toolCard(c, "hash-in-card", tk.Border, tk.BgApp, func() {
 					ui.Text(c, inTitle).FontSize(m.FontXS).FontWeight(600).TextColor(tk.TextSecondary)
 					ui.Text(c, inMeta).Font("monospace").FontSize(m.FontXS).TextColor(tk.TextMuted)
 				}, func() {
-					if st.input == "" {
-						toolPill(c, locales.WaitingForInput(), pillNeutral, false)
-					} else {
+					if st.input != "" {
 						toolPill(c, locales.HashLiveCalc(), pillSuccess, true)
 					}
 				}, func() {
@@ -330,7 +328,7 @@ func renderHashTool(c *ui.Context) {
 						if secIn.Changed() {
 							st.copiedKey = ""
 						}
-						toolPill(c, fmt.Sprintf("UTF-8 · %d B", len([]byte(st.secret))), pillNeutral, false)
+						toolPill(c, fmt.Sprintf("UTF-8 · %s", formatByteSize(len([]byte(st.secret)))), pillNeutral, false)
 						eyeLbl := locales.HmacShowSecret()
 						if st.showSecret {
 							eyeLbl = locales.HmacHideSecret()
@@ -353,8 +351,6 @@ func renderHashTool(c *ui.Context) {
 					}, func() {
 						if st.input != "" || st.secret != "" {
 							toolPill(c, locales.HmacGenerated(), pillSuccess, true)
-						} else {
-							toolPill(c, locales.WaitingForInput(), pillNeutral, false)
 						}
 					}, func() {
 						ui.Column(c).FillWidth().Padding(16).Gap(14).Children(func() {
@@ -409,21 +405,5 @@ func renderHashTool(c *ui.Context) {
 				}
 			})
 		})
-
-		// 4. Footer (26px)
-		fTxt := locales.HashFooterReady()
-		fCol := tk.TextMuted
-		switch {
-		case hasMatch:
-			fTxt = locales.HashFooterMatched(matchedAlg)
-			fCol = tk.Success
-		case st.copiedKey != "":
-			fTxt = locales.HashFooterCopied()
-			fCol = tk.Success
-		case st.input != "":
-			fTxt = locales.HashFooterDone()
-			fCol = tk.Success
-		}
-		toolFooter(c, fTxt, fCol, "Native Go Crypto")
 	})
 }

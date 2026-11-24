@@ -121,7 +121,6 @@ func renderJWTTool(c *ui.Context) {
 				}, func() {
 					switch {
 					case trimmed == "":
-						toolPill(c, locales.WaitingForInput(), pillNeutral, false)
 					case decodeErr != "":
 						toolPill(c, locales.JwtInvalidFormat(), pillDanger, true)
 					case decoded.HasExp && decoded.Expired:
@@ -480,28 +479,6 @@ func renderJWTTool(c *ui.Context) {
 				})
 			})
 		})
-
-		// 3. Footer (26px)
-		fTxt := locales.JwtFooterReady()
-		fCol := tk.TextMuted
-		switch {
-		case decodeErr != "":
-			fTxt = locales.JwtFooterErr()
-			fCol = tk.Danger
-		case decoded != nil && decoded.HasExp && decoded.Expired:
-			fTxt = locales.JwtFooterExpired(decoded.ExpiresRel)
-			fCol = tk.Danger
-		case sigChecked && sigVerified:
-			fTxt = locales.JwtFooterVerified(decoded.Alg)
-			fCol = tk.Success
-		case st.copiedKey == "jwt-pay":
-			fTxt = locales.JwtFooterCopiedPay()
-			fCol = tk.Success
-		case decoded != nil:
-			fTxt = locales.JwtFooterDecoded()
-			fCol = tk.Success
-		}
-		toolFooter(c, fTxt, fCol, "RFC 7519 · Local Decode")
 	})
 }
 
