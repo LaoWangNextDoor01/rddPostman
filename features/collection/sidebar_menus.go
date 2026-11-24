@@ -78,12 +78,6 @@ func addMenuButton(c *ui.Context, props pageProps) {
 				props.actions.navigate(routes.WorkbenchEnvironmentsOf(string(props.workspaceID)))
 				props.state.addOpen = false
 			}
-			if v2.MenuButton(c, v2.MenuButtonProps{
-				Icon: icons.BookOpen, Key: "add-docs", Label: locales.DocsTitle(),
-			}).Clicked() {
-				props.actions.navigate(routes.WorkbenchDocsOf(string(props.workspaceID)))
-				props.state.addOpen = false
-			}
 		})
 	})
 }

@@ -195,4 +195,33 @@ func TestEditableDescriptionAutoSave(t *testing.T) {
 	if desc.mode != "preview" {
 		t.Errorf("应进入 preview 模式，得到 %q", desc.mode)
 	}
+
+	// 3. 空描述默认态点击进入编辑态 -> 点击加粗工具插入 Markdown -> 点击完成保存
+	emptyDesc := &descState{id: "coll-2", mode: "write"}
+	savedDesc = ""
+	emptyView := func(c *ui.Context) {
+		ui.Column(c).Width(docWidth).Children(func() {
+			editableDescription(c, props, "coll-2", "", emptyDesc)
+		})
+	}
+	ttEmpty := ui.NewTester(emptyView, 960, 700)
+	ttEmpty.Frame()
+	if err := ttEmpty.Click(locales.OverviewAddDescPlaceholder()); err != nil {
+		t.Fatalf("点击空描述卡片进入编辑态失败: %v", err)
+	}
+	ttEmpty.Frame()
+	if !emptyDesc.editing {
+		t.Fatalf("点击空描述卡片后应进入编辑态")
+	}
+	if err := ttEmpty.Click("bold"); err != nil {
+		t.Fatalf("点击加粗工具按钮失败: %v", err)
+	}
+	ttEmpty.Frame()
+	if err := ttEmpty.Click(locales.Done()); err != nil {
+		t.Fatalf("点击完成按钮失败: %v", err)
+	}
+	ttEmpty.Frame()
+	if savedDesc != locales.MdBoldSample() {
+		t.Fatalf("期望保存加粗示例 %q，实际得到 %q", locales.MdBoldSample(), savedDesc)
+	}
 }

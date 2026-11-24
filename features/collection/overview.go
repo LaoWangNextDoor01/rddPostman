@@ -11,7 +11,6 @@ import (
 	"rddpostman/components/v1/icons"
 	v2 "rddpostman/components/v2"
 	"rddpostman/internal/domain"
-	"rddpostman/internal/routes"
 	"rddpostman/locales"
 
 	"github.com/egoist/mygo/ui"
@@ -101,7 +100,7 @@ func overviewTab(c *ui.Context, props pageProps, coll *domain.Collection, node *
 
 // docHeader 是设计稿的文档头：左侧集合名或面包屑导航。
 func docHeader(c *ui.Context, props pageProps, coll *domain.Collection, node *domain.Node) {
-	m, tk := theme.Metrics, theme.Of(c)
+	m, tk := thV2.Metrics, thV2.Of(c)
 
 	id := string(coll.ID)
 	if node != nil {
@@ -112,20 +111,20 @@ func docHeader(c *ui.Context, props pageProps, coll *domain.Collection, node *do
 		crumbs = []CrumbItem{{ID: string(coll.ID), Name: coll.Name}}
 	}
 
-	ui.Row(c).Height(m.Space1*10).Padding(0, m.Space3).
+	ui.Row(c).Height(40).Padding(0, m.Space4).
 		AlignItems(ui.Center).Children(func() {
 		if len(crumbs) == 1 {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-				ui.Icon(c, icons.Get("library")).Size(14, 14).
+				ui.Icon(c, icons.Library).Size(14, 14).
 					TextColor(tk.TextSecondary)
-				ui.Text(c, crumbs[0].Name).FontSize(m.FontMD).FontWeight(500).
-					TextColor(tk.TextPrimary).SingleLine().Bold()
+				ui.Text(c, crumbs[0].Name).FontSize(m.FontMD).FontWeight(600).
+					TextColor(tk.TextPrimary).SingleLine()
 			})
 			return
 		}
 
 		ui.Row(c).Height(20).Gap(4).AlignItems(ui.Center).Children(func() {
-			ui.Icon(c, icons.Get("library")).Size(14, 14).TextColor(tk.TextSecondary)
+			ui.Icon(c, icons.Library).Size(14, 14).TextColor(tk.TextSecondary)
 
 			for i, cr := range crumbs {
 				cr := cr
@@ -142,9 +141,9 @@ func docHeader(c *ui.Context, props pageProps, coll *domain.Collection, node *do
 				} else {
 					btn := ui.ButtonBase(c.Key("crumb-" + id + "-" + cr.ID)).
 						Height(20).PaddingX(4).Radius(m.RadiusSM).
-						AlignItems(ui.Center)
+						AlignItems(ui.Center).Cursor(ui.CursorPointer)
 					if btn.Hovered() {
-						btn.Background(tk.HoverSurface)
+						btn.Background(tk.BgHover)
 					}
 					if btn.Clicked() {
 						props.actions.openTab(cr.ID)
@@ -232,7 +231,7 @@ func segmentBar(c *ui.Context, props pageProps, coll *domain.Collection, node *d
 func docBody(c *ui.Context, props pageProps, coll *domain.Collection,
 	node *domain.Node, id string, title *titleState, desc *descState,
 ) {
-	m, tk := theme.Metrics, theme.Of(c)
+	m, tk := thV2.Metrics, thV2.Of(c)
 	name := coll.Name
 	description := coll.Description
 	updated := coll.UpdatedAt
@@ -249,7 +248,7 @@ func docBody(c *ui.Context, props pageProps, coll *domain.Collection,
 
 	ui.Scroll(c).Grow(1).Children(func() {
 		ui.Row(c).FillWidth().Justify(ui.Center).Children(func() {
-			ui.Column(c).Width(docWidth).Padding(34, 0, 24, 0).Children(func() {
+			ui.Column(c).Width(docWidth).Padding(32, 0, 28, 0).Children(func() {
 				// 标题
 				editableTitle(c, props, id, name, title)
 				// meta信息，例如请求数量、更新时间
@@ -258,67 +257,62 @@ func docBody(c *ui.Context, props pageProps, coll *domain.Collection,
 					locales.FolderCount(folders),
 				}, locales.UpdatedAt(relativeTime(updated)))
 
-				ui.Box(c).Background(tk.Border).Margin(18, 0, 0, 0)
+				ui.Box(c).FillWidth().Height(m.Border).Background(tk.Border).Margin(16, 0, 0, 0)
 
 				editableDescription(c, props, id, description, desc)
-
-				// if node == nil {
-				// 	envSection(c, props, tk, m)
-				// } else {
-				// 	tocSection(c, node, tk, m)
-				// }
-
-				link := ui.Text(c, locales.ViewFullDocs()).FontSize(m.FontSM).
-					FontWeight(500).TextColor(tk.Info).Margin(31, 0, 0, 0)
-				if link.Clicked() {
-					props.actions.navigate(routes.WorkbenchDocsOf(string(props.workspaceID)))
-				}
 			})
 		})
 	})
 }
 
-// editableDescription 画支持 Markdown 渲染与编辑的描述区域。
+// editableDescription 画支持 Markdown 渲染与编辑的描述区域（参考 Postman 极简文档流风格，适配 UI v2 浅/深色主题）。
 func editableDescription(c *ui.Context, props pageProps, id, description string, desc *descState) {
-	m := theme.Metrics
-	tk := theme.Of(c)
+	m, tk := thV2.Metrics, thV2.Of(c)
 
 	if !desc.editing {
 		if strings.TrimSpace(description) == "" {
-			btn := ui.ButtonBase(c.Key("empty-desc-btn")).Width(docWidth).MinHeight(58).
-				Margin(20, 0, 10, 0).Padding(14, 18).Radius(m.RadiusMD).
-				Background(tk.BgElevated.Alpha(0.4)).Border(m.Border, tk.Border).
-				AlignItems(ui.Center).Gap(8)
-			if btn.Hovered() {
-				btn.Background(tk.HoverSurface).Border(m.Border, tk.Accent)
-			}
+			// 默认空态：参考 Postman，无外框无底色，纯文档流占位文案，点击整行区域直接进入编辑态
+			btn := ui.ButtonBase(c.Key("empty-desc-btn")).
+				Width(docWidth).MinHeight(48).
+				Padding(14, 0, 12, 0).
+				AlignItems(ui.Start).Justify(ui.Start).
+				Cursor(ui.CursorText).Role(ui.RoleButton).Label(locales.OverviewAddDescPlaceholder()).
+				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+
 			if btn.Clicked() {
 				desc.editing = true
 				desc.draft = ""
 				desc.fresh = true
 				desc.mode = "write"
 			}
+
+			hovered := btn.Hovered()
 			btn.Children(func() {
-				ui.Icon(c, icons.Get("plus")).FontSize(m.IconSM).TextColor(tk.TextMuted)
+				textColor := tk.TextMuted
+				if hovered {
+					textColor = tk.TextSecondary
+				}
 				ui.Text(c, locales.OverviewAddDescPlaceholder()).
-					FontSize(m.FontSM).TextColor(tk.TextMuted)
+					FontSize(m.FontSM).TextColor(textColor).SingleLine()
 			})
 			return
 		}
 
-		ui.Column(c).Width(docWidth).Margin(18, 0, 10, 0).Gap(m.Space2).Children(func() {
-			ui.Row(c).FillWidth().Height(m.Space1 * 7).AlignItems(ui.Center).Children(func() {
+		// 非空查看态：简洁标题条 + Markdown 正文渲染
+		ui.Column(c).Width(docWidth).Padding(14, 0, 6, 0).Gap(m.Space2).Children(func() {
+			ui.Row(c).FillWidth().Height(26).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, locales.CollectionDescriptionLabel()).
-					FontSize(m.FontSM).FontWeight(600).TextColor(tk.TextSecondary)
-				ui.Box(c).Margin(0, 6).Padding(1, 6).Radius(m.RadiusSM).
-					Background(tk.BgElevated).Children(func() {
-					ui.Text(c, "Markdown").FontSize(10).TextColor(tk.TextMuted)
-				})
+					FontSize(m.FontXS).FontWeight(500).TextColor(tk.TextMuted).SingleLine()
 				ui.Spacer(c)
 				editBtn := ui.ButtonBase(c.Key("edit-desc-btn")).Height(24).PaddingX(8).
-					Radius(m.RadiusSM).AlignItems(ui.Center).Gap(4)
-				if editBtn.Hovered() {
-					editBtn.Background(tk.HoverSurface)
+					Radius(m.RadiusSM).AlignItems(ui.Center).Gap(5).
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.Edit()).
+					Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+				switch {
+				case editBtn.Pressed():
+					editBtn.Background(tk.BgSelected)
+				case editBtn.Hovered():
+					editBtn.Background(tk.BgHover)
 				}
 				if editBtn.Clicked() {
 					desc.editing = true
@@ -327,8 +321,12 @@ func editableDescription(c *ui.Context, props pageProps, id, description string,
 					desc.mode = "write"
 				}
 				editBtn.Children(func() {
-					ui.Icon(c, icons.Get("file-pen")).FontSize(m.FontMD).TextColor(tk.TextSecondary)
-					ui.Text(c, locales.Edit()).FontSize(m.FontSM).TextColor(tk.TextSecondary)
+					fg := tk.TextMuted
+					if editBtn.Hovered() {
+						fg = tk.TextPrimary
+					}
+					ui.Icon(c, icons.FilePen).FontSize(12).TextColor(fg)
+					ui.Text(c, locales.Edit()).FontSize(m.FontXS).FontWeight(500).TextColor(fg).SingleLine()
 				})
 			})
 
@@ -337,7 +335,7 @@ func editableDescription(c *ui.Context, props pageProps, id, description string,
 		return
 	}
 
-	// 编辑模式
+	// 编辑 / 预览交互态：参考 Postman，顶部无底色工具栏（紧贴上方分割线，仅保留底部 1px 细线）+ 下方无边框开放式编辑区
 	done := func() {
 		desc.editing = false
 		if desc.draft != description {
@@ -345,8 +343,8 @@ func editableDescription(c *ui.Context, props pageProps, id, description string,
 		}
 	}
 
-	editorBox := ui.Column(c).Width(docWidth).Margin(m.Space4, 0).Radius(m.RadiusMD).
-		Background(tk.BgSurface)
+	editorBox := ui.Column(c.Key("desc-editor-card-"+id)).
+		Width(docWidth).Background(tk.BgBase)
 
 	if !desc.fresh && editorBox.FocusLeft() {
 		done()
@@ -354,125 +352,158 @@ func editableDescription(c *ui.Context, props pageProps, id, description string,
 	}
 
 	editorBox.Children(func() {
-		// 1. 顶部工具栏：Tab（编辑 / 预览）+ 快速插入工具按钮
-		ui.Row(c).FillWidth().Height(34).PaddingX(6).AlignItems(ui.Center).
-			BorderWidth(1).BorderColor(tk.Border).
-			Radius(m.RadiusMD).
+		// 1. 顶部极简工具栏（38px，与页面同底色，仅底部 1px 细分割线，自然衔接上方标题分割线）
+		ui.Row(c).FillWidth().Height(38).AlignItems(ui.Center).
+			Background(tk.BgBase).
+			BorderWidth(0, 0, m.Border, 0).BorderColor(tk.Border).
 			Children(func() {
 				if desc.mode == "write" {
 					ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
-						tool := func(key, iconName, insert string) {
-							tBtn := ui.ButtonBase(c.Key("tool-"+key)).KeepFocus().Size(24, 24).
-								Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center)
-							if tBtn.Hovered() {
-								tBtn.Background(tk.HoverSurface)
+						tool := func(key string, ic *ui.SVG, insert string) {
+							tBtn := ui.ButtonBase(c.Key("tool-"+key)).KeepFocus().Size(26, 26).
+								Radius(m.RadiusSM).Justify(ui.Center).AlignItems(ui.Center).
+								Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(key).
+								Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+							switch {
+							case tBtn.Pressed():
+								tBtn.Background(tk.BgSelected)
+							case tBtn.Hovered():
+								tBtn.Background(tk.BgHover)
 							}
 							if tBtn.Clicked() {
 								desc.draft += insert
 							}
 							tBtn.Children(func() {
 								iconColor := tk.TextSecondary
-								if tBtn.Hovered() {
+								if tBtn.Pressed() {
+									iconColor = tk.Accent
+								} else if tBtn.Hovered() {
 									iconColor = tk.TextPrimary
 								}
-								ui.Icon(c, icons.Get(iconName)).Size(14, 14).TextColor(iconColor)
+								ui.Icon(c, ic).Size(14, 14).TextColor(iconColor)
 							})
 						}
 						sep := func() {
 							ui.Box(c).Width(1).Height(14).Background(tk.Border).Margin(0, 3)
 						}
 
-						tool("bold", "bold", locales.MdBoldSample())
-						tool("italic", "italic", locales.MdItalicSample())
-						tool("strikethrough", "strikethrough", locales.MdStrikeSample())
+						tool("bold", icons.Bold, locales.MdBoldSample())
+						tool("italic", icons.Italic, locales.MdItalicSample())
+						tool("strikethrough", icons.Strikethrough, locales.MdStrikeSample())
 						sep()
-						tool("heading", "heading", locales.MdHeadingSample())
+						tool("heading", icons.Heading, locales.MdHeadingSample())
 						sep()
-						tool("quote", "quote", locales.MdQuoteSample())
-						tool("code", "code", locales.MdCodeSample())
+						tool("list", icons.List, locales.MdListSample())
+						tool("list-ordered", icons.ListOrdered, locales.MdOrderedListSample())
+						tool("table", icons.Table, locales.MdTableSample())
 						sep()
-						tool("list", "list", locales.MdListSample())
-						tool("list-ordered", "list-ordered", locales.MdOrderedListSample())
-						sep()
-						tool("link", "link", locales.MdLinkSample())
-						tool("table", "table", locales.MdTableSample())
+						tool("link", icons.Link, locales.MdLinkSample())
+						tool("quote", icons.Quote, locales.MdQuoteSample())
+						tool("code", icons.Code, locales.MdCodeSample())
+					})
+				} else {
+					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+						ui.Icon(c, icons.Eye).FontSize(13).TextColor(tk.TextMuted)
+						ui.Text(c, locales.Preview()).FontSize(m.FontXS).FontWeight(500).
+							TextColor(tk.TextSecondary).SingleLine()
 					})
 				}
 
 				ui.Spacer(c)
 
+				// 轻量模式切换（编辑 / 预览）
 				ui.Row(c).Height(26).Padding(2).Gap(2).
-					Radius(m.RadiusSM).Background(tk.HoverSurface.Alpha(0.6)).
+					Radius(m.RadiusSM).Background(tk.BgSubtle).
 					AlignItems(ui.Center).Children(func() {
-					writeBtn := ui.ButtonBase(c.Key("desc-tab-write")).Height(22).PaddingX(8).
-						Radius(m.RadiusSM).AlignItems(ui.Center)
-					if desc.mode == "write" {
-						writeBtn.Background(tk.FocusRing).TextColor(tk.BgSurface)
-					} else if writeBtn.Hovered() {
-						writeBtn.Background(tk.HoverSurface)
+					segBtn := func(key, label string, active bool, onClick func()) {
+						b := ui.ButtonBase(c.Key(key)).KeepFocus().Height(22).PaddingX(8).
+							Radius(4).AlignItems(ui.Center).Justify(ui.Center).
+							Cursor(ui.CursorPointer).Role(ui.RoleTab).Label(label).
+							Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+						switch {
+						case active:
+							b.Background(tk.BgSurface).Border(m.Border, tk.Border)
+						case b.Pressed():
+							b.Background(tk.BgSelected).Border(m.Border, ui.Transparent)
+						case b.Hovered():
+							b.Background(tk.BgHover).Border(m.Border, ui.Transparent)
+						default:
+							b.Background(ui.Transparent).Border(m.Border, ui.Transparent)
+						}
+						if b.Clicked() && onClick != nil {
+							onClick()
+						}
+						b.Children(func() {
+							fg := tk.TextSecondary
+							if active || b.Hovered() {
+								fg = tk.TextPrimary
+							}
+							ui.Text(c, label).FontSize(m.FontXS).FontWeight(500).TextColor(fg).SingleLine()
+						})
 					}
-					if writeBtn.Clicked() {
+
+					segBtn("desc-tab-write", locales.Edit(), desc.mode == "write", func() {
 						desc.mode = "write"
 						desc.fresh = true
-					}
-
-					writeBtn.Children(func() {
-						ui.Text(c, locales.Edit()).FontSize(m.FontXS)
 					})
-
-					prevBtn := ui.ButtonBase(c.Key("desc-tab-prev")).Height(22).PaddingX(8).
-						Radius(m.RadiusSM).AlignItems(ui.Center)
-					if desc.mode == "preview" {
-						prevBtn.Background(tk.FocusRing).TextColor(tk.BgSurface)
-					} else if prevBtn.Hovered() {
-						prevBtn.Background(tk.HoverSurface)
-					}
-					if prevBtn.Clicked() {
+					segBtn("desc-tab-prev", locales.Preview(), desc.mode == "preview", func() {
 						desc.mode = "preview"
 						if desc.draft != description {
 							props.actions.updateDescription(id, desc.draft)
 						}
-					}
-					prevBtn.Children(func() {
-						ui.Text(c, locales.Preview()).FontSize(m.FontXS)
 					})
 				})
 
-				doneBtn := ui.ButtonBase(c.Key("desc-tab-done")).Height(26).PaddingX(8).
-					Margin(0, 0, 0, 4).Radius(m.RadiusSM).AlignItems(ui.Center)
-				if doneBtn.Hovered() {
-					doneBtn.Background(tk.HoverSurface)
+				ui.Box(c).Width(1).Height(14).Background(tk.Border).Margin(0, 6)
+
+				// 轻盈克制的「完成」按钮（柔和蓝底，悬停转实色，避免过重抢戏）
+				doneBtn := ui.ButtonBase(c.Key("desc-tab-done")).Height(24).PaddingX(10).
+					Radius(m.RadiusSM).AlignItems(ui.Center).Justify(ui.Center).
+					Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.Done()).
+					Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+				doneFg := tk.Accent
+				switch {
+				case doneBtn.Pressed():
+					doneBtn.Background(tk.AccentPressed)
+					doneFg = tk.OnAccent
+				case doneBtn.Hovered():
+					doneBtn.Background(tk.Accent)
+					doneFg = tk.OnAccent
+				default:
+					doneBtn.Background(tk.AccentSoft)
 				}
 				if doneBtn.Clicked() {
 					done()
 					return
 				}
 				doneBtn.Children(func() {
-					ui.Text(c, locales.Done()).FontSize(m.FontXS).TextColor(tk.TextSecondary)
+					ui.Text(c, locales.Done()).FontSize(m.FontXS).FontWeight(500).
+						TextColor(doneFg).SingleLine()
 				})
 			})
 
-		// 2. 主体编辑或预览区
+		// 2. 无边框开放式正文编辑 / 预览区（左齐平，与文档流融为一体）
 		if desc.mode == "write" {
-			in := ui.TextAreaBase(c, &desc.draft).FillWidth().MinHeight(180).
-				MaxHeight(480).Padding(12, 14).FontSize(m.FontSM).
-				FixedLineHeight(22).TextColor(tk.TextPrimary)
+			in := ui.TextAreaBase(c.Key("desc-md-input-"+id), &desc.draft).
+				FillWidth().MinHeight(120).MaxHeight(460).Padding(14, 0, 8, 0).
+				FontSize(m.FontMD).FixedLineHeight(22).
+				TextColor(tk.TextPrimary).
+				Placeholder(locales.OverviewAddDescPlaceholder()).
+				PlaceholderColor(tk.TextMuted).
+				Label(locales.CollectionDescriptionLabel())
 			if desc.fresh {
 				desc.fresh = false
 				in.AutoFocus()
-				return
-			}
-			if in.Shortcut(ui.Cmd, ui.KeyEnter) || in.Shortcut(0, ui.KeyEscape) {
+			} else if in.Shortcut(ui.Cmd, ui.KeyEnter) || in.Shortcut(0, ui.KeyEscape) {
 				done()
 				return
-			}
-			if in.FocusLeft() && !editorBox.FocusWithin() {
+			} else if in.FocusLeft() && !editorBox.FocusWithin() {
 				done()
 				return
 			}
 		} else {
-			ui.Scroll(c).FillWidth().MinHeight(180).MaxHeight(480).
-				Padding(14, 16).Children(func() {
+			ui.Scroll(c).FillWidth().MinHeight(120).MaxHeight(460).
+				Padding(14, 0, 8, 0).Children(func() {
 				if strings.TrimSpace(desc.draft) == "" {
 					ui.Text(c, locales.OverviewEmptyPreview()).FontSize(m.FontSM).TextColor(tk.TextMuted)
 				} else {
@@ -542,8 +573,8 @@ func editableTitle(c *ui.Context, props pageProps, id, name string, title *title
 }
 
 // metaRow 是 11 号元信息行：请求数、文件夹数与更新时间，用圆点分隔。
-func metaRow(c *ui.Context, tk theme.Tokens, m theme.Metric, counts []string, updated string) {
-	ui.Row(c).Height(14).Gap(10).AlignItems(ui.Center).
+func metaRow(c *ui.Context, tk thV2.Tokens, m thV2.Metric, counts []string, updated string) {
+	ui.Row(c).Height(16).Gap(10).AlignItems(ui.Center).
 		Margin(6, 0, 0, 0).Children(func() {
 		for i, count := range counts {
 			if i > 0 {

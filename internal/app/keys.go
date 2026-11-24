@@ -21,9 +21,7 @@ const (
 	keyTitlebarBack      = "titlebar-back"
 	keyTitlebarForward   = "titlebar-forward"
 	keyTitlebarSearch    = "titlebar-search"
-	keyTitlebarBell      = "titlebar-bell"
 	keyTitlebarSettings  = "titlebar-settings"
-	keyTitlebarAvatar    = "titlebar-avatar"
 	keyWorkspaceSelector = "workspace-selector"
 
 	// 状态栏与错误日志弹窗

@@ -229,3 +229,59 @@ func TestMoveNodeDialog(t *testing.T) {
 		t.Fatalf("expected Folder A and its child Ping moved into Dest Coll; got %+v", colls[1].Items)
 	}
 }
+
+func TestTreeToggleArrowHitTarget(t *testing.T) {
+	db, err := store.OpenAt(t.TempDir())
+	if err != nil {
+		t.Fatalf("store.OpenAt: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	ws := db.ActiveWorkspace()
+	coll, _ := db.CreateCollection(ws.ID, "Core API", "")
+	req := &domain.Node{ID: domain.NewID(), Kind: domain.KindRequest, Name: "Health Check", Request: &domain.Request{Method: "GET"}}
+	_ = db.AddNode(coll.ID, "", req)
+
+	state := newWorkspace()
+	openedCount := 0
+	tt := ui.NewTester(func(c *ui.Context) {
+		colls := db.ActiveWorkspace().Collections
+		ui.Column(c).Fill().Padding(8).Children(func() {
+			collectionTree(c, state, buildTree(colls), treeActions{
+				collections: colls,
+				open: func(row *treeNode) {
+					openedCount++
+				},
+			})
+		})
+	}, 260, 400)
+	tt.Frame()
+
+	rect, ok := tt.Find("Toggle Core API")
+	if !ok {
+		t.Fatalf("expected Toggle Core API button")
+	}
+	if rect.W < 20 || rect.H < 22 {
+		t.Fatalf("expected enlarged arrow toggle target (>=20x22), got %.1fx%.1f", rect.W, rect.H)
+	}
+	if !tt.HasText("Health Check") {
+		t.Fatalf("expected collection to be expanded initially")
+	}
+
+	// 点击箭头按钮边缘位置（左上角 +2px）也能顺畅折叠，且不误触行打开事件
+	tt.ClickAt(rect.X+2, rect.Y+2)
+	tt.Frame()
+	if tt.HasText("Health Check") {
+		t.Fatalf("clicking outer edge of toggle button should collapse collection")
+	}
+	if openedCount != 0 {
+		t.Fatalf("clicking toggle button should not trigger row open, got openedCount=%d", openedCount)
+	}
+
+	// 再次点击右下角边缘展开
+	tt.ClickAt(rect.X+rect.W-2, rect.Y+rect.H-2)
+	tt.Frame()
+	if !tt.HasText("Health Check") {
+		t.Fatalf("clicking bottom-right edge of toggle button should expand collection")
+	}
+}

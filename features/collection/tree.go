@@ -272,9 +272,9 @@ func collectionTree(c *ui.Context, state *workspace, rows []*treeNode, actions t
 				open = state.openFlag(n.id)
 			}
 			item := tree.Item(open)
-			row := item.Row.Height(m.RowHeight).Gap(6).
+			row := item.Row.Height(m.RowHeight).Gap(4).
 				Padding(0, 8).
-				PaddingStart(8 + 16*float32(depth)).
+				PaddingStart(4 + 16*float32(depth)).
 				Radius(m.RadiusSM).
 				Cursor(ui.CursorPointer).
 				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
@@ -373,21 +373,43 @@ func collectionTree(c *ui.Context, state *workspace, rows []*treeNode, actions t
 				})
 			}
 
-			if row.Clicked() {
-				actions.open(n)
-			}
+			var toggleClicked, moreClicked bool
 			row.Children(func() {
 				if expandable {
-					arrow := ui.Icon(c, icons.ChevronDown).FontSize(11).
-						TextColor(tk.TextMuted)
-					if open != nil && !*open {
-						arrow.Rotate(-90)
+					toggleBtn := ui.ButtonBase(c.Key("tree-toggle-"+n.id)).
+						Size(22, 24).Radius(m.RadiusSM).Center().
+						Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Toggle " + n.name).
+						Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
+					toggleHovered := toggleBtn.Hovered()
+					switch {
+					case toggleBtn.Pressed():
+						toggleBtn.Background(tk.BgSelected)
+					case toggleHovered:
+						if selected || rowHovered {
+							toggleBtn.Background(tk.BgSelected)
+						} else {
+							toggleBtn.Background(tk.BgHover)
+						}
 					}
-					if arrow.Clicked() && open != nil {
-						*open = !*open
+					if toggleBtn.Clicked() {
+						toggleClicked = true
+						if open != nil {
+							*open = !*open
+						}
 					}
+					toggleBtn.Children(func() {
+						arrowColor := tk.TextMuted
+						if toggleHovered || toggleBtn.Pressed() {
+							arrowColor = tk.TextPrimary
+						}
+						arrow := ui.Icon(c, icons.ChevronDown).FontSize(12).
+							TextColor(arrowColor)
+						if open != nil && !*open {
+							arrow.Rotate(-90)
+						}
+					})
 				} else {
-					ui.Box(c).Width(11)
+					ui.Box(c).Width(22)
 				}
 
 				switch n.kind {
@@ -430,12 +452,16 @@ func collectionTree(c *ui.Context, state *workspace, rows []*treeNode, actions t
 					more.Opacity(0).IgnoreInput(true)
 				}
 				if more.Clicked() {
+					moreClicked = true
 					*menuOpen = !*menuOpen
 				}
 				v2.Popover(c, more, menuOpen, v2.PopoverOpts{Width: 180}, func(panel ui.Element) {
 					renderTreeRowMenu(c, n, state, actions, menuOpen)
 				})
 			})
+			if row.Clicked() && !toggleClicked && !moreClicked {
+				actions.open(n)
+			}
 			if expandable {
 				item.Group(func() {
 					if len(n.children) == 0 {
@@ -610,8 +636,8 @@ func renderTreeEmptyNode(
 		title = locales.FolderEmptyNodeTitle()
 		desc = locales.FolderEmptyNodeDesc()
 	}
-	// 容器左外边距留出 8px 内边距后，文字与父级图标左边缘（25 + 16*(depth-1)）精确对齐
-	indent := float32(17)
+	// 容器左外边距留出 8px 内边距后，文字与父级图标左边缘（30 + 16*(depth-1)）精确对齐
+	indent := float32(22)
 	if depth > 1 {
 		indent += 16 * float32(depth-1)
 	}

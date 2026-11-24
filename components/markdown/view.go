@@ -128,10 +128,10 @@ func renderParagraph(c *ui.Context, text string, tk thV2.Tokens, m thV2.Metric) 
 
 func renderCodeBlock(c *ui.Context, lang, code string, tk thV2.Tokens, m thV2.Metric, key string) {
 	ui.Column(c).FillWidth().Margin(6, 0, 10, 0).Radius(m.RadiusMD).
-		Background(tk.BgSubtle).Border(m.Border, tk.Border).Children(func() {
+		Background(tk.BgBase).Border(m.Border, tk.Border).Clip().Children(func() {
 		// 顶栏：语言标签与复制按钮
 		ui.Row(c).FillWidth().Height(28).PaddingX(m.Space2).AlignItems(ui.Center).
-			Background(tk.BgHover).Radius(m.RadiusMD).Children(func() {
+			Background(tk.BgApp).BorderWidth(0, 0, m.Border, 0).BorderColor(tk.Border).Children(func() {
 			displayLang := "CODE"
 			if lang != "" {
 				displayLang = strings.ToUpper(lang)
@@ -142,10 +142,10 @@ func renderCodeBlock(c *ui.Context, lang, code string, tk thV2.Tokens, m thV2.Me
 			ui.Spacer(c)
 
 			copyBtn := ui.ButtonBase(c.Key(key + "-copy")).Height(20).PaddingX(6).
-				Radius(m.RadiusSM).AlignItems(ui.Center).Gap(4)
+				Radius(m.RadiusSM).AlignItems(ui.Center).Gap(4).Cursor(ui.CursorPointer)
 			copied := ui.Local(copyBtn, "copied", func() bool { return false })
 			if copyBtn.Hovered() {
-				copyBtn.Background(tk.Border)
+				copyBtn.Background(tk.BgHover)
 			}
 			if copyBtn.Clicked() {
 				c.Services().WriteClipboard(code)
@@ -155,7 +155,7 @@ func renderCodeBlock(c *ui.Context, lang, code string, tk thV2.Tokens, m thV2.Me
 				if *copied {
 					ui.Text(c, "已复制").FontSize(10).TextColor(tk.Success)
 				} else {
-					ui.Icon(c, icons.Get("copy")).FontSize(11).TextColor(tk.TextMuted)
+					ui.Icon(c, icons.Copy).FontSize(11).TextColor(tk.TextMuted)
 					ui.Text(c, "复制").FontSize(10).TextColor(tk.TextMuted)
 				}
 			})

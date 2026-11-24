@@ -91,26 +91,6 @@ func (a *App) hubSidebar(c *ui.Context) {
 				ui.Text(c, locales.HubYourTeam()).FontSize(13).FontWeight(600).TextColor(tk.TextPrimary).SingleLine()
 				ui.Text(c, locales.HubMemberCount(1)).FontSize(m.FontXS).TextColor(tk.TextMuted).SingleLine()
 			})
-
-			ui.Spacer(c)
-
-			inviteBtn := ui.ButtonBase(c.Key("hub-team-invite")).
-				Height(22).PaddingX(8).Radius(m.RadiusSM).
-				Border(m.Border, tk.BorderPopover).
-				Cursor(ui.CursorPointer).
-				Role(ui.RoleButton).
-				Label(locales.HubInvite()).
-				AlignItems(ui.Center).
-				Justify(ui.Center).
-				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast})
-			if inviteBtn.Hovered() {
-				inviteBtn.Background(tk.BgHover).TextColor(tk.TextPrimary)
-			} else {
-				inviteBtn.TextColor(tk.TextSecondary)
-			}
-			inviteBtn.Children(func() {
-				ui.Text(c, locales.HubInvite()).FontSize(m.FontXS).SingleLine()
-			})
 		})
 
 		ui.Divider(c).BorderColor(tk.BgSubtle).Margin(0, m.Space3, m.Space15, m.Space3)
@@ -152,45 +132,6 @@ func (a *App) hubSidebar(c *ui.Context) {
 
 		// 3. 弹性空白
 		ui.Spacer(c)
-
-		// 4. 底部帮助链接
-		hubBottomLinks(c)
-	})
-}
-
-func hubBottomLinks(c *ui.Context) {
-	m, tk := thV2.Metrics, thV2.Of(c)
-	links := []struct {
-		key   string
-		title string
-	}{
-		{"what-is", locales.HubLinkWhatIs()},
-		{"how-to-publish", locales.HubLinkHowToPublish()},
-		{"learning-center", locales.HubLinkLearningCenter()},
-		{"support-center", locales.HubLinkSupportCenter()},
-		{"enterprise", locales.HubLinkEnterprise()},
-	}
-
-	ui.Column(c).Padding(0, m.Space4, 14, m.Space4).Gap(9).Children(func() {
-		for _, item := range links {
-			it := item
-			link := ui.ButtonBase(c.Key("hub-link-" + it.key)).
-				Role(ui.RoleLink).
-				Cursor(ui.CursorPointer).
-				Label(it.title).
-				Transition(ui.ElementTransition{Colors: true, Duration: thV2.Motion.Fast}).
-				Justify(ui.Start)
-
-			if link.Hovered() {
-				link.TextColor(tk.TextPrimary)
-			} else {
-				link.TextColor(tk.TextMuted)
-			}
-
-			link.Children(func() {
-				ui.Text(c, it.title).FontSize(m.FontMicro).SingleLine()
-			})
-		}
 	})
 }
 

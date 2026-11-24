@@ -47,11 +47,9 @@ func (a *App) titleBar(c *ui.Context, settingsOpen, searchOpen *bool, searchQuer
 			ui.Spacer(c)
 			a.searchInput(c, searchOpen, searchQuery, searchFocus)
 			ui.Spacer(c)
-			// 右侧全局操作：通知、设置（全局弹窗）、账号
+			// 右侧全局操作：设置（全局弹窗）
 			ui.Row(c).Gap(m.Space15).Padding(0, m.Space3).AlignItems(ui.Center).FillHeight().Children(func() {
-				a.bellButton(c)
 				a.settingButton(c, settingsOpen)
-				// a.userAvatar(c)
 			})
 		})
 }
@@ -113,12 +111,12 @@ func (a *App) navButtons(c *ui.Context) {
 	})
 }
 
-// menuButton 绘制 Windows 自绘应用菜单按钮（对齐 Pixso 节点 52:20238 与 52:20243 浮层）：
-// 触发按钮为 52x26 圆角 4px 汉堡图标，展开 300px 宽度弹窗，包含带快捷键的 4 个分组与 9 项自绘菜单项。
+// menuButton 绘制 Windows 自绘应用菜单按钮：
+// 触发按钮为 26x26 圆角 4px 汉堡图标，展开 300px 宽度弹窗，包含带快捷键的 4 个分组与 9 项自绘菜单项。
 func (a *App) menuButton(c *ui.Context, settingsOpen, exportOpen *bool) {
 	m, tk := thV2.Metrics, thV2.Of(c)
 	btn := ui.ButtonBase(c.Key("titlebar-app-menu")).
-		Size(52, 26).
+		Size(26, 26).
 		Radius(m.RadiusSM).
 		Center().
 		Margin(0, m.Space1, 0, m.Space2).
@@ -140,13 +138,13 @@ func (a *App) menuButton(c *ui.Context, settingsOpen, exportOpen *bool) {
 	case btn.Pressed():
 		btn.Background(tk.BgSelected)
 	case *open || btn.Hovered():
-		btn.Background(tk.BgSubtle)
+		btn.Background(tk.BgHover)
 	default:
 		btn.Background(ui.Transparent)
 	}
 
 	btn.Children(func() {
-		ui.Icon(c, icons.Menu).FontSize(16).TextColor(tk.TextPrimary)
+		ui.Icon(c, icons.Menu).FontSize(15).TextColor(tk.TextPrimary)
 	})
 
 	v2.Popover(c, btn, open, v2.PopoverOpts{Width: 300}, func(panel ui.Element) {
@@ -316,15 +314,6 @@ func (a *App) searchInput(c *ui.Context, searchOpen *bool, searchQuery *string, 
 	}
 }
 
-// 提醒消息
-func (a *App) bellButton(c *ui.Context) {
-	if v2.IconButton(c, v2.IconButtonOpts{
-		Key: keyTitlebarBell, Label: locales.Notifications(), Icon: icons.Bell, Tooltip: locales.Notifications(),
-	}).Clicked() {
-		// TODO: 打开通知中心 Popover
-	}
-}
-
 // 设置（在 RootLayout 层打开全局设置弹窗，不改变当前路由）
 func (a *App) settingButton(c *ui.Context, settingsOpen *bool) {
 	if v2.IconButton(c, v2.IconButtonOpts{
@@ -333,16 +322,6 @@ func (a *App) settingButton(c *ui.Context, settingsOpen *bool) {
 		if settingsOpen != nil {
 			*settingsOpen = true
 		}
-	}
-}
-
-// 用户头像按钮
-func (a *App) userAvatar(c *ui.Context) {
-	if v2.IconButton(c, v2.IconButtonOpts{
-		Key: keyTitlebarAvatar, Label: locales.Account(), Icon: icons.UserRound,
-		Tooltip: locales.Account(), Radius: thV2.Metrics.RadiusFull,
-	}).Clicked() {
-		// TODO: 打开账号菜单
 	}
 }
 
@@ -546,7 +525,7 @@ func shortcutLabel(k ui.Key) string {
 	return "Ctrl " + name
 }
 
-// statusBar 是窗口底部状态条（对齐 Pixso inst / row / status bar：高 24px、左 Local mode / Terminal / Console，右 Globals / Vault / Tools）。
+// statusBar 是窗口底部状态条（高 24px、左 Local mode / Console，右 Globals / Tools / 版本号）。
 func (a *App) statusBar(c *ui.Context, globalsOpen *bool) {
 	m, tk := thV2.Metrics, thV2.Of(c)
 
@@ -559,15 +538,10 @@ func (a *App) statusBar(c *ui.Context, globalsOpen *bool) {
 	errCount := logger.ErrorCount()
 
 	row.Children(func() {
-		// 左侧：Local mode · Terminal · Console（点击 Console 打开日志弹窗）
+		// 左侧：Local mode · Console（点击 Console 打开日志弹窗）
 		ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
 			ui.Icon(c, icons.TriangleAlert).FontSize(11).TextColor(tk.TextMuted)
 			ui.Text(c, locales.StatusLocalMode()).FontSize(11).TextColor(tk.TextSecondary).SingleLine()
-		})
-
-		ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
-			ui.Icon(c, icons.SquareTerminal).FontSize(11).TextColor(tk.TextMuted)
-			ui.Text(c, locales.StatusTerminal()).FontSize(11).TextColor(tk.TextSecondary).SingleLine()
 		})
 
 		logBtn := ui.ButtonBase(c.Key(keyStatusBarLogBtn)).
@@ -593,7 +567,7 @@ func (a *App) statusBar(c *ui.Context, globalsOpen *bool) {
 
 		ui.Spacer(c)
 
-		// 右侧：Globals（可点击打开全局变量弹窗） · Vault · Tools · 版本号
+		// 右侧：Globals（可点击打开全局变量弹窗） · Tools · 版本号
 		globalsLabel := locales.Globals()
 		if a.store != nil {
 			if n := len(a.store.Snapshot().Globals); n > 0 {
@@ -615,8 +589,6 @@ func (a *App) statusBar(c *ui.Context, globalsOpen *bool) {
 		globalsBtn.Children(func() {
 			ui.Text(c, globalsLabel).FontSize(11).TextColor(tk.TextSecondary).SingleLine()
 		})
-
-		ui.Text(c, locales.StatusVault()).FontSize(11).TextColor(tk.TextSecondary).SingleLine()
 
 		toolsBtn := ui.ButtonBase(c.Key(keyStatusBarToolsBtn)).
 			Height(18).PaddingX(6).AlignItems(ui.Center).Radius(4).
